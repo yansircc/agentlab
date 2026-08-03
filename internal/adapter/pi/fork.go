@@ -44,7 +44,7 @@ type ForkPayload struct {
 }
 
 func (value ForkPayload) Validate() error {
-	if value.Checkpoint.Algorithm != "sha256" || len(value.Checkpoint.Digest) != 64 || value.Checkpoint.Size < 0 || value.Identity.Validate() != nil {
+	if !value.Checkpoint.Valid() || value.Identity.Validate() != nil {
 		return errors.New("Pi fork payload is invalid")
 	}
 	return nil

@@ -7,7 +7,7 @@ import (
 )
 
 func TestEstablishedDiagnosisRequiresSingleSourceEvidenceOwner(t *testing.T) {
-	ref := artifact.Ref{Algorithm: "sha256", Digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Size: 10}
+	ref := artifact.Ref{Scope: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", Algorithm: "sha256", Digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Size: 10}
 	value := Diagnosis{
 		ID: "diagnosis-1", State: Established, FindingIDs: []string{"finding-1"}, SourceSnapshot: ref,
 		SourceEvidence: []SourceEvidenceRef{{Artifact: ref, Path: "owner.go", StartLine: 1, EndLine: 1}},

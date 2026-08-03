@@ -183,7 +183,7 @@ func (s *replayState) progress(record ledger.Record) error {
 }
 
 func validRef(ref artifact.Ref) bool {
-	return ref.Algorithm == "sha256" && len(ref.Digest) == 64 && ref.Size >= 0
+	return ref.Valid()
 }
 
 func invalid(record ledger.Record, reason string) error {

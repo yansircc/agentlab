@@ -93,7 +93,7 @@ func validateHuman(node HumanNode) error {
 }
 
 func validRef(ref artifact.Ref) bool {
-	return ref.Algorithm == "sha256" && len(ref.Digest) == 64 && ref.Size >= 0
+	return ref.Valid()
 }
 
 func (o *Operation) requireArtifacts(refs []artifact.Ref) error {

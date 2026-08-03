@@ -26,7 +26,11 @@ func TestStatusIsReplayableAndIdentityAware(t *testing.T) {
 	if _, err := op.ledger.Append(time.Unix(1, 0), eventProcessStarted, processStarted{AttemptID: "test-attempt", Manifest: manifest, Process: processHandle{Kind: processOwned, Identity: &identity}, Policy: policy}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := op.ledger.Append(time.Unix(2, 0), eventEvidence, evidence{Stream: "stdout", Label: "public_output", Raw: artifact.Ref{Algorithm: "sha256", Digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}); err != nil {
+	first, err := artifact.NewStore(root + "/artifacts").Put([]byte("first"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := op.ledger.Append(time.Unix(2, 0), eventEvidence, evidence{Stream: "stdout", Label: "public_output", Raw: first}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -65,7 +69,11 @@ func TestStatusIsReplayableAndIdentityAware(t *testing.T) {
 	if silent.Health != HealthAliveSilent || silent.StreamActivity != SoftIdle {
 		t.Fatalf("silent status = %#v", silent)
 	}
-	if _, err := op.ledger.Append(time.Unix(5, 0), eventEvidence, evidence{Stream: "stdout", Label: "public_output", Raw: artifact.Ref{Algorithm: "sha256", Digest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}); err != nil {
+	second, err := artifact.NewStore(root + "/artifacts").Put([]byte("second"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := op.ledger.Append(time.Unix(5, 0), eventEvidence, evidence{Stream: "stdout", Label: "public_output", Raw: second}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := op.ledger.Append(time.Unix(5, int64(10*time.Millisecond)), eventNoProgress, progressFact{Detector: "test-information-gain"}); err != nil {

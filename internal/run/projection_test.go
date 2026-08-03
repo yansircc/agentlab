@@ -19,7 +19,10 @@ func TestStatusProjectionIsDisposableAndRebuildable(t *testing.T) {
 	if _, err := op.ledger.Append(time.Unix(1, 0), eventProcessStarted, processStarted{AttemptID: "test-attempt", Manifest: manifest, Process: processHandle{Kind: processOwned, Identity: &identity}, Policy: policy}); err != nil {
 		t.Fatal(err)
 	}
-	ref := artifact.Ref{Algorithm: "sha256", Digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+	ref, err := artifact.NewStore(filepath.Join(root, "artifacts")).Put([]byte("public output"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := op.ledger.Append(time.Unix(2, 0), eventEvidence, evidence{Stream: "stdout", Label: "public_output", Raw: ref}); err != nil {
 		t.Fatal(err)
 	}

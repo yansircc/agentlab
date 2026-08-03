@@ -59,7 +59,7 @@ func TestSpliceOriginRejectsUnownedFacts(t *testing.T) {
 	_, _ = op.Begin("unowned-prep")
 	_, evidence, checkpoint, prefix := spliceParent(t, op, root, "parent")
 	_, _, foreignCheckpoint, _ := spliceParent(t, op, root, "other")
-	fake := artifact.Ref{Algorithm: "sha256", Digest: strings.Repeat("a", 64), Size: 1}
+	fake := artifact.Ref{Scope: op.artifacts.Scope(), Algorithm: "sha256", Digest: strings.Repeat("a", 64), Size: 1}
 	intervention := fake
 	cases := []struct {
 		name   string

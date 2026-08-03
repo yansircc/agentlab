@@ -10,6 +10,7 @@ import (
 )
 
 type Ref struct {
+	Scope     string `json:"scope"`
 	Algorithm string `json:"algorithm"`
 	Digest    string `json:"digest"`
 	Size      int64  `json:"size"`
@@ -19,10 +20,19 @@ type Store struct{ root string }
 
 func NewStore(root string) Store { return Store{root: root} }
 
+func (s Store) Scope() string {
+	path, err := filepath.Abs(s.root)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256([]byte("agentlab.artifact-scope.v1\x00" + filepath.Clean(path)))
+	return hex.EncodeToString(sum[:])
+}
+
 func (s Store) Put(data []byte) (Ref, error) {
 	sum := sha256.Sum256(data)
 	digest := hex.EncodeToString(sum[:])
-	ref := Ref{Algorithm: "sha256", Digest: digest, Size: int64(len(data))}
+	ref := Ref{Scope: s.Scope(), Algorithm: "sha256", Digest: digest, Size: int64(len(data))}
 	dir := filepath.Join(s.root, "sha256")
 	path := filepath.Join(dir, digest)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -43,7 +53,7 @@ func (s Store) Put(data []byte) (Ref, error) {
 }
 
 func (s Store) Read(ref Ref) ([]byte, error) {
-	if ref.Algorithm != "sha256" || len(ref.Digest) != sha256.Size*2 {
+	if !ref.Valid() || ref.Scope != s.Scope() {
 		return nil, errors.New("invalid artifact reference")
 	}
 	data, err := os.ReadFile(filepath.Join(s.root, "sha256", ref.Digest))
@@ -55,6 +65,10 @@ func (s Store) Read(ref Ref) ([]byte, error) {
 		return nil, errors.New("artifact content does not match reference")
 	}
 	return data, nil
+}
+
+func (ref Ref) Valid() bool {
+	return len(ref.Scope) == sha256.Size*2 && ref.Algorithm == "sha256" && len(ref.Digest) == sha256.Size*2 && ref.Size >= 0
 }
 
 func atomicWrite(path string, data []byte, mode fs.FileMode) error {

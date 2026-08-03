@@ -77,3 +77,27 @@ func TestExecuteUsesHostBoundRefsWithoutFilesystemInput(t *testing.T) {
 		t.Fatal("model input contains host root")
 	}
 }
+
+func TestExecuteRejectsArtifactRefsFromAuditRoot(t *testing.T) {
+	evaluated := t.TempDir()
+	audit := artifact.NewStore(t.TempDir())
+	intent, err := audit.Put([]byte("private intent"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := source.Build(audit, []source.InputFile{{Path: "source.txt", Content: []byte("private source")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input, err := json.Marshal(map[string]any{"action": "begin_preparation", "user_intent": intent, "source_snapshot": snapshot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := Decode(ApplyTool, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Execute(Binding{Root: evaluated, PreparationID: "prep"}, value); err == nil {
+		t.Fatal("audit-root refs were accepted by evaluated tool")
+	}
+}

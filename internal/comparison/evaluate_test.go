@@ -168,5 +168,6 @@ func TestComparisonRejectsGuidedOrIntervenedRun(t *testing.T) {
 
 func testRef(character string) artifact.Ref {
 	sum := sha256.Sum256([]byte(character))
-	return artifact.Ref{Algorithm: "sha256", Digest: hex.EncodeToString(sum[:]), Size: 1}
+	scope := sha256.Sum256([]byte("scope"))
+	return artifact.Ref{Scope: hex.EncodeToString(scope[:]), Algorithm: "sha256", Digest: hex.EncodeToString(sum[:]), Size: 1}
 }

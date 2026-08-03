@@ -45,5 +45,5 @@ func validPath(value string) bool {
 }
 
 func validRef(ref artifact.Ref) bool {
-	return ref.Algorithm == "sha256" && len(ref.Digest) == 64 && ref.Size >= 0
+	return ref.Valid()
 }

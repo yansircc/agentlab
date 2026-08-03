@@ -77,7 +77,7 @@ func validIdentity(value RunIdentity) bool {
 	}
 	refs := []artifact.Ref{value.WorkerInput, value.Harness, value.Trial, value.Candidate, value.Adapter, value.OracleSet, value.Fixture, value.FixtureReset, value.FixtureBaseline, value.EvidencePolicy, value.StopPolicy, value.WorkerRuntime, value.Environment}
 	for _, ref := range refs {
-		if ref.Algorithm != "sha256" || len(ref.Digest) != 64 || ref.Size < 0 {
+		if !ref.Valid() {
 			return false
 		}
 	}

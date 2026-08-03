@@ -71,6 +71,4 @@ func (h *PiRuntimeHost) ForkIntent(binding Binding, request ForkRequest) (effect
 	return effect.Intent{ID: request.ID, RunID: request.RunID, Kind: effect.Fork, Payload: ref}, nil
 }
 
-func validArtifact(ref artifact.Ref) bool {
-	return ref.Algorithm == "sha256" && len(ref.Digest) == 64 && ref.Size >= 0
-}
+func validArtifact(ref artifact.Ref) bool { return ref.Valid() }
