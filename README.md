@@ -1,0 +1,68 @@
+# AgentLab
+
+AgentLab is a Go CLI for black-box Agent experiments. It records only admissible public Worker behavior, turns repeated friction into durable evidence, and compares exact repair candidates under a controlled run manifest.
+
+It is an experimental MVP. `internal/` packages and on-disk JSON schemas may change before a stable release.
+
+## What it owns
+
+- immutable content-addressed artifacts and append-only ledgers;
+- owned and attached Worker lifecycle, including liveness, idle, stop, and terminal facts;
+- Pi v3 session attachment with durable cursor, public-event filtering, tool correlation, and thinking exclusion;
+- sealed Worker input, source snapshots, decision preparation, and leakage assays;
+- command, HTTP, and file/Git oracle receipts;
+- evidence-only Findings, source-backed Diagnoses, exact repair candidates, and repeated-run comparison;
+- four provider-safe tool projections for Anthropic and OpenAI Responses.
+
+The source of truth is `events.jsonl` plus immutable artifacts. `result.json`, status, reports, and indexes are disposable projections.
+
+## Requirements
+
+- Go 1.26 or newer;
+- macOS or Linux. Worker process-group control uses Unix process semantics;
+- Pi is optional and needed only for `run attach` against Pi sessions.
+
+## Install
+
+```sh
+go install github.com/yansircc/agentlab/cmd/agentlab@latest
+agentlab tool schemas -provider anthropic
+```
+
+For development:
+
+```sh
+git clone https://github.com/yansircc/agentlab.git
+cd agentlab
+go test -race ./...
+go vet ./...
+```
+
+AgentLab stores data in `~/.agentlab` by default. Pass `-root /absolute/path` to commands when an experiment needs an explicit storage location.
+
+## CLI surface
+
+```text
+agentlab prepare begin|record-fact|propose-decision|resolve|assay|challenge-basis|challenge|seal|status
+agentlab experiment begin|bind-run|status
+agentlab run start|attach|status|stop
+agentlab oracle command|http|file-git
+agentlab review detect-repeated|detect-bypass|handoff
+agentlab diagnose record|bind-candidate
+agentlab compare record|show
+agentlab gate record|show
+agentlab inspect
+agentlab tool schemas|invoke
+```
+
+Mutation commands accept strict JSON requests. Secrets are referenced by environment-variable handles, never accepted as CLI values, and resolved values are redacted before evidence persistence.
+
+## Verification and scope
+
+The current MVP evidence and Phase 0 spike reports are in [docs/completion-evidence.md](docs/completion-evidence.md) and [docs/spikes](docs/spikes).
+
+AgentLab does not coach Workers, capture private thinking, modify source automatically, create commits, perform releases, or claim causal improvement from a single baseline/candidate pair.
+
+## Contributing and security
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md). The project is released under the [MIT License](LICENSE).

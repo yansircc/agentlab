@@ -1,0 +1,17 @@
+# Local AgentLab state and artifacts
+.agentlab/
+
+# Local credentials
+.env
+.env.*
+!.env.example
+
+# Go build and test output
+agentlab
+coverage.out
+*.test
+
+# Editor and OS state
+.DS_Store
+.idea/
+.vscode/
