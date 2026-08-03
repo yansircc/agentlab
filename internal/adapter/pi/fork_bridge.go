@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/yansircc/agentlab/internal/strictjson"
 )
 
 const forkBridgeContract = "agentlab.pi-sdk-fork.v1"
@@ -49,7 +51,7 @@ func executeForkBridge(attempt forkAttempt) (string, error) {
 		return "", errors.New("Pi SDK fork failed")
 	}
 	var response bridgeForkResponse
-	if decodeForkJSON(output, &response) != nil || response.Contract != forkBridgeContract || response.ParentSessionID != attempt.ParentSessionID || response.ChildSessionID == "" || response.ChildLeafID != attempt.EntryID || !withinDirectory(attempt.ChildSessionDir, response.ChildSessionPath) {
+	if strictjson.Decode(output, &response) != nil || response.Contract != forkBridgeContract || response.ParentSessionID != attempt.ParentSessionID || response.ChildSessionID == "" || response.ChildLeafID != attempt.EntryID || !withinDirectory(attempt.ChildSessionDir, response.ChildSessionPath) {
 		return "", errors.New("Pi SDK fork receipt is invalid")
 	}
 	return response.ChildSessionPath, nil

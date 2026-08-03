@@ -1,0 +1,84 @@
+package pi
+
+import (
+	"encoding/json"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/yansircc/agentlab/internal/artifact"
+	"github.com/yansircc/agentlab/internal/effect"
+	"github.com/yansircc/agentlab/internal/run"
+	"github.com/yansircc/agentlab/internal/strictjson"
+)
+
+func TestCheckpointEffectReplaysOnlyItsRecordedObservation(t *testing.T) {
+	root, operation, intent, spec := checkpointEffectFixture(t)
+	result, err := CheckpointEffect(operation, intent, spec)
+	if err != nil || result.Receipt.IntentID != intent.ID {
+		t.Fatalf("checkpoint effect = %#v, %v", result, err)
+	}
+	reopened, _ := run.Open(root, "checkpoint-effect", "worker")
+	again, err := CheckpointEffect(reopened, intent, spec)
+	if err != nil || again.Receipt != result.Receipt || again.Checkpoint.Checkpoint != result.Checkpoint.Checkpoint {
+		t.Fatalf("replayed checkpoint = %#v, %v", again, err)
+	}
+}
+
+func TestCheckpointEffectRefusesUnknownAttempt(t *testing.T) {
+	_, operation, intent, spec := checkpointEffectFixture(t)
+	payload, err := operation.ReadEffectPayload(intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded CheckpointPayload
+	if strictjson.Decode(payload, &decoded) != nil {
+		t.Fatal("invalid test payload")
+	}
+	attempt, err := json.Marshal(checkpointAttempt{Contract: checkpointAttemptContract, SessionPath: spec.SessionPath, Payload: decoded})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created, err := operation.BeginEffectAttempt(intent, attempt); err != nil || !created {
+		t.Fatalf("attempt = %t, %v", created, err)
+	}
+	if _, err := CheckpointEffect(operation, intent, spec); err == nil {
+		t.Fatal("checkpoint repeated unknown attempt")
+	}
+}
+
+func checkpointEffectFixture(t *testing.T) (string, *run.Operation, effect.Intent, CheckpointEffectSpec) {
+	t.Helper()
+	dir := t.TempDir()
+	root := filepath.Join(dir, "agentlab")
+	session := writeTree(t, []string{
+		`{"type":"session","version":3,"id":"checkpoint-effect-session"}`,
+		`{"type":"message","id":"user","parentId":null,"message":{"role":"user","content":"go"}}`,
+		`{"type":"message","id":"assistant","parentId":"user","message":{"role":"assistant","content":[{"type":"text","text":"public"}]}}`,
+	})
+	bindAdapterTestManifest(t, root, "checkpoint-effect", "worker")
+	operation, _ := run.Open(root, "checkpoint-effect", "worker")
+	policy := run.StopPolicy{FirstEventTimeout: time.Second, SoftIdleTimeout: 2 * time.Second, HardIdleTimeout: 3 * time.Second}
+	if _, err := Begin(operation, session, policy, nil); err != nil {
+		t.Fatal(err)
+	}
+	sdkRoot := installedSDKRoot(t)
+	identity, err := DiscoverIdentity(IdentityConfig{SDKRoot: sdkRoot, AdapterDigest: strings.Repeat("a", 64), Provider: "test", Model: "test", ThinkingPolicy: "off", CompactionPolicy: "off"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree, err := ReadPublicTree(session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := EncodeCheckpointPayload(CheckpointPayload{EntryLocator: tree.Entries[1].Locator, Identity: identity})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref, err := artifact.NewStore(filepath.Join(root, "artifacts")).Put(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return root, operation, effect.Intent{ID: "checkpoint-1", RunID: "worker", Kind: effect.Checkpoint, Payload: ref}, CheckpointEffectSpec{SDKRoot: sdkRoot, SessionPath: session}
+}

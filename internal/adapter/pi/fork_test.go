@@ -10,6 +10,7 @@ import (
 	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/effect"
 	"github.com/yansircc/agentlab/internal/run"
+	"github.com/yansircc/agentlab/internal/strictjson"
 )
 
 func TestForkReconcilesOneUnknownSDKChildWithoutRetry(t *testing.T) {
@@ -104,7 +105,7 @@ func attemptIdentity(t *testing.T, operation *run.Operation, intent effect.Inten
 		t.Fatal(err)
 	}
 	var payload ForkPayload
-	if decodeForkJSON(data, &payload) != nil {
+	if strictjson.Decode(data, &payload) != nil {
 		t.Fatal("invalid fork payload")
 	}
 	return payload.Identity
@@ -117,7 +118,7 @@ func intentCheckpoint(t *testing.T, operation *run.Operation, intent effect.Inte
 		t.Fatal(err)
 	}
 	var payload ForkPayload
-	if decodeForkJSON(data, &payload) != nil {
+	if strictjson.Decode(data, &payload) != nil {
 		t.Fatal("invalid fork payload")
 	}
 	return payload.Checkpoint

@@ -10,6 +10,7 @@ import (
 	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/effect"
 	"github.com/yansircc/agentlab/internal/run"
+	"github.com/yansircc/agentlab/internal/strictjson"
 )
 
 const forkAttemptContract = "agentlab.pi-fork-attempt.v1"
@@ -65,7 +66,7 @@ func Fork(operation *run.Operation, intent effect.Intent, spec ForkSpec) (ForkRe
 		return ForkResult{}, err
 	}
 	var payload ForkPayload
-	if decodeForkJSON(payloadData, &payload) != nil || payload.Validate() != nil {
+	if strictjson.Decode(payloadData, &payload) != nil || payload.Validate() != nil {
 		return ForkResult{}, errors.New("Pi fork payload is invalid")
 	}
 	discovered, err := DiscoverIdentity(IdentityConfig{SDKRoot: spec.SDKRoot, AdapterDigest: payload.Identity.AdapterDigest, Provider: payload.Identity.Provider, Model: payload.Identity.Model, ThinkingPolicy: payload.Identity.ThinkingPolicy, CompactionPolicy: payload.Identity.CompactionPolicy})

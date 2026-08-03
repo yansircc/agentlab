@@ -2,19 +2,18 @@ package pi
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
-	"io"
 	"path/filepath"
 	"reflect"
 
 	"github.com/yansircc/agentlab/internal/run"
+	"github.com/yansircc/agentlab/internal/strictjson"
 )
 
 func validateForkParent(spec ForkSpec, checkpoint run.RuntimeCheckpoint, sessionData, opaque, prefix []byte, identity AdapterIdentity) (checkpointState, error) {
 	var session sessionReceipt
 	var state checkpointState
-	if decodeForkJSON(sessionData, &session) != nil || decodeForkJSON(opaque, &state) != nil || session.Contract != checkpointSessionContract || session.Identity.Validate() != nil || !reflect.DeepEqual(session.Identity, identity) || session.RuntimeLocator == "" {
+	if strictjson.Decode(sessionData, &session) != nil || strictjson.Decode(opaque, &state) != nil || session.Contract != checkpointSessionContract || session.Identity.Validate() != nil || !reflect.DeepEqual(session.Identity, identity) || session.RuntimeLocator == "" {
 		return checkpointState{}, errors.New("Pi checkpoint session receipt is invalid")
 	}
 	parent, err := ReadPublicTree(spec.ParentSession)
@@ -48,16 +47,4 @@ func samePath(left, right string) bool {
 	leftPath, leftErr := filepath.EvalSymlinks(left)
 	rightPath, rightErr := filepath.EvalSymlinks(right)
 	return leftErr == nil && rightErr == nil && leftPath == rightPath
-}
-
-func decodeForkJSON(data []byte, target any) error {
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(target); err != nil {
-		return err
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return errors.New("Pi JSON has trailing input")
-	}
-	return nil
 }
