@@ -24,6 +24,7 @@ type replayState struct {
 	firstEventTimedOut bool
 	adapterCursor      artifact.Ref
 	stopRequested      bool
+	runtimeCheckpoints map[artifact.Ref]runtimeCheckpointRecorded
 }
 
 func replayRun(records []ledger.Record) (replayState, error) {
@@ -37,7 +38,7 @@ func replayRun(records []ledger.Record) (replayState, error) {
 }
 
 func initialReplayState() replayState {
-	return replayState{closedStreams: map[string]bool{}, semanticProgress: ProgressUnknown}
+	return replayState{closedStreams: map[string]bool{}, runtimeCheckpoints: map[artifact.Ref]runtimeCheckpointRecorded{}, semanticProgress: ProgressUnknown}
 }
 
 func (s *replayState) apply(record ledger.Record) error {
@@ -79,9 +80,23 @@ func (s *replayState) apply(record ledger.Record) error {
 			return invalid(record, "stop_requested after exit")
 		}
 		s.stopRequested = true
+	case eventRuntimeCheckpoint:
+		return s.checkpoint(record)
 	default:
 		return fmt.Errorf("unknown run event kind %q at sequence %d", record.Kind, record.Sequence)
 	}
+	return nil
+}
+
+func (s *replayState) checkpoint(record ledger.Record) error {
+	var value runtimeCheckpointRecorded
+	if s.exit != nil || s.stopRequested || s.started == nil || s.started.Adapter == nil || json.Unmarshal(record.Data, &value) != nil || !validRef(value.Checkpoint) || !validRef(value.PublicPrefix) {
+		return invalid(record, "invalid runtime checkpoint")
+	}
+	if _, exists := s.runtimeCheckpoints[value.Checkpoint]; exists {
+		return invalid(record, "invalid runtime checkpoint")
+	}
+	s.runtimeCheckpoints[value.Checkpoint] = value
 	return nil
 }
 

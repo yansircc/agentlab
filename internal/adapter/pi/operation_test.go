@@ -125,7 +125,7 @@ func bindAdapterTestManifest(t *testing.T, root, experimentID, runID string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = operation.BindRun(runID, experiment.RunInputs{
+	_, err = operation.BindRun(runID, experiment.NewFreshOrigin(), experiment.RunInputs{
 		Harness: put("harness"), Trial: put("trial"), Candidate: put("candidate"), Adapter: put("pi-adapter"),
 		OracleSet: put("oracles"), Fixture: fixture, FixtureReset: reset, EvidencePolicy: put("evidence"), StopPolicy: put("stop"),
 		WorkerRuntime: put("pi-runtime"), Environment: put("environment"),

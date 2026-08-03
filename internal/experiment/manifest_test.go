@@ -1,6 +1,7 @@
 package experiment
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -14,16 +15,16 @@ func TestRunManifestCannotChangeForOneRun(t *testing.T) {
 	operation, _ := Open(root, "manifest-exp")
 	_, _ = operation.Begin("manifest-prep")
 	inputs := testRunInputs(t, operation, "run-1", "first")
-	first, err := operation.BindRun("run-1", inputs)
+	first, err := operation.BindRun("run-1", NewFreshOrigin(), inputs)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if same, err := operation.BindRun("run-1", inputs); err != nil || same != first {
+	if same, err := operation.BindRun("run-1", NewFreshOrigin(), inputs); err != nil || same != first {
 		t.Fatalf("exact binding was not idempotent: %#v, %v", same, err)
 	}
 	changed := inputs
 	changed.Trial = putTestArtifact(t, operation, "changed-trial")
-	if _, err := operation.BindRun("run-1", changed); err == nil {
+	if _, err := operation.BindRun("run-1", NewFreshOrigin(), changed); err == nil {
 		t.Fatal("changed manifest was accepted for bound run")
 	}
 }
@@ -34,7 +35,7 @@ func TestRunManifestCannotBindAfterRunEvent(t *testing.T) {
 	operation, _ := Open(root, "event-exp")
 	_, _ = operation.Begin("event-prep")
 	inputs := testRunInputs(t, operation, "run-1", "bound")
-	if _, err := operation.BindRun("run-1", inputs); err != nil {
+	if _, err := operation.BindRun("run-1", NewFreshOrigin(), inputs); err != nil {
 		t.Fatal(err)
 	}
 	runOperation, _ := run.Open(root, "event-exp", "run-1")
@@ -42,7 +43,7 @@ func TestRunManifestCannotBindAfterRunEvent(t *testing.T) {
 	if _, err := runOperation.BeginAttached(run.AttachedSpec{Adapter: "test", StreamID: "stream", InitialCursor: []byte("cursor"), Policy: policy, Capabilities: run.RequiredAdapterCapabilities()}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := operation.BindRun("run-1", inputs); err == nil {
+	if _, err := operation.BindRun("run-1", NewFreshOrigin(), inputs); err == nil {
 		t.Fatal("manifest binding after run event was accepted")
 	}
 }
@@ -53,12 +54,38 @@ func TestRunManifestRequiresExactFixtureResetProof(t *testing.T) {
 	operation, _ := Open(root, "reset-exp")
 	_, _ = operation.Begin("reset-prep")
 	inputs := testRunInputs(t, operation, "other-run", "reset")
-	if _, err := operation.BindRun("run-1", inputs); err == nil {
+	if _, err := operation.BindRun("run-1", NewFreshOrigin(), inputs); err == nil {
 		t.Fatal("fixture reset proof for another run was accepted")
 	}
 	inputs.FixtureReset = recordTestFixtureReset(t, operation, "run-1", putTestArtifact(t, operation, "other-fixture"), putTestArtifact(t, operation, "baseline"))
-	if _, err := operation.BindRun("run-1", inputs); err == nil {
+	if _, err := operation.BindRun("run-1", NewFreshOrigin(), inputs); err == nil {
 		t.Fatal("fixture reset proof for another fixture was accepted")
+	}
+}
+
+func TestRunManifestHardCutsLegacyContract(t *testing.T) {
+	root := t.TempDir()
+	sealPreparation(t, root, "legacy-prep")
+	op, _ := Open(root, "legacy-exp")
+	_, _ = op.Begin("legacy-prep")
+	inputs := testRunInputs(t, op, "run-1", "legacy")
+	current, err := op.current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(RunManifest{
+		Contract: "agentlab.run-manifest.v1", WorkerInput: current.begun.WorkerInput, SourceSnapshot: current.begun.Source,
+		Origin: NewFreshOrigin(), RunInputs: inputs,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref, err := op.artifacts.Put(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := op.readManifest(ref); err == nil {
+		t.Fatal("legacy run manifest contract was accepted")
 	}
 }
 

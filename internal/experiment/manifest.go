@@ -10,7 +10,7 @@ import (
 	"github.com/yansircc/agentlab/internal/transaction"
 )
 
-const RunManifestContract = "agentlab.run-manifest.v1"
+const RunManifestContract = "agentlab.run-manifest.v2"
 
 type RunInputs struct {
 	Harness        artifact.Ref `json:"harness"`
@@ -30,6 +30,7 @@ type RunManifest struct {
 	Contract       string       `json:"contract"`
 	WorkerInput    artifact.Ref `json:"worker_input"`
 	SourceSnapshot artifact.Ref `json:"source_snapshot"`
+	Origin         RunOrigin    `json:"origin"`
 	RunInputs
 }
 
@@ -38,7 +39,7 @@ type runBinding struct {
 	Manifest artifact.Ref `json:"manifest"`
 }
 
-func (o *Operation) BindRun(runID string, inputs RunInputs) (artifact.Ref, error) {
+func (o *Operation) BindRun(runID string, origin RunOrigin, inputs RunInputs) (artifact.Ref, error) {
 	if !idPattern.MatchString(runID) {
 		return artifact.Ref{}, errors.New("invalid run id")
 	}
@@ -72,7 +73,10 @@ func (o *Operation) BindRun(runID string, inputs RunInputs) (artifact.Ref, error
 	if current.begun == nil {
 		return artifact.Ref{}, ErrNotBegun
 	}
-	manifest := RunManifest{Contract: RunManifestContract, WorkerInput: current.begun.WorkerInput, SourceSnapshot: current.begun.Source, RunInputs: inputs}
+	if err := o.validateOrigin(runID, origin, current); err != nil {
+		return artifact.Ref{}, err
+	}
+	manifest := RunManifest{Contract: RunManifestContract, WorkerInput: current.begun.WorkerInput, SourceSnapshot: current.begun.Source, Origin: origin, RunInputs: inputs}
 	data, err := json.Marshal(manifest)
 	if err != nil {
 		return artifact.Ref{}, err
@@ -119,19 +123,15 @@ func (o *Operation) RunManifest(runID string) (RunManifest, artifact.Ref, error)
 	if binding.RunID == "" {
 		return RunManifest{}, artifact.Ref{}, errors.New("run manifest does not exist")
 	}
-	data, err := o.artifacts.Read(binding.Manifest)
+	manifest, err := o.readManifest(binding.Manifest)
 	if err != nil {
-		return RunManifest{}, artifact.Ref{}, err
-	}
-	var manifest RunManifest
-	if err := decode(data, &manifest); err != nil || manifest.Contract != RunManifestContract || !validManifest(manifest) {
 		return RunManifest{}, artifact.Ref{}, errors.New("run manifest artifact is invalid")
 	}
 	return manifest, binding.Manifest, nil
 }
 
 func validManifest(manifest RunManifest) bool {
-	if !validRef(manifest.WorkerInput) || !validRef(manifest.SourceSnapshot) {
+	if !validRef(manifest.WorkerInput) || !validRef(manifest.SourceSnapshot) || !manifest.Origin.valid() {
 		return false
 	}
 	for _, ref := range inputRefs(manifest.RunInputs) {

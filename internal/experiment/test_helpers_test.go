@@ -69,7 +69,7 @@ func bindTestRun(t *testing.T, operation *Operation, runID string) {
 	}
 	fixture := put("fixture")
 	reset := recordTestFixtureReset(t, operation, runID, fixture, put("fixture-baseline"))
-	_, err := operation.BindRun(runID, RunInputs{
+	_, err := operation.BindRun(runID, NewFreshOrigin(), RunInputs{
 		Harness: put("harness"), Trial: put("trial"), Candidate: put("baseline"), Adapter: put("adapter"),
 		OracleSet: put("oracles"), Fixture: fixture, FixtureReset: reset, EvidencePolicy: put("evidence-policy"),
 		StopPolicy: put("stop-policy"), WorkerRuntime: put("runtime"), Environment: put("environment"),

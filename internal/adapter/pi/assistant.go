@@ -11,7 +11,7 @@ func admitAssistant(entryID string, content json.RawMessage, stopReason string) 
 	for _, block := range blocks {
 		switch block.Type {
 		case "thinking":
-			batch.Exclusions = append(batch.Exclusions, Exclusion{Category: "pi_thinking", Size: len([]byte(block.Thinking))})
+			batch.Exclusions = append(batch.Exclusions, Exclusion{Category: "pi_thinking", Size: len(block.Thinking)})
 		case "text":
 			raw, err := json.Marshal(struct {
 				Text string `json:"text"`

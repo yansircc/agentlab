@@ -9,20 +9,21 @@ import (
 )
 
 const (
-	eventProcessStarted   = "process_started"
-	eventEvidence         = "evidence"
-	eventProgressObserved = "progress_observed"
-	eventNoProgress       = "no_progress_evidence"
-	eventStreamClosed     = "stream_closed"
-	eventStreamCorrupt    = "stream_corrupt"
-	eventFirstTimeout     = "first_event_timeout"
-	eventSoftIdle         = "soft_idle"
-	eventHardIdle         = "hard_idle"
-	eventStopRequested    = "stop_requested"
-	eventProcessExited    = "process_exited"
-	eventTerminalAccepted = "terminal_accepted"
-	eventTerminalRejected = "terminal_rejected"
-	eventAdapterBatch     = "adapter_batch"
+	eventProcessStarted    = "process_started"
+	eventEvidence          = "evidence"
+	eventProgressObserved  = "progress_observed"
+	eventNoProgress        = "no_progress_evidence"
+	eventStreamClosed      = "stream_closed"
+	eventStreamCorrupt     = "stream_corrupt"
+	eventFirstTimeout      = "first_event_timeout"
+	eventSoftIdle          = "soft_idle"
+	eventHardIdle          = "hard_idle"
+	eventStopRequested     = "stop_requested"
+	eventProcessExited     = "process_exited"
+	eventTerminalAccepted  = "terminal_accepted"
+	eventTerminalRejected  = "terminal_rejected"
+	eventAdapterBatch      = "adapter_batch"
+	eventRuntimeCheckpoint = "runtime_checkpoint_recorded"
 )
 
 type StopPolicy struct {
@@ -193,4 +194,9 @@ type adapterBatch struct {
 	Cursor     artifact.Ref       `json:"cursor"`
 	Admissions []adapterAdmission `json:"admissions"`
 	Exclusions []adapterExclusion `json:"exclusions"`
+}
+
+type runtimeCheckpointRecorded struct {
+	Checkpoint   artifact.Ref `json:"checkpoint"`
+	PublicPrefix artifact.Ref `json:"public_prefix"`
 }

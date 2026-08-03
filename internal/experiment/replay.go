@@ -34,6 +34,9 @@ func (o *Operation) current() (state, error) {
 		current.eventCount = record.Sequence
 		return nil
 	})
+	if err == nil {
+		err = o.validateRunLineage(current)
+	}
 	return current, err
 }
 

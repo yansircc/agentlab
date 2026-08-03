@@ -79,13 +79,13 @@ func TestExperimentValidatesDurableFindingEvidenceAndDisposition(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := experiment.BindRun("run-2", rebindTestFixtureReset(t, experiment, "run-2", baselineManifest.RunInputs)); err != nil {
+	if _, err := experiment.BindRun("run-2", NewFreshOrigin(), rebindTestFixtureReset(t, experiment, "run-2", baselineManifest.RunInputs)); err != nil {
 		t.Fatal(err)
 	}
 	candidateInputs := baselineManifest.RunInputs
 	candidateInputs.Candidate = candidate.Artifact
 	for _, runID := range []string{"candidate-1", "candidate-2"} {
-		if _, err := experiment.BindRun(runID, rebindTestFixtureReset(t, experiment, runID, candidateInputs)); err != nil {
+		if _, err := experiment.BindRun(runID, NewFreshOrigin(), rebindTestFixtureReset(t, experiment, runID, candidateInputs)); err != nil {
 			t.Fatal(err)
 		}
 	}

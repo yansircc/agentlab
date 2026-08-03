@@ -28,6 +28,10 @@ func (o *Operation) AcquireAdapterWriter(adapter string) (*AdapterWriter, Adapte
 	return writer, state, nil
 }
 
+func (o *Operation) AdapterState(adapter string) (AdapterState, error) {
+	return o.loadAdapterState(adapter)
+}
+
 func (w *AdapterWriter) Commit(nextCursor []byte, input AdapterBatch) error {
 	if w.closed {
 		return errors.New("adapter writer is closed")

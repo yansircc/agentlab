@@ -7,7 +7,7 @@
 !.env.example
 
 # Go build and test output
-agentlab
+/agentlab
 coverage.out
 *.test
 

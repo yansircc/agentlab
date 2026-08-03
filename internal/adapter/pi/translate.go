@@ -24,7 +24,7 @@ type message struct {
 type contentBlock struct {
 	Type      string          `json:"type"`
 	Text      string          `json:"text"`
-	Thinking  string          `json:"thinking"`
+	Thinking  json.RawMessage `json:"thinking"`
 	ID        string          `json:"id"`
 	Name      string          `json:"name"`
 	Arguments json.RawMessage `json:"arguments"`
