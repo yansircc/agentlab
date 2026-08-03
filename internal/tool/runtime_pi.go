@@ -25,9 +25,10 @@ type PiRuntimeProfile struct {
 	Identity        piadapter.IdentityConfig `json:"identity"`
 	ChildSessionDir string                   `json:"child_session_dir,omitempty"`
 	Policy          run.StopPolicy           `json:"policy"`
+	WorkerLaunch    *PiWorkerLaunch          `json:"worker_launch,omitempty"`
 	Coder           *run.CoderProfile        `json:"coder,omitempty"`
 	CoderWorkspace  string                   `json:"coder_workspace,omitempty"`
-	CoderLaunch     *PiCoderLaunch           `json:"coder_launch,omitempty"`
+	CoderLaunch     *PiLaunch                `json:"coder_launch,omitempty"`
 }
 
 type PiRuntimeHost struct{ profiles map[string]PiRuntimeProfile }
@@ -49,6 +50,10 @@ func NewPiRuntimeHost(profiles []PiRuntimeProfile) (*PiRuntimeHost, error) {
 			launch := profile.CoderLaunch.clone()
 			copy.CoderLaunch = &launch
 		}
+		if profile.WorkerLaunch != nil {
+			launch := profile.WorkerLaunch.clone()
+			copy.WorkerLaunch = &launch
+		}
 		result.profiles[profile.Ref] = copy
 		sessions[profile.SessionPath] = true
 		if profile.CoderWorkspace != "" {
@@ -56,6 +61,10 @@ func NewPiRuntimeHost(profiles []PiRuntimeProfile) (*PiRuntimeHost, error) {
 		}
 		if profile.CoderLaunch != nil {
 			runtimes = append(runtimes, profile.CoderLaunch.RuntimeRoot)
+		}
+		if profile.WorkerLaunch != nil {
+			workspaces = append(workspaces, profile.WorkerLaunch.FixtureRoot)
+			runtimes = append(runtimes, profile.WorkerLaunch.Launch.RuntimeRoot)
 		}
 	}
 	return result, nil
@@ -76,10 +85,10 @@ func (value PiRuntimeProfile) Validate() error {
 	if value.Ref == "" || value.ExperimentID == "" || value.RunID == "" || (value.Role != effect.WorkerStart && value.Role != effect.CoderStart) || !filepath.IsAbs(value.SessionPath) || !filepath.IsAbs(value.Identity.SDKRoot) || !filepath.IsAbs(value.Identity.ContextFilterPath) || value.Policy.Validate() != nil {
 		return errors.New("Pi runtime profile is invalid")
 	}
-	if value.Role == effect.WorkerStart && (value.Coder != nil || value.CoderWorkspace != "" || value.CoderLaunch != nil || value.Policy.OwnsWorkerProcess || value.Policy.KillOnHardIdle) {
-		return errors.New("worker runtime carries coder profile")
+	if value.Role == effect.WorkerStart && (value.Coder != nil || value.CoderWorkspace != "" || value.CoderLaunch != nil || value.WorkerLaunch == nil || value.WorkerLaunch.Validate() != nil || !value.Policy.OwnsWorkerProcess || value.Policy.KillOnHardIdle || !inside(value.WorkerLaunch.Launch.RuntimeRoot, value.SessionPath) || overlaps(value.WorkerLaunch.FixtureRoot, value.Identity.SDKRoot) || overlaps(value.WorkerLaunch.Launch.RuntimeRoot, value.Identity.SDKRoot)) {
+		return errors.New("worker runtime profile is invalid")
 	}
-	if value.Role == effect.CoderStart && (value.Coder == nil || value.Coder.Validate() != nil || !filepath.IsAbs(value.CoderWorkspace) || value.CoderLaunch == nil || value.CoderLaunch.Validate() != nil || !value.Policy.OwnsWorkerProcess || value.Policy.KillOnHardIdle || !inside(value.CoderLaunch.RuntimeRoot, value.SessionPath) || overlaps(value.CoderWorkspace, value.CoderLaunch.RuntimeRoot)) {
+	if value.Role == effect.CoderStart && (value.WorkerLaunch != nil || value.Coder == nil || value.Coder.Validate() != nil || !filepath.IsAbs(value.CoderWorkspace) || value.CoderLaunch == nil || value.CoderLaunch.Validate() != nil || !value.Policy.OwnsWorkerProcess || value.Policy.KillOnHardIdle || !inside(value.CoderLaunch.RuntimeRoot, value.SessionPath) || overlaps(value.CoderWorkspace, value.CoderLaunch.RuntimeRoot) || overlaps(value.CoderWorkspace, value.Identity.SDKRoot) || overlaps(value.CoderLaunch.RuntimeRoot, value.Identity.SDKRoot)) {
 		return errors.New("coder runtime profile is invalid")
 	}
 	if value.ChildSessionDir != "" && !filepath.IsAbs(value.ChildSessionDir) {
@@ -89,15 +98,26 @@ func (value PiRuntimeProfile) Validate() error {
 }
 
 func profileOverlaps(profile PiRuntimeProfile, workspaces, runtimes []string) bool {
-	if profile.CoderLaunch == nil {
+	workspace, runtime := profileRoots(profile)
+	if workspace == "" || runtime == "" {
 		return false
 	}
 	for _, path := range append(append([]string{}, workspaces...), runtimes...) {
-		if overlaps(profile.CoderWorkspace, path) || overlaps(profile.CoderLaunch.RuntimeRoot, path) {
+		if overlaps(workspace, path) || overlaps(runtime, path) {
 			return true
 		}
 	}
 	return false
+}
+
+func profileRoots(profile PiRuntimeProfile) (string, string) {
+	if profile.WorkerLaunch != nil {
+		return profile.WorkerLaunch.FixtureRoot, profile.WorkerLaunch.Launch.RuntimeRoot
+	}
+	if profile.CoderLaunch != nil {
+		return profile.CoderWorkspace, profile.CoderLaunch.RuntimeRoot
+	}
+	return "", ""
 }
 
 func (h *PiRuntimeHost) Start(binding Binding, intent effect.Intent, ref string) (any, error) {
@@ -122,7 +142,7 @@ func (h *PiRuntimeHost) Start(binding Binding, intent effect.Intent, ref string)
 		}
 		return startPiCoder(binding, op, intent, profile, profileReceipt)
 	}
-	return piadapter.BeginEffect(op, intent, profile.SessionPath, profile.Policy, nil)
+	return startPiWorker(binding, op, intent, profile)
 }
 
 func (h *PiRuntimeHost) Poll(binding Binding, runID, ref string) (any, error) {

@@ -14,7 +14,8 @@ import (
 	"github.com/yansircc/agentlab/internal/run"
 )
 
-type PiCoderLaunch struct {
+// PiLaunch is the Host-issued process authority shared by Pi roles.
+type PiLaunch struct {
 	NodePath                 string            `json:"node_path"`
 	RuntimeRoot              string            `json:"runtime_root"`
 	ReadOnlyRoots            []string          `json:"read_only_roots"`
@@ -24,33 +25,33 @@ type PiCoderLaunch struct {
 	AllowNetwork             bool              `json:"allow_network"`
 }
 
-func (value PiCoderLaunch) Validate() error {
-	if !filepath.IsAbs(value.NodePath) || !filepath.IsAbs(value.RuntimeRoot) || len(value.ReadOnlyRoots) == 0 {
-		return errors.New("coder launch is invalid")
+func (value PiLaunch) Validate() error {
+	if !filepath.IsAbs(value.NodePath) || !filepath.IsAbs(value.RuntimeRoot) {
+		return errors.New("Pi launch is invalid")
 	}
 	for _, path := range append(append([]string{}, value.ReadOnlyRoots...), value.AllowedExecutables...) {
 		if !filepath.IsAbs(path) {
-			return errors.New("coder launch path is invalid")
+			return errors.New("Pi launch path is invalid")
 		}
 	}
-	reserved := map[string]bool{"HOME": true, "PI_CODING_AGENT_DIR": true, "PI_CODING_AGENT_SESSION_DIR": true}
+	reserved := map[string]bool{"HOME": true, "PI_CODING_AGENT_DIR": true, "PI_CODING_AGENT_SESSION_DIR": true, "AGENTLAB_WORKER_FIXTURE": true, "AGENTLAB_WORKER_DEPLOYCTL": true}
 	for key, value := range value.PublicEnvironment {
 		if !environmentName(key) || reserved[key] || value == "" || len(value) > 65536 {
-			return errors.New("coder public environment is invalid")
+			return errors.New("Pi public environment is invalid")
 		}
 	}
 	for key, handle := range value.SecretEnvironmentHandles {
 		if !environmentName(key) || reserved[key] || handle == "" || len(handle) > 256 {
-			return errors.New("coder secret environment is invalid")
+			return errors.New("Pi secret environment is invalid")
 		}
 		if _, exists := value.PublicEnvironment[key]; exists {
-			return errors.New("coder environment overlaps")
+			return errors.New("Pi environment overlaps")
 		}
 	}
 	return nil
 }
 
-func (value PiCoderLaunch) clone() PiCoderLaunch {
+func (value PiLaunch) clone() PiLaunch {
 	result := value
 	result.ReadOnlyRoots = append([]string(nil), value.ReadOnlyRoots...)
 	result.AllowedExecutables = append([]string(nil), value.AllowedExecutables...)
@@ -61,7 +62,7 @@ func (value PiCoderLaunch) clone() PiCoderLaunch {
 
 func startPiCoder(binding Binding, operation *run.Operation, intent effect.Intent, profile PiRuntimeProfile, receipt run.CoderProfile) (any, error) {
 	launch := *profile.CoderLaunch
-	if err := prepareCoderRuntime(launch.RuntimeRoot, profile.SessionPath); err != nil {
+	if err := preparePiRuntime(launch.RuntimeRoot, profile.SessionPath); err != nil {
 		return nil, err
 	}
 	sandbox, err := coder.NewSandbox(coder.SandboxSpec{
@@ -91,7 +92,7 @@ func startPiCoder(binding Binding, operation *run.Operation, intent effect.Inten
 	return piadapter.BeginManagedEffect(operation, intent, session, profile.Policy, command, environment, sandbox.Workspace())
 }
 
-func prepareCoderRuntime(root, session string) error {
+func preparePiRuntime(root, session string) error {
 	if !filepath.IsAbs(root) || !filepath.IsAbs(session) || filepath.Base(session) == "." {
 		return errors.New("coder runtime path is invalid")
 	}
@@ -121,7 +122,7 @@ func runtimeSession(root, session string) (string, error) {
 	return result, nil
 }
 
-func (value PiCoderLaunch) environment(runtimeRoot string) ([]string, error) {
+func (value PiLaunch) environment(runtimeRoot string) ([]string, error) {
 	values := cloneEnvironment(value.PublicEnvironment)
 	values["HOME"], values["PI_CODING_AGENT_DIR"], values["PI_CODING_AGENT_SESSION_DIR"] = runtimeRoot, runtimeRoot, runtimeRoot
 	for key, handle := range value.SecretEnvironmentHandles {

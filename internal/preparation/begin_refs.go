@@ -36,7 +36,11 @@ func (o *Operation) BeginRefs(spec BeginRefsSpec) (Status, error) {
 			return Status{}, err
 		}
 	}
-	input, err := json.Marshal(WorkerInput{Contract: workerInputContract, UserIntentRef: spec.UserIntent, PublicArtifacts: append([]artifact.Ref(nil), spec.PublicArtifacts...)})
+	workerInputValue := WorkerInput{Contract: workerInputContract, UserIntentRef: spec.UserIntent, PublicArtifacts: append([]artifact.Ref(nil), spec.PublicArtifacts...)}
+	if !validWorkerInput(workerInputValue) {
+		return Status{}, errors.New("worker input is invalid")
+	}
+	input, err := json.Marshal(workerInputValue)
 	if err != nil {
 		return Status{}, err
 	}

@@ -2,6 +2,7 @@ package tool
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,7 +16,10 @@ import (
 func TestPiRuntimeHostDerivesStartPayloadFromBoundProfile(t *testing.T) {
 	root := t.TempDir()
 	policy := run.StopPolicy{FirstEventTimeout: time.Second, SoftIdleTimeout: 2 * time.Second, HardIdleTimeout: 3 * time.Second}
-	worker, err := NewPiRuntimeHost([]PiRuntimeProfile{{Ref: "worker-profile", ExperimentID: "exp", RunID: "worker", Role: effect.WorkerStart, SessionPath: t.TempDir() + "/worker.jsonl", Identity: testIdentity(t), Policy: policy}})
+	workerLaunch := testWorkerLaunch(t)
+	workerPolicy := policy
+	workerPolicy.OwnsWorkerProcess = true
+	worker, err := NewPiRuntimeHost([]PiRuntimeProfile{{Ref: "worker-profile", ExperimentID: "exp", RunID: "worker", Role: effect.WorkerStart, SessionPath: filepath.Join(workerLaunch.Launch.RuntimeRoot, "worker.jsonl"), Identity: testIdentity(t), Policy: workerPolicy, WorkerLaunch: workerLaunch}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +74,10 @@ func TestPiRuntimeHostRejectsSharedSessionsAndUnboundCoderWorkspace(t *testing.T
 	policy := run.StopPolicy{FirstEventTimeout: time.Second, SoftIdleTimeout: 2 * time.Second, HardIdleTimeout: 3 * time.Second}
 	launch := testCoderLaunch(t)
 	shared := filepath.Join(launch.RuntimeRoot, "session.jsonl")
-	worker := PiRuntimeProfile{Ref: "worker", ExperimentID: "exp", RunID: "worker", Role: effect.WorkerStart, SessionPath: shared, Identity: testIdentity(t), Policy: policy}
+	workerLaunch := testWorkerLaunch(t)
+	workerPolicy := policy
+	workerPolicy.OwnsWorkerProcess = true
+	worker := PiRuntimeProfile{Ref: "worker", ExperimentID: "exp", RunID: "worker", Role: effect.WorkerStart, SessionPath: shared, Identity: testIdentity(t), Policy: workerPolicy, WorkerLaunch: workerLaunch}
 	coderPolicy := policy
 	coderPolicy.OwnsWorkerProcess = true
 	coder := PiRuntimeProfile{Ref: "coder", ExperimentID: "exp", RunID: "coder", Role: effect.CoderStart, SessionPath: shared, Identity: testIdentity(t), Policy: coderPolicy, Coder: &run.CoderProfile{Handoff: testRef(), SourceSnapshot: testRef(), CandidateWorkspace: testRef(), CapabilityProfile: testRef()}, CoderWorkspace: t.TempDir(), CoderLaunch: launch}
@@ -88,6 +95,28 @@ func TestPiRuntimeHostRejectsSharedSessionsAndUnboundCoderWorkspace(t *testing.T
 	}
 }
 
+func TestPiWorkerProfileHasNoAttachedOrGenericCommandFallback(t *testing.T) {
+	launch := testWorkerLaunch(t)
+	policy := run.StopPolicy{FirstEventTimeout: time.Second, SoftIdleTimeout: 2 * time.Second, HardIdleTimeout: 3 * time.Second, OwnsWorkerProcess: true}
+	profile := PiRuntimeProfile{Ref: "worker", ExperimentID: "exp", RunID: "worker", Role: effect.WorkerStart, SessionPath: filepath.Join(launch.Launch.RuntimeRoot, "worker.jsonl"), Identity: testIdentity(t), Policy: policy, WorkerLaunch: launch}
+	if _, err := NewPiRuntimeHost([]PiRuntimeProfile{profile}); err != nil {
+		t.Fatal(err)
+	}
+	launch.Launch.AllowedExecutables = []string{"/bin/sh"}
+	if _, err := NewPiRuntimeHost([]PiRuntimeProfile{profile}); err == nil {
+		t.Fatal("worker generic executable capability was accepted")
+	}
+	launch.Launch.AllowedExecutables = nil
+	profile.Policy.OwnsWorkerProcess = false
+	if _, err := NewPiRuntimeHost([]PiRuntimeProfile{profile}); err == nil {
+		t.Fatal("attached-only Worker profile was accepted")
+	}
+	command := strings.Join(piWorkerCommand(testIdentity(t), "/node", "/runtime/session.jsonl", "/runtime", "/runtime/tools.ts", "task"), "\x00")
+	if !strings.Contains(command, "--no-builtin-tools") || !strings.Contains(command, "deployctl_help,deployctl_deploy,deployctl_status,deployctl_receipt") || strings.Contains(command, ",bash") {
+		t.Fatalf("Worker command widened authority: %q", command)
+	}
+}
+
 func testRef() artifact.Ref {
 	return artifact.Ref{Scope: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Algorithm: "sha256", Digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Size: 1}
 }
@@ -98,8 +127,14 @@ func testIdentity(t *testing.T) piadapter.IdentityConfig {
 	return piadapter.IdentityConfig{SDKRoot: root, ContextFilterPath: filepath.Join(root, "context-filter.ts"), AdapterDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Provider: "provider", Model: "model", ThinkingPolicy: "off", CompactionPolicy: "off"}
 }
 
-func testCoderLaunch(t *testing.T) *PiCoderLaunch {
+func testCoderLaunch(t *testing.T) *PiLaunch {
 	t.Helper()
 	root := t.TempDir()
-	return &PiCoderLaunch{NodePath: filepath.Join(root, "node"), RuntimeRoot: filepath.Join(root, "runtime"), ReadOnlyRoots: []string{root}, AllowedExecutables: []string{filepath.Join(root, "shell")}}
+	return &PiLaunch{NodePath: filepath.Join(root, "node"), RuntimeRoot: filepath.Join(root, "runtime"), ReadOnlyRoots: []string{root}, AllowedExecutables: []string{filepath.Join(root, "shell")}}
+}
+
+func testWorkerLaunch(t *testing.T) *PiWorkerLaunch {
+	t.Helper()
+	root := t.TempDir()
+	return &PiWorkerLaunch{Launch: PiLaunch{NodePath: filepath.Join(root, "node"), RuntimeRoot: filepath.Join(root, "runtime"), ReadOnlyRoots: []string{filepath.Join(root, "sdk")}}, FixtureRoot: filepath.Join(root, "fixture"), DeployctlExecutable: filepath.Join(root, "deployctl"), CandidateExecutable: testRef(), WorkerInput: testRef()}
 }

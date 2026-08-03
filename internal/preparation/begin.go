@@ -28,7 +28,11 @@ func (o *Operation) Begin(spec BeginSpec) (Status, error) {
 		}
 		public = append(public, ref)
 	}
-	inputBytes, err := json.Marshal(WorkerInput{Contract: workerInputContract, UserIntentRef: intent, PublicArtifacts: public})
+	input := WorkerInput{Contract: workerInputContract, UserIntentRef: intent, PublicArtifacts: public}
+	if !validWorkerInput(input) {
+		return Status{}, errors.New("worker input is invalid")
+	}
+	inputBytes, err := json.Marshal(input)
 	if err != nil {
 		return Status{}, err
 	}

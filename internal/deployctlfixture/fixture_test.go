@@ -71,13 +71,13 @@ func TestBuildReceiptRejectsExecutableDrift(t *testing.T) {
 	workspace := filepath.Join(t.TempDir(), "workspace")
 	command := filepath.Join(workspace, "bin", "deployctl")
 	receipt, err := BuildCandidate(store, candidate, workspace, command)
-	if err != nil || VerifyBuild(store, receipt, command) != nil {
-		t.Fatalf("sealed build = %#v, %v", receipt, err)
+	if err != nil || VerifyBuild(store, receipt, candidate, command) != nil {
+		t.Fatalf("sealed build = %v, %v", receipt, err)
 	}
 	if err := os.WriteFile(command, []byte("drift"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if VerifyBuild(store, receipt, command) == nil {
+	if VerifyBuild(store, receipt, candidate, command) == nil {
 		t.Fatal("drifted executable was accepted")
 	}
 }
@@ -126,8 +126,8 @@ func buildCandidate(t *testing.T, store artifact.Store, candidate artifact.Ref) 
 	workspace := filepath.Join(t.TempDir(), "workspace")
 	command := filepath.Join(workspace, "bin", "deployctl")
 	receipt, err := BuildCandidate(store, candidate, workspace, command)
-	if err != nil || VerifyBuild(store, receipt, command) != nil || receipt.Candidate != candidate {
-		t.Fatalf("candidate build = %#v, %v", receipt, err)
+	if err != nil || VerifyBuild(store, receipt, candidate, command) != nil {
+		t.Fatalf("candidate build = %v, %v", receipt, err)
 	}
 	return command
 }
