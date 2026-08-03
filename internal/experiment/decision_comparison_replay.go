@@ -30,6 +30,7 @@ func (s *state) decisionGate(record ledger.Record) error {
 		s.order = append(s.order, blocker.ID)
 	}
 	s.gates[value.Receipt.ID] = value.Receipt
+	s.gateDecisions[value.Receipt.ID] = value.Decision
 	s.gateOrder = append(s.gateOrder, value.Receipt.ID)
 	s.addDecision(value.Decision)
 	return nil

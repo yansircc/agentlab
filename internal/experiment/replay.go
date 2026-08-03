@@ -18,10 +18,10 @@ func initialState() state {
 		diagnoses: map[string]diagnosis.Diagnosis{}, candidates: map[string]diagnosis.RepairCandidate{},
 		runs:        map[string]runBinding{},
 		comparisons: map[string]comparison.Observation{},
-		gates:       map[string]gate.Receipt{},
-		effects:     map[string]DecisionBoundEffect{},
-		decisions:   map[string]SupervisorDecision{},
-		handoffs:    map[artifact.Ref]HandoffRecord{},
+		gates:       map[string]gate.Receipt{}, gateDecisions: map[string]SupervisorDecision{},
+		effects:   map[string]DecisionBoundEffect{},
+		decisions: map[string]SupervisorDecision{},
+		handoffs:  map[artifact.Ref]HandoffRecord{},
 	}
 }
 

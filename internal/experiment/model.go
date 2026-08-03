@@ -63,6 +63,7 @@ type state struct {
 	comparisons     map[string]comparison.Observation
 	comparisonOrder []string
 	gates           map[string]gate.Receipt
+	gateDecisions   map[string]SupervisorDecision
 	gateOrder       []string
 	effects         map[string]DecisionBoundEffect
 	effectOrder     []string
