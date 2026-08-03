@@ -38,7 +38,7 @@ func TestPiRuntimeHostDerivesStartPayloadFromBoundProfile(t *testing.T) {
 		return ref
 	}
 	coder := run.CoderProfile{Handoff: put("handoff"), SourceSnapshot: put("source"), CandidateWorkspace: put("workspace"), CapabilityProfile: put("capability")}
-	host, err := NewPiRuntimeHost([]PiRuntimeProfile{{Ref: "coder-profile", ExperimentID: "exp", RunID: "coder", Role: effect.CoderStart, SessionPath: t.TempDir() + "/coder.jsonl", Identity: testIdentity(t), Policy: policy, Coder: &coder}})
+	host, err := NewPiRuntimeHost([]PiRuntimeProfile{{Ref: "coder-profile", ExperimentID: "exp", RunID: "coder", Role: effect.CoderStart, SessionPath: t.TempDir() + "/coder.jsonl", Identity: testIdentity(t), Policy: policy, Coder: &coder, CoderWorkspace: t.TempDir()}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,6 +57,25 @@ func TestPiRuntimeHostDerivesStartPayloadFromBoundProfile(t *testing.T) {
 	if strictjson.Decode(data, &payload) != nil || payload.Coder == nil || *payload.Coder != coder {
 		t.Fatalf("coder payload = %#v", payload)
 	}
+}
+
+func TestPiRuntimeHostRejectsSharedSessionsAndUnboundCoderWorkspace(t *testing.T) {
+	policy := run.StopPolicy{FirstEventTimeout: time.Second, SoftIdleTimeout: 2 * time.Second, HardIdleTimeout: 3 * time.Second}
+	shared := t.TempDir() + "/session.jsonl"
+	worker := PiRuntimeProfile{Ref: "worker", ExperimentID: "exp", RunID: "worker", Role: effect.WorkerStart, SessionPath: shared, Identity: testIdentity(t), Policy: policy}
+	coder := PiRuntimeProfile{Ref: "coder", ExperimentID: "exp", RunID: "coder", Role: effect.CoderStart, SessionPath: shared, Identity: testIdentity(t), Policy: policy, Coder: &run.CoderProfile{Handoff: testRef(), SourceSnapshot: testRef(), CandidateWorkspace: testRef(), CapabilityProfile: testRef()}, CoderWorkspace: t.TempDir()}
+	if _, err := NewPiRuntimeHost([]PiRuntimeProfile{worker, coder}); err == nil {
+		t.Fatal("shared Worker and Coder session was accepted")
+	}
+	coder.SessionPath = t.TempDir() + "/coder.jsonl"
+	coder.CoderWorkspace = ""
+	if _, err := NewPiRuntimeHost([]PiRuntimeProfile{coder}); err == nil {
+		t.Fatal("coder profile omitted workspace capability")
+	}
+}
+
+func testRef() artifact.Ref {
+	return artifact.Ref{Scope: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Algorithm: "sha256", Digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Size: 1}
 }
 
 func testIdentity(t *testing.T) piadapter.IdentityConfig {

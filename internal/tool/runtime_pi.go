@@ -6,6 +6,7 @@ import (
 	"reflect"
 
 	piadapter "github.com/yansircc/agentlab/internal/adapter/pi"
+	"github.com/yansircc/agentlab/internal/coder"
 	"github.com/yansircc/agentlab/internal/effect"
 	"github.com/yansircc/agentlab/internal/run"
 	"github.com/yansircc/agentlab/internal/strictjson"
@@ -25,14 +26,17 @@ type PiRuntimeProfile struct {
 	ChildSessionDir string                   `json:"child_session_dir,omitempty"`
 	Policy          run.StopPolicy           `json:"policy"`
 	Coder           *run.CoderProfile        `json:"coder,omitempty"`
+	CoderWorkspace  string                   `json:"coder_workspace,omitempty"`
 }
 
 type PiRuntimeHost struct{ profiles map[string]PiRuntimeProfile }
 
 func NewPiRuntimeHost(profiles []PiRuntimeProfile) (*PiRuntimeHost, error) {
 	result := &PiRuntimeHost{profiles: make(map[string]PiRuntimeProfile, len(profiles))}
+	sessions := map[string]bool{}
+	workspaces := map[string]bool{}
 	for _, profile := range profiles {
-		if err := profile.Validate(); err != nil || result.profiles[profile.Ref].Ref != "" {
+		if err := profile.Validate(); err != nil || result.profiles[profile.Ref].Ref != "" || sessions[profile.SessionPath] || (profile.CoderWorkspace != "" && workspaces[profile.CoderWorkspace]) {
 			return nil, errors.New("Pi runtime profile is invalid")
 		}
 		copy := profile
@@ -41,6 +45,10 @@ func NewPiRuntimeHost(profiles []PiRuntimeProfile) (*PiRuntimeHost, error) {
 			copy.Coder = &coder
 		}
 		result.profiles[profile.Ref] = copy
+		sessions[profile.SessionPath] = true
+		if profile.CoderWorkspace != "" {
+			workspaces[profile.CoderWorkspace] = true
+		}
 	}
 	return result, nil
 }
@@ -60,10 +68,10 @@ func (value PiRuntimeProfile) Validate() error {
 	if value.Ref == "" || value.ExperimentID == "" || value.RunID == "" || (value.Role != effect.WorkerStart && value.Role != effect.CoderStart) || !filepath.IsAbs(value.SessionPath) || !filepath.IsAbs(value.Identity.SDKRoot) || value.Policy.Validate() != nil || value.Policy.OwnsWorkerProcess || value.Policy.KillOnHardIdle {
 		return errors.New("Pi runtime profile is invalid")
 	}
-	if value.Role == effect.WorkerStart && value.Coder != nil {
+	if value.Role == effect.WorkerStart && (value.Coder != nil || value.CoderWorkspace != "") {
 		return errors.New("worker runtime carries coder profile")
 	}
-	if value.Role == effect.CoderStart && (value.Coder == nil || value.Coder.Validate() != nil) {
+	if value.Role == effect.CoderStart && (value.Coder == nil || value.Coder.Validate() != nil || !filepath.IsAbs(value.CoderWorkspace)) {
 		return errors.New("coder runtime profile is invalid")
 	}
 	if value.ChildSessionDir != "" && !filepath.IsAbs(value.ChildSessionDir) {
@@ -82,9 +90,12 @@ func (h *PiRuntimeHost) Start(binding Binding, intent effect.Intent, ref string)
 		return nil, err
 	}
 	if intent.Kind == effect.CoderStart {
-		coder, err := op.CoderProfile(intent)
-		if err != nil || !reflect.DeepEqual(coder, *profile.Coder) {
+		profileReceipt, err := op.CoderProfile(intent)
+		if err != nil || !reflect.DeepEqual(profileReceipt, *profile.Coder) {
 			return nil, errors.New("coder profile differs from Host binding")
+		}
+		if _, err := coder.Open(binding.store(), profileReceipt.CandidateWorkspace, profileReceipt.SourceSnapshot, profile.CoderWorkspace); err != nil {
+			return nil, errors.New("coder workspace differs from Host capability")
 		}
 	}
 	return piadapter.BeginEffect(op, intent, profile.SessionPath, profile.Policy, nil)
