@@ -70,6 +70,21 @@ agentlab_compare
 
 Their input is strict JSON on stdin. The Host, not the model, binds the AgentLab root, preparation, experiment, runtime profile, executable, session locator, and capability profile. Tool schemas and their decoder reject root, request-file, stream/session, executable, raw-transcript, and audit-root locators.
 
+## Bundled Supervisor artifact
+
+With Pi `0.83.0` available as `pi`, build the locally reviewable artifact:
+
+```sh
+make skill
+```
+
+It creates `dist/skill` with only `SKILL.md`, `extension.ts`, and the bundled
+`bin/agentlab`. The extension derives its four active tool definitions from that
+binary and invokes only the adjacent bundled executable. The Host supplies task
+bindings through `AGENTLAB_ROOT`, `AGENTLAB_PREPARATION`,
+`AGENTLAB_EXPERIMENT`, and, when needed, `AGENTLAB_PI_RUNTIME_PLAN`; none is a
+model tool parameter. This build does not install or register the artifact.
+
 ## Verification and scope
 
 The current MVP evidence and Phase 0 spike reports are in [docs/completion-evidence.md](docs/completion-evidence.md) and [docs/spikes](docs/spikes).

@@ -8,6 +8,7 @@
 
 # Go build and test output
 /agentlab
+dist/
 coverage.out
 *.test
 
