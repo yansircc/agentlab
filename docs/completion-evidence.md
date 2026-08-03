@@ -17,7 +17,7 @@ Public Worker input, observable run evidence, source-backed diagnosis, and exact
 7. **Every Finding cites durable evidence** — Finding validation plus experiment/run-scoped `EvidenceRef` resolution.
 8. **Bounded Coder evidence** — inspect requires cursor and limit; rendered handoff contains evidence identities, not transcript bytes.
 9. **Diagnosis after exact source inspection** — typed source manifest membership and exact line-range validation; arbitrary artifact evidence is rejected.
-10. **Exact candidate and run inputs hash-bound** — immutable candidate artifact and deterministic RunManifest, including per-run typed fixture reset proof.
+10. **Exact candidate and run inputs hash-bound** — every candidate is a sealed source snapshot (raw bytes are rejected) and each deterministic RunManifest carries that exact snapshot plus a per-run typed fixture reset proof.
 11. **One stochastic pair cannot claim improvement** — comparison policy requires at least two repetitions and returns `inconclusive` below threshold.
 12. **Three task families share contracts** — remote site, Go refactor, and API debugging execute the same preparation algebra in `TestSharedPreparationAlgebraSealsThreeMateriallyDifferentFamilies`.
 13. **No repository-specific kernel type** — production scan finds no Pi, zeroY, or WordPress terms outside `internal/adapter/pi` and the CLI composition root; kernel packages do not import adapters.

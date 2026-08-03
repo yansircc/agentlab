@@ -9,7 +9,7 @@ import (
 type RepairCandidate struct {
 	ID          string       `json:"id"`
 	DiagnosisID string       `json:"diagnosis_id"`
-	Artifact    artifact.Ref `json:"artifact"`
+	Artifact    artifact.Ref `json:"artifact"` // sealed source.Snapshot
 }
 
 func (c RepairCandidate) Validate() error {

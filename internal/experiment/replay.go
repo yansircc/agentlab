@@ -10,6 +10,7 @@ import (
 	"github.com/yansircc/agentlab/internal/gate"
 	"github.com/yansircc/agentlab/internal/ledger"
 	"github.com/yansircc/agentlab/internal/run"
+	"github.com/yansircc/agentlab/internal/source"
 )
 
 func initialState() state {
@@ -38,6 +39,9 @@ func (o *Operation) current() (state, error) {
 		err = o.validateRunLineage(current)
 	}
 	if err == nil {
+		err = o.validateCandidateSnapshots(current)
+	}
+	if err == nil {
 		for _, id := range current.decisionOrder {
 			if err = o.validateDecisionEvidence(current.decisions[id]); err != nil {
 				break
@@ -45,6 +49,15 @@ func (o *Operation) current() (state, error) {
 		}
 	}
 	return current, err
+}
+
+func (o *Operation) validateCandidateSnapshots(current state) error {
+	for _, candidate := range current.candidates {
+		if _, err := source.Load(o.artifacts, candidate.Artifact); err != nil {
+			return fmt.Errorf("repair candidate source snapshot is invalid: %w", err)
+		}
+	}
+	return nil
 }
 
 func (s *state) apply(record ledger.Record) error {

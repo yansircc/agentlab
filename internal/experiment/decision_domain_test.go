@@ -34,7 +34,7 @@ func TestDecisionBoundDomainMutationsShareOneDecisionLedger(t *testing.T) {
 	if err := op.RecordDiagnosisWithDecision(DecisionBoundDiagnosis{Decision: diagnosisDecision, Diagnosis: diagnosed}); err != nil {
 		t.Fatal(err)
 	}
-	candidateRef, err := op.artifacts.Put([]byte("candidate"))
+	candidateRef, err := source.Build(op.artifacts, []source.InputFile{{Path: "owner.go", Content: []byte("package owner\nfunc transition() {}\n")}})
 	if err != nil {
 		t.Fatal(err)
 	}

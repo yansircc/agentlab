@@ -6,6 +6,7 @@ import (
 
 	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/run"
+	"github.com/yansircc/agentlab/internal/source"
 )
 
 func (o *Operation) readManifest(ref artifact.Ref) (RunManifest, error) {
@@ -27,6 +28,9 @@ func (o *Operation) validateRunLineage(current state) error {
 		manifest, err := o.readManifest(binding.Manifest)
 		if err != nil {
 			return err
+		}
+		if _, err := source.Load(o.artifacts, manifest.Candidate); err != nil {
+			return errors.New("run manifest candidate is not a source snapshot")
 		}
 		if origin, ok := manifest.Origin.Splice(); ok {
 			parents[runID] = origin.ParentRun

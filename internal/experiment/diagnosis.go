@@ -67,23 +67,17 @@ func (o *Operation) recordDiagnosis(value diagnosis.Diagnosis, decision *Supervi
 	})
 }
 
-func (o *Operation) BindCandidate(id, diagnosisID string, candidateBytes []byte) (diagnosis.RepairCandidate, error) {
-	artifactRef, err := o.artifacts.Put(candidateBytes)
-	if err != nil {
-		return diagnosis.RepairCandidate{}, err
-	}
-	return o.bindCandidate(id, diagnosisID, artifactRef, nil)
+// BindCandidate accepts only a sealed source snapshot. Raw bytes are never a
+// repair candidate because a Worker executes a build of the source tree.
+func (o *Operation) BindCandidate(id, diagnosisID string, sourceSnapshot artifact.Ref) (diagnosis.RepairCandidate, error) {
+	return o.bindCandidate(id, diagnosisID, sourceSnapshot, nil)
 }
 
-func (o *Operation) BindCandidateRef(id, diagnosisID string, artifactRef artifact.Ref) (diagnosis.RepairCandidate, error) {
-	if _, err := o.artifacts.Read(artifactRef); err != nil {
-		return diagnosis.RepairCandidate{}, err
+func (o *Operation) bindCandidate(id, diagnosisID string, sourceSnapshot artifact.Ref, decision *SupervisorDecision) (diagnosis.RepairCandidate, error) {
+	if _, err := source.Load(o.artifacts, sourceSnapshot); err != nil {
+		return diagnosis.RepairCandidate{}, errors.New("repair candidate source snapshot is invalid")
 	}
-	return o.bindCandidate(id, diagnosisID, artifactRef, nil)
-}
-
-func (o *Operation) bindCandidate(id, diagnosisID string, artifactRef artifact.Ref, decision *SupervisorDecision) (diagnosis.RepairCandidate, error) {
-	value := diagnosis.RepairCandidate{ID: id, DiagnosisID: diagnosisID, Artifact: artifactRef}
+	value := diagnosis.RepairCandidate{ID: id, DiagnosisID: diagnosisID, Artifact: sourceSnapshot}
 	if err := value.Validate(); err != nil {
 		return diagnosis.RepairCandidate{}, err
 	}

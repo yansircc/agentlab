@@ -70,13 +70,22 @@ func bindTestRun(t *testing.T, operation *Operation, runID string) {
 	fixture := put("fixture")
 	reset := recordTestFixtureReset(t, operation, runID, fixture, put("fixture-baseline"))
 	_, err := operation.BindRun(runID, NewFreshOrigin(), RunInputs{
-		Harness: put("harness"), Trial: put("trial"), Candidate: put("baseline"), Adapter: put("adapter"),
+		Harness: put("harness"), Trial: put("trial"), Candidate: testCandidate(t, operation, "baseline"), Adapter: put("adapter"),
 		OracleSet: put("oracles"), Fixture: fixture, FixtureReset: reset, EvidencePolicy: put("evidence-policy"),
 		StopPolicy: put("stop-policy"), WorkerRuntime: put("runtime"), Environment: put("environment"),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+func testCandidate(t *testing.T, operation *Operation, value string) artifact.Ref {
+	t.Helper()
+	ref, err := source.Build(operation.artifacts, []source.InputFile{{Path: "main.go", Content: []byte("package candidate\n// " + value + "\n")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ref
 }
 
 func recordTestFixtureReset(t *testing.T, operation *Operation, runID string, fixture, baseline artifact.Ref) artifact.Ref {

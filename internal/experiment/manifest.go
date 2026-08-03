@@ -7,6 +7,7 @@ import (
 
 	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/ledger"
+	"github.com/yansircc/agentlab/internal/source"
 	"github.com/yansircc/agentlab/internal/transaction"
 )
 
@@ -62,6 +63,9 @@ func (o *Operation) bindRun(runID string, origin RunOrigin, inputs RunInputs, de
 		if _, err := o.artifacts.Read(ref); err != nil {
 			return artifact.Ref{}, err
 		}
+	}
+	if _, err := source.Load(o.artifacts, inputs.Candidate); err != nil {
+		return artifact.Ref{}, errors.New("run manifest candidate is not a source snapshot")
 	}
 	reset, err := loadFixtureReset(o.artifacts, inputs.FixtureReset)
 	if err != nil {

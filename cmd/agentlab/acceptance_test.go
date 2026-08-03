@@ -124,6 +124,10 @@ func bindExistingExperimentRun(t *testing.T, root string, operation *experiment.
 		return ref
 	}
 	fixture := put("fixture")
+	candidate, err := source.Build(store, []source.InputFile{{Path: "main.go", Content: []byte("package candidate\n")}})
+	if err != nil {
+		t.Fatal(err)
+	}
 	reset, err := experiment.RecordFixtureReset(store, experiment.FixtureResetProof{
 		Contract: experiment.FixtureResetContract, RunID: runID, Fixture: fixture,
 		Baseline: put("fixture-baseline"), Evidence: []artifact.Ref{put("fixture-reset-evidence")},
@@ -132,7 +136,7 @@ func bindExistingExperimentRun(t *testing.T, root string, operation *experiment.
 		t.Fatal(err)
 	}
 	_, err = operation.BindRun(runID, experiment.NewFreshOrigin(), experiment.RunInputs{
-		Harness: put("harness"), Trial: put("trial"), Candidate: put("candidate"), Adapter: put("adapter"),
+		Harness: put("harness"), Trial: put("trial"), Candidate: candidate, Adapter: put("adapter"),
 		OracleSet: put("oracles"), Fixture: fixture, FixtureReset: reset, EvidencePolicy: put("evidence"),
 		StopPolicy: put("stop"), WorkerRuntime: put("runtime"), Environment: put("environment"),
 	})

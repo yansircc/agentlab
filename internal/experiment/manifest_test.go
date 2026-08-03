@@ -48,6 +48,18 @@ func TestRunManifestCannotBindAfterRunEvent(t *testing.T) {
 	}
 }
 
+func TestRunManifestRejectsRawCandidateArtifact(t *testing.T) {
+	root := t.TempDir()
+	sealPreparation(t, root, "candidate-prep")
+	operation, _ := Open(root, "candidate-exp")
+	_, _ = operation.Begin("candidate-prep")
+	inputs := testRunInputs(t, operation, "run-1", "candidate")
+	inputs.Candidate = putTestArtifact(t, operation, "raw candidate bytes")
+	if _, err := operation.BindRun("run-1", NewFreshOrigin(), inputs); err == nil {
+		t.Fatal("run manifest accepted a raw candidate artifact")
+	}
+}
+
 func TestRunManifestRequiresExactFixtureResetProof(t *testing.T) {
 	root := t.TempDir()
 	sealPreparation(t, root, "reset-prep")
@@ -94,7 +106,7 @@ func testRunInputs(t *testing.T, operation *Operation, runID, prefix string) Run
 	baseline := putTestArtifact(t, operation, prefix+"-fixture-baseline")
 	return RunInputs{
 		Harness: putTestArtifact(t, operation, prefix+"-harness"), Trial: putTestArtifact(t, operation, prefix+"-trial"),
-		Candidate: putTestArtifact(t, operation, prefix+"-candidate"), Adapter: putTestArtifact(t, operation, prefix+"-adapter"),
+		Candidate: testCandidate(t, operation, prefix+"-candidate"), Adapter: putTestArtifact(t, operation, prefix+"-adapter"),
 		OracleSet: putTestArtifact(t, operation, prefix+"-oracles"), Fixture: fixture,
 		FixtureReset:   recordTestFixtureReset(t, operation, runID, fixture, baseline),
 		EvidencePolicy: putTestArtifact(t, operation, prefix+"-evidence"), StopPolicy: putTestArtifact(t, operation, prefix+"-stop"),

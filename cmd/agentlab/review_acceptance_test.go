@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"os"
 	"testing"
 	"time"
 
@@ -76,12 +75,12 @@ func TestExperimentReviewAndHandoffCLI(t *testing.T) {
 	if _, err := dispatch([]string{"diagnose", "record", "-root", root, "-request", diagnosisRequest}); err != nil {
 		t.Fatal(err)
 	}
-	candidatePath := files + "/candidate.patch"
-	if err := os.WriteFile(candidatePath, []byte("exact candidate"), 0o600); err != nil {
+	candidateRef, err := source.Build(store, []source.InputFile{{Path: "owner.go", Content: []byte("package owner\nfunc transition() {}\n")}})
+	if err != nil {
 		t.Fatal(err)
 	}
 	candidateRequest := writeJSONFile(t, files, "candidate.json", map[string]any{
-		"experiment_id": "review-exp", "candidate_id": "cli-candidate", "diagnosis_id": diagnosisValue.ID, "candidate_path": candidatePath,
+		"experiment_id": "review-exp", "candidate_id": "cli-candidate", "diagnosis_id": diagnosisValue.ID, "candidate": candidateRef,
 	})
 	candidateResult, err := dispatch([]string{"diagnose", "bind-candidate", "-root", root, "-request", candidateRequest})
 	if err != nil {

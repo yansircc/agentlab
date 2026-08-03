@@ -50,8 +50,5 @@ func (o *Operation) BindCandidateWithDecision(value DecisionBoundCandidate) (dia
 	if err := o.validateDecisionEvidence(value.Decision); err != nil {
 		return diagnosis.RepairCandidate{}, err
 	}
-	if _, err := o.artifacts.Read(value.Candidate.Artifact); err != nil {
-		return diagnosis.RepairCandidate{}, err
-	}
 	return o.bindCandidate(value.Candidate.ID, value.Candidate.DiagnosisID, value.Candidate.Artifact, &value.Decision)
 }

@@ -45,11 +45,15 @@ func renderOwnedHandoff(t *testing.T, binding Binding) artifact.Ref {
 		return ref
 	}
 	fixture := put("fixture")
+	candidate, err := source.Build(store, []source.InputFile{{Path: "main.go", Content: []byte("package candidate\n")}})
+	if err != nil {
+		t.Fatal(err)
+	}
 	reset, err := experiment.RecordFixtureReset(store, experiment.FixtureResetProof{Contract: experiment.FixtureResetContract, RunID: "worker", Fixture: fixture, Baseline: put("baseline"), Evidence: []artifact.Ref{put("reset")}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	inputs := experiment.RunInputs{Harness: put("harness"), Trial: put("trial"), Candidate: put("candidate"), Adapter: put("adapter"), OracleSet: put("oracles"), Fixture: fixture, FixtureReset: reset, EvidencePolicy: put("evidence"), StopPolicy: put("stop"), WorkerRuntime: put("runtime"), Environment: put("environment")}
+	inputs := experiment.RunInputs{Harness: put("harness"), Trial: put("trial"), Candidate: candidate, Adapter: put("adapter"), OracleSet: put("oracles"), Fixture: fixture, FixtureReset: reset, EvidencePolicy: put("evidence"), StopPolicy: put("stop"), WorkerRuntime: put("runtime"), Environment: put("environment")}
 	if _, err := op.BindRun("worker", experiment.NewFreshOrigin(), inputs); err != nil {
 		t.Fatal(err)
 	}

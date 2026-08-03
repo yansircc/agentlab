@@ -62,7 +62,11 @@ func TestExperimentValidatesDurableFindingEvidenceAndDisposition(t *testing.T) {
 	if err := experiment.RecordDiagnosis(notInSnapshot); err == nil {
 		t.Fatal("diagnosis accepted source evidence outside exact snapshot")
 	}
-	candidate, err := experiment.BindCandidate("candidate-1", diagnosed.ID, []byte("exact candidate bytes"))
+	rawCandidate := putTestArtifact(t, experiment, "exact candidate bytes")
+	if _, err := experiment.BindCandidate("raw-candidate", diagnosed.ID, rawCandidate); err == nil {
+		t.Fatal("candidate accepted raw bytes instead of a source snapshot")
+	}
+	candidate, err := experiment.BindCandidate("candidate-1", diagnosed.ID, testCandidate(t, experiment, "candidate-1"))
 	if err != nil || candidate.Artifact.Digest == "" {
 		t.Fatalf("candidate = %#v, %v", candidate, err)
 	}
@@ -72,7 +76,7 @@ func TestExperimentValidatesDurableFindingEvidenceAndDisposition(t *testing.T) {
 	if err := experiment.RecordDiagnosis(hypothesis); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := experiment.BindCandidate("candidate-hypothesis", hypothesis.ID, []byte("unproven")); err == nil {
+	if _, err := experiment.BindCandidate("candidate-hypothesis", hypothesis.ID, testCandidate(t, experiment, "hypothesis")); err == nil {
 		t.Fatal("hypothetical diagnosis authorized candidate")
 	}
 	baselineManifest, _, err := experiment.RunManifest("run-1")
@@ -119,7 +123,7 @@ func TestExperimentValidatesDurableFindingEvidenceAndDisposition(t *testing.T) {
 	if err != nil || passed.Verdict != gate.Pass || passed.Receipt.Candidate != candidate.Artifact {
 		t.Fatalf("passing gate = %#v, %v", passed, err)
 	}
-	changed, err := experiment.BindCandidate("candidate-2", diagnosed.ID, []byte("changed candidate bytes"))
+	changed, err := experiment.BindCandidate("candidate-2", diagnosed.ID, testCandidate(t, experiment, "candidate-2"))
 	if err != nil {
 		t.Fatal(err)
 	}
