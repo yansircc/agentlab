@@ -129,6 +129,7 @@ func testObservation() Observation {
 
 func testManifests(candidate artifact.Ref) map[string]RunIdentity {
 	stable := RunIdentity{
+		Origin:      FreshOrigin,
 		WorkerInput: testRef("w"), Harness: testRef("h"), Adapter: testRef("a"), OracleSet: testRef("o"),
 		Fixture: testRef("f"), FixtureBaseline: testRef("fb"), EvidencePolicy: testRef("e"), StopPolicy: testRef("s"), WorkerRuntime: testRef("r"), Environment: testRef("v"),
 	}
@@ -144,6 +145,25 @@ func testManifests(candidate artifact.Ref) map[string]RunIdentity {
 		result[value.id] = current
 	}
 	return result
+}
+
+func TestComparisonRejectsGuidedOrIntervenedRun(t *testing.T) {
+	candidate := testRef("c")
+	for name, mutate := range map[string]func(*RunIdentity){
+		"splice":       func(value *RunIdentity) { value.Origin = SpliceOrigin },
+		"intervention": func(value *RunIdentity) { value.Intervention = true },
+	} {
+		t.Run(name, func(t *testing.T) {
+			manifests := testManifests(candidate)
+			value := manifests["c1"]
+			mutate(&value)
+			manifests["c1"] = value
+			result, err := Evaluate(testObservation(), manifests, candidate)
+			if err != nil || result.Verdict != Invalid || !strings.Contains(strings.Join(result.Reasons, " "), "guided") {
+				t.Fatalf("guided identity = %#v, %v", result, err)
+			}
+		})
+	}
 }
 
 func testRef(character string) artifact.Ref {

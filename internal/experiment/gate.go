@@ -12,6 +12,9 @@ func (o *Operation) RecordGate(spec gate.Spec) (gate.Result, error) {
 	if err := spec.Validate(); err != nil {
 		return gate.Result{}, err
 	}
+	if err := o.requireSettledEffects(); err != nil {
+		return gate.Result{}, err
+	}
 	for _, item := range spec.Items {
 		for _, ref := range item.Evidence {
 			if err := o.validateGateEvidence(ref); err != nil {

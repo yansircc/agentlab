@@ -72,6 +72,9 @@ func identities(ids []string, manifests map[string]RunIdentity) ([]RunIdentity, 
 }
 
 func validIdentity(value RunIdentity) bool {
+	if value.Origin != FreshOrigin && value.Origin != SpliceOrigin {
+		return false
+	}
 	refs := []artifact.Ref{value.WorkerInput, value.Harness, value.Trial, value.Candidate, value.Adapter, value.OracleSet, value.Fixture, value.FixtureReset, value.FixtureBaseline, value.EvidencePolicy, value.StopPolicy, value.WorkerRuntime, value.Environment}
 	for _, ref := range refs {
 		if ref.Algorithm != "sha256" || len(ref.Digest) != 64 || ref.Size < 0 {
@@ -85,6 +88,12 @@ func validateControlledInputs(baseline, candidate []RunIdentity, candidateArtifa
 	var reasons []string
 	all := append(append([]RunIdentity(nil), baseline...), candidate...)
 	stable := all[0]
+	for _, current := range all {
+		if current.Origin != FreshOrigin || current.Intervention {
+			reasons = append(reasons, "guided or intervened run cannot support autonomous comparison")
+			break
+		}
+	}
 	for _, current := range all[1:] {
 		if current.WorkerInput != stable.WorkerInput || current.Harness != stable.Harness || current.Adapter != stable.Adapter || current.OracleSet != stable.OracleSet || current.Fixture != stable.Fixture || current.FixtureBaseline != stable.FixtureBaseline || current.EvidencePolicy != stable.EvidencePolicy || current.StopPolicy != stable.StopPolicy || current.WorkerRuntime != stable.WorkerRuntime || current.Environment != stable.Environment {
 			reasons = append(reasons, "controlled run inputs differ")

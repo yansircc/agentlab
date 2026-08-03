@@ -32,11 +32,7 @@ func Checkpoint(operation *run.Operation, sessionPath, entryLocator string, iden
 	if err != nil {
 		return CheckpointResult{}, err
 	}
-	session, err := json.Marshal(struct {
-		Contract       string          `json:"contract"`
-		RuntimeLocator string          `json:"runtime_locator"`
-		Identity       AdapterIdentity `json:"identity"`
-	}{Contract: checkpointSessionContract, RuntimeLocator: tree.RuntimeLocator, Identity: identity})
+	session, err := json.Marshal(sessionReceipt{Contract: checkpointSessionContract, RuntimeLocator: tree.RuntimeLocator, Identity: identity})
 	if err != nil {
 		return CheckpointResult{}, err
 	}

@@ -1,11 +1,9 @@
 package run
 
 import (
-	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"io"
 	"path/filepath"
 	"time"
 
@@ -118,39 +116,6 @@ func (o *Operation) HasRuntimeCheckpoint(ref artifact.Ref) (bool, error) {
 var ErrCheckpointNotFound = errors.New("runtime checkpoint does not belong to run")
 
 func (o *Operation) RuntimeCheckpointPublicPrefix(ref artifact.Ref) (artifact.Ref, error) {
-	if !validRef(ref) {
-		return artifact.Ref{}, errors.New("runtime checkpoint reference is invalid")
-	}
-	records, err := o.ledger.Replay()
-	if err != nil {
-		return artifact.Ref{}, err
-	}
-	state, err := replayRun(records)
-	if err != nil {
-		return artifact.Ref{}, err
-	}
-	record, ok := state.runtimeCheckpoints[ref]
-	if !ok {
-		return artifact.Ref{}, ErrCheckpointNotFound
-	}
-	data, err := o.artifacts.Read(ref)
-	if err != nil {
-		return artifact.Ref{}, err
-	}
-	var value RuntimeCheckpoint
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&value); err != nil || value.Validate() != nil {
-		return artifact.Ref{}, errors.New("runtime checkpoint artifact is invalid")
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return artifact.Ref{}, errors.New("runtime checkpoint artifact has trailing input")
-	}
-	if value.PrefixDigest != record.PublicPrefix.Digest {
-		return artifact.Ref{}, errors.New("runtime checkpoint prefix digest differs from recorded prefix")
-	}
-	if _, err := o.artifacts.Read(record.PublicPrefix); err != nil {
-		return artifact.Ref{}, err
-	}
-	return record.PublicPrefix, nil
+	_, prefix, err := o.LoadRuntimeCheckpoint(ref)
+	return prefix, err
 }

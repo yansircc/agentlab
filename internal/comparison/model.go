@@ -53,6 +53,8 @@ type Observation struct {
 
 type RunIdentity struct {
 	RunID           string
+	Origin          Origin
+	Intervention    bool
 	WorkerInput     artifact.Ref
 	Harness         artifact.Ref
 	Trial           artifact.Ref
@@ -67,6 +69,13 @@ type RunIdentity struct {
 	WorkerRuntime   artifact.Ref
 	Environment     artifact.Ref
 }
+
+type Origin string
+
+const (
+	FreshOrigin  Origin = "fresh"
+	SpliceOrigin Origin = "splice"
+)
 
 type Result struct {
 	Observation Observation `json:"observation"`

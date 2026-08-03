@@ -17,6 +17,7 @@ func (o *Operation) Status() (Status, error) {
 	status.RunIDs = append([]string(nil), current.runOrder...)
 	status.ComparisonIDs = append([]string(nil), current.comparisonOrder...)
 	status.GateIDs = append([]string(nil), current.gateOrder...)
+	status.DecisionIDs = append([]string(nil), current.effectOrder...)
 	if current.begun != nil {
 		status.PreparationID, status.WorkerInput = current.begun.PreparationID, current.begun.WorkerInput
 	}

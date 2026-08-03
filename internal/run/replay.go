@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/yansircc/agentlab/internal/artifact"
+	"github.com/yansircc/agentlab/internal/effect"
 	"github.com/yansircc/agentlab/internal/ledger"
 )
 
@@ -25,6 +26,8 @@ type replayState struct {
 	adapterCursor      artifact.Ref
 	stopRequested      bool
 	runtimeCheckpoints map[artifact.Ref]runtimeCheckpointRecorded
+	effectReceipts     map[string]effect.Receipt
+	sessionForks       map[artifact.Ref]SessionForked
 }
 
 func replayRun(records []ledger.Record) (replayState, error) {
@@ -38,7 +41,7 @@ func replayRun(records []ledger.Record) (replayState, error) {
 }
 
 func initialReplayState() replayState {
-	return replayState{closedStreams: map[string]bool{}, runtimeCheckpoints: map[artifact.Ref]runtimeCheckpointRecorded{}, semanticProgress: ProgressUnknown}
+	return replayState{closedStreams: map[string]bool{}, runtimeCheckpoints: map[artifact.Ref]runtimeCheckpointRecorded{}, effectReceipts: map[string]effect.Receipt{}, sessionForks: map[artifact.Ref]SessionForked{}, semanticProgress: ProgressUnknown}
 }
 
 func (s *replayState) apply(record ledger.Record) error {
@@ -82,6 +85,10 @@ func (s *replayState) apply(record ledger.Record) error {
 		s.stopRequested = true
 	case eventRuntimeCheckpoint:
 		return s.checkpoint(record)
+	case eventEffectReceipt:
+		return s.effectReceipt(record)
+	case eventSessionForked:
+		return s.sessionForked(record)
 	default:
 		return fmt.Errorf("unknown run event kind %q at sequence %d", record.Kind, record.Sequence)
 	}

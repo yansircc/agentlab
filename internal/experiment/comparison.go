@@ -74,7 +74,7 @@ func (o *Operation) comparisonManifests(ids []string) (map[string]comparison.Run
 			return nil, errors.New("run fixture reset proof is invalid")
 		}
 		result[id] = comparison.RunIdentity{
-			RunID: id, WorkerInput: manifest.WorkerInput, Harness: manifest.Harness, Trial: manifest.Trial,
+			RunID: id, Origin: comparisonOrigin(manifest.Origin), Intervention: hasIntervention(manifest.Origin), WorkerInput: manifest.WorkerInput, Harness: manifest.Harness, Trial: manifest.Trial,
 			Candidate: manifest.Candidate, Adapter: manifest.Adapter, OracleSet: manifest.OracleSet,
 			Fixture: manifest.Fixture, FixtureReset: manifest.FixtureReset, FixtureBaseline: reset.Baseline, EvidencePolicy: manifest.EvidencePolicy,
 			StopPolicy: manifest.StopPolicy, WorkerRuntime: manifest.WorkerRuntime,
@@ -82,6 +82,18 @@ func (o *Operation) comparisonManifests(ids []string) (map[string]comparison.Run
 		}
 	}
 	return result, nil
+}
+
+func comparisonOrigin(origin RunOrigin) comparison.Origin {
+	if origin.IsFresh() {
+		return comparison.FreshOrigin
+	}
+	return comparison.SpliceOrigin
+}
+
+func hasIntervention(origin RunOrigin) bool {
+	splice, ok := origin.Splice()
+	return ok && splice.Intervention != nil
 }
 
 func diagnosisOwnsClaims(value diagnosis.Diagnosis, required []string) bool {
