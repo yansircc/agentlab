@@ -14,14 +14,25 @@ func (h *PiRuntimeHost) StartIntent(binding Binding, request StartRequest) (effe
 	if err != nil || request.ID == "" || (profile.Role == effect.WorkerStart && request.Handoff != nil) {
 		return effect.Intent{}, errors.New("Pi start request is invalid")
 	}
-	if profile.Role == effect.CoderStart && (request.Handoff == nil || *request.Handoff != profile.Coder.Handoff) {
-		return effect.Intent{}, errors.New("coder handoff differs from Host binding")
+	payload := run.StartPayload{}
+	if profile.Role == effect.CoderStart {
+		if request.Handoff == nil {
+			return effect.Intent{}, errors.New("coder handoff is required")
+		}
+		experiment, err := binding.experiment()
+		if err != nil {
+			return effect.Intent{}, err
+		}
+		if _, err := experiment.Handoff(*request.Handoff); err != nil {
+			return effect.Intent{}, errors.New("coder handoff is outside experiment")
+		}
+		payload.Coder = &run.CoderProfile{Handoff: *request.Handoff, SourceSnapshot: profile.CoderSourceSnapshot, CandidateWorkspace: profile.CoderWorkspaceReceipt, CapabilityProfile: profile.CoderCapabilityProfile}
 	}
-	payload, err := run.EncodeStartPayload(profile.Role, run.StartPayload{Coder: profile.Coder})
+	payloadBytes, err := run.EncodeStartPayload(profile.Role, payload)
 	if err != nil {
 		return effect.Intent{}, err
 	}
-	ref, err := binding.store().Put(payload)
+	ref, err := binding.store().Put(payloadBytes)
 	if err != nil {
 		return effect.Intent{}, err
 	}

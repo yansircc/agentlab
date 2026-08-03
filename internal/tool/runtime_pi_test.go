@@ -45,27 +45,29 @@ func TestPiRuntimeHostDerivesStartPayloadFromBoundProfile(t *testing.T) {
 		}
 		return ref
 	}
-	coder := run.CoderProfile{Handoff: put("handoff"), SourceSnapshot: put("source"), CandidateWorkspace: put("workspace"), CapabilityProfile: put("capability")}
 	coderPolicy := policy
 	coderPolicy.OwnsWorkerProcess = true
 	launch := testCoderLaunch(t)
-	host, err := NewPiRuntimeHost([]PiRuntimeProfile{{Ref: "coder-profile", ExperimentID: "exp", RunID: "coder", Role: effect.CoderStart, SessionPath: filepath.Join(launch.RuntimeRoot, "coder.jsonl"), Identity: testIdentity(t), Policy: coderPolicy, Coder: &coder, CoderWorkspace: t.TempDir(), CoderLaunch: launch}})
+	sourceSnapshot, workspaceReceipt, capabilityProfile := put("source"), put("workspace"), put("capability")
+	host, err := NewPiRuntimeHost([]PiRuntimeProfile{{Ref: "coder-profile", ExperimentID: "exp", RunID: "coder", Role: effect.CoderStart, SessionPath: filepath.Join(launch.RuntimeRoot, "coder.jsonl"), Identity: testIdentity(t), Policy: coderPolicy, CoderSourceSnapshot: sourceSnapshot, CoderWorkspaceReceipt: workspaceReceipt, CoderCapabilityProfile: capabilityProfile, CoderWorkspace: t.TempDir(), CoderLaunch: launch}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := host.StartIntent(binding, StartRequest{ID: "bad", RunID: "coder", RuntimeRef: "coder-profile"}); err == nil {
 		t.Fatal("coder start omitted its handoff")
 	}
-	wrong := put("wrong")
-	if _, err := host.StartIntent(binding, StartRequest{ID: "bad", RunID: "coder", RuntimeRef: "coder-profile", Handoff: &wrong}); err == nil {
-		t.Fatal("coder start changed its Host handoff")
+	handoff := put("handoff")
+	if _, err := host.StartIntent(binding, StartRequest{ID: "coder-start", RunID: "coder", RuntimeRef: "coder-profile", Handoff: &handoff}); err == nil {
+		t.Fatal("coder start accepted a handoff not rendered by its experiment")
 	}
-	intent, err = host.StartIntent(binding, StartRequest{ID: "coder-start", RunID: "coder", RuntimeRef: "coder-profile", Handoff: &coder.Handoff})
+	handoff = renderOwnedHandoff(t, binding)
+	intent, err = host.StartIntent(binding, StartRequest{ID: "coder-start", RunID: "coder", RuntimeRef: "coder-profile", Handoff: &handoff})
 	if err != nil {
 		t.Fatal(err)
 	}
 	data, _ = store.Read(intent.Payload)
-	if strictjson.Decode(data, &payload) != nil || payload.Coder == nil || *payload.Coder != coder {
+	want := run.CoderProfile{Handoff: handoff, SourceSnapshot: sourceSnapshot, CandidateWorkspace: workspaceReceipt, CapabilityProfile: capabilityProfile}
+	if strictjson.Decode(data, &payload) != nil || payload.Coder == nil || *payload.Coder != want {
 		t.Fatalf("coder payload = %#v", payload)
 	}
 }
@@ -80,7 +82,7 @@ func TestPiRuntimeHostRejectsSharedSessionsAndUnboundCoderWorkspace(t *testing.T
 	worker := PiRuntimeProfile{Ref: "worker", ExperimentID: "exp", RunID: "worker", Role: effect.WorkerStart, SessionPath: shared, Identity: testIdentity(t), Policy: workerPolicy, WorkerLaunch: workerLaunch}
 	coderPolicy := policy
 	coderPolicy.OwnsWorkerProcess = true
-	coder := PiRuntimeProfile{Ref: "coder", ExperimentID: "exp", RunID: "coder", Role: effect.CoderStart, SessionPath: shared, Identity: testIdentity(t), Policy: coderPolicy, Coder: &run.CoderProfile{Handoff: testRef(), SourceSnapshot: testRef(), CandidateWorkspace: testRef(), CapabilityProfile: testRef()}, CoderWorkspace: t.TempDir(), CoderLaunch: launch}
+	coder := PiRuntimeProfile{Ref: "coder", ExperimentID: "exp", RunID: "coder", Role: effect.CoderStart, SessionPath: shared, Identity: testIdentity(t), Policy: coderPolicy, CoderSourceSnapshot: testRef(), CoderWorkspaceReceipt: testRef(), CoderCapabilityProfile: testRef(), CoderWorkspace: t.TempDir(), CoderLaunch: launch}
 	if _, err := NewPiRuntimeHost([]PiRuntimeProfile{worker, coder}); err == nil {
 		t.Fatal("shared Worker and Coder session was accepted")
 	}

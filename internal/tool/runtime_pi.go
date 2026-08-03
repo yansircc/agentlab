@@ -3,9 +3,9 @@ package tool
 import (
 	"errors"
 	"path/filepath"
-	"reflect"
 
 	piadapter "github.com/yansircc/agentlab/internal/adapter/pi"
+	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/coder"
 	"github.com/yansircc/agentlab/internal/effect"
 	"github.com/yansircc/agentlab/internal/run"
@@ -17,18 +17,20 @@ const piRuntimePlanContract = "agentlab.pi-runtime-plan.v1"
 // PiRuntimeProfile is Host-private runtime authority. It is registered before
 // the Supervisor starts; only Ref crosses the four-tool boundary.
 type PiRuntimeProfile struct {
-	Ref             string                   `json:"ref"`
-	ExperimentID    string                   `json:"experiment_id"`
-	RunID           string                   `json:"run_id"`
-	Role            effect.Kind              `json:"role"`
-	SessionPath     string                   `json:"session_path"`
-	Identity        piadapter.IdentityConfig `json:"identity"`
-	ChildSessionDir string                   `json:"child_session_dir,omitempty"`
-	Policy          run.StopPolicy           `json:"policy"`
-	WorkerLaunch    *PiWorkerLaunch          `json:"worker_launch,omitempty"`
-	Coder           *run.CoderProfile        `json:"coder,omitempty"`
-	CoderWorkspace  string                   `json:"coder_workspace,omitempty"`
-	CoderLaunch     *PiLaunch                `json:"coder_launch,omitempty"`
+	Ref                    string                   `json:"ref"`
+	ExperimentID           string                   `json:"experiment_id"`
+	RunID                  string                   `json:"run_id"`
+	Role                   effect.Kind              `json:"role"`
+	SessionPath            string                   `json:"session_path"`
+	Identity               piadapter.IdentityConfig `json:"identity"`
+	ChildSessionDir        string                   `json:"child_session_dir,omitempty"`
+	Policy                 run.StopPolicy           `json:"policy"`
+	WorkerLaunch           *PiWorkerLaunch          `json:"worker_launch,omitempty"`
+	CoderSourceSnapshot    artifact.Ref             `json:"coder_source_snapshot,omitempty"`
+	CoderWorkspaceReceipt  artifact.Ref             `json:"coder_workspace_receipt,omitempty"`
+	CoderCapabilityProfile artifact.Ref             `json:"coder_capability_profile,omitempty"`
+	CoderWorkspace         string                   `json:"coder_workspace,omitempty"`
+	CoderLaunch            *PiLaunch                `json:"coder_launch,omitempty"`
 }
 
 type PiRuntimeHost struct{ profiles map[string]PiRuntimeProfile }
@@ -42,10 +44,6 @@ func NewPiRuntimeHost(profiles []PiRuntimeProfile) (*PiRuntimeHost, error) {
 			return nil, errors.New("Pi runtime profile is invalid")
 		}
 		copy := profile
-		if profile.Coder != nil {
-			coder := *profile.Coder
-			copy.Coder = &coder
-		}
 		if profile.CoderLaunch != nil {
 			launch := profile.CoderLaunch.clone()
 			copy.CoderLaunch = &launch
@@ -85,16 +83,20 @@ func (value PiRuntimeProfile) Validate() error {
 	if value.Ref == "" || value.ExperimentID == "" || value.RunID == "" || (value.Role != effect.WorkerStart && value.Role != effect.CoderStart) || !filepath.IsAbs(value.SessionPath) || !filepath.IsAbs(value.Identity.SDKRoot) || !filepath.IsAbs(value.Identity.ContextFilterPath) || value.Policy.Validate() != nil {
 		return errors.New("Pi runtime profile is invalid")
 	}
-	if value.Role == effect.WorkerStart && (value.Coder != nil || value.CoderWorkspace != "" || value.CoderLaunch != nil || value.WorkerLaunch == nil || value.WorkerLaunch.Validate() != nil || !value.Policy.OwnsWorkerProcess || value.Policy.KillOnHardIdle || !inside(value.WorkerLaunch.Launch.RuntimeRoot, value.SessionPath) || overlaps(value.WorkerLaunch.FixtureRoot, value.Identity.SDKRoot) || overlaps(value.WorkerLaunch.Launch.RuntimeRoot, value.Identity.SDKRoot)) {
+	if value.Role == effect.WorkerStart && (value.hasCoderTemplate() || value.WorkerLaunch == nil || value.WorkerLaunch.Validate() != nil || !value.Policy.OwnsWorkerProcess || value.Policy.KillOnHardIdle || !inside(value.WorkerLaunch.Launch.RuntimeRoot, value.SessionPath) || overlaps(value.WorkerLaunch.FixtureRoot, value.Identity.SDKRoot) || overlaps(value.WorkerLaunch.Launch.RuntimeRoot, value.Identity.SDKRoot)) {
 		return errors.New("worker runtime profile is invalid")
 	}
-	if value.Role == effect.CoderStart && (value.WorkerLaunch != nil || value.Coder == nil || value.Coder.Validate() != nil || !filepath.IsAbs(value.CoderWorkspace) || value.CoderLaunch == nil || value.CoderLaunch.Validate() != nil || !value.Policy.OwnsWorkerProcess || value.Policy.KillOnHardIdle || !inside(value.CoderLaunch.RuntimeRoot, value.SessionPath) || overlaps(value.CoderWorkspace, value.CoderLaunch.RuntimeRoot) || overlaps(value.CoderWorkspace, value.Identity.SDKRoot) || overlaps(value.CoderLaunch.RuntimeRoot, value.Identity.SDKRoot)) {
+	if value.Role == effect.CoderStart && (value.WorkerLaunch != nil || !value.CoderSourceSnapshot.Valid() || !value.CoderWorkspaceReceipt.Valid() || !value.CoderCapabilityProfile.Valid() || !filepath.IsAbs(value.CoderWorkspace) || value.CoderLaunch == nil || value.CoderLaunch.Validate() != nil || !value.Policy.OwnsWorkerProcess || value.Policy.KillOnHardIdle || !inside(value.CoderLaunch.RuntimeRoot, value.SessionPath) || overlaps(value.CoderWorkspace, value.CoderLaunch.RuntimeRoot) || overlaps(value.CoderWorkspace, value.Identity.SDKRoot) || overlaps(value.CoderLaunch.RuntimeRoot, value.Identity.SDKRoot)) {
 		return errors.New("coder runtime profile is invalid")
 	}
 	if value.ChildSessionDir != "" && !filepath.IsAbs(value.ChildSessionDir) {
 		return errors.New("Pi child session directory is invalid")
 	}
 	return nil
+}
+
+func (value PiRuntimeProfile) hasCoderTemplate() bool {
+	return value.CoderSourceSnapshot != (artifact.Ref{}) || value.CoderWorkspaceReceipt != (artifact.Ref{}) || value.CoderCapabilityProfile != (artifact.Ref{}) || value.CoderWorkspace != "" || value.CoderLaunch != nil
 }
 
 func profileOverlaps(profile PiRuntimeProfile, workspaces, runtimes []string) bool {
@@ -134,7 +136,7 @@ func (h *PiRuntimeHost) Start(binding Binding, intent effect.Intent, ref string)
 	}
 	if intent.Kind == effect.CoderStart {
 		profileReceipt, err := op.CoderProfile(intent)
-		if err != nil || !reflect.DeepEqual(profileReceipt, *profile.Coder) {
+		if err != nil || profileReceipt.SourceSnapshot != profile.CoderSourceSnapshot || profileReceipt.CandidateWorkspace != profile.CoderWorkspaceReceipt || profileReceipt.CapabilityProfile != profile.CoderCapabilityProfile {
 			return nil, errors.New("coder profile differs from Host binding")
 		}
 		if _, err := coder.Open(binding.store(), profileReceipt.CandidateWorkspace, profileReceipt.SourceSnapshot, profile.CoderWorkspace); err != nil {
