@@ -1,11 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
-	"path/filepath"
 	"testing"
 
+	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/preparation"
+	"github.com/yansircc/agentlab/internal/source"
 )
 
 func TestToolSchemaCLIProjectsExactlyFourTools(t *testing.T) {
@@ -21,19 +23,35 @@ func TestToolSchemaCLIProjectsExactlyFourTools(t *testing.T) {
 	}
 }
 
-func TestToolInvokeDecodesThenDispatches(t *testing.T) {
+func TestToolInvokeReadsHostBoundStdin(t *testing.T) {
 	root := t.TempDir()
-	files := t.TempDir()
-	intent := writeToolFile(t, files, "intent.txt", []byte("intent"))
-	source := writeToolFile(t, files, "source.txt", []byte("source"))
-	request := writeJSONFile(t, files, "begin.json", map[string]any{
-		"preparation_id": "tool-prep", "user_intent_path": intent,
-		"source_files": []map[string]any{{"path": "source.txt", "content_path": source}}, "authority": "designer",
-	})
-	input := writeJSONFile(t, files, "tool.json", map[string]any{
-		"action": "begin", "root": root, "request_path": request,
-	})
-	result, err := dispatch([]string{"tool", "invoke", "-name", "agentlab_prepare", "-input", input})
+	store := artifact.NewStore(root + "/artifacts")
+	intent, err := store.Put([]byte("intent"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := source.Build(store, []source.InputFile{{Path: "source.txt", Content: []byte("source")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(map[string]any{"action": "begin_preparation", "user_intent": intent, "source_snapshot": snapshot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input, output, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := output.Write(data); err != nil {
+		t.Fatal(err)
+	}
+	if err := output.Close(); err != nil {
+		t.Fatal(err)
+	}
+	previous := os.Stdin
+	os.Stdin = input
+	defer func() { os.Stdin = previous; _ = input.Close() }()
+	result, err := dispatch([]string{"tool", "invoke", "-name", "agentlab_apply", "-root", root, "-preparation", "tool-prep"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,13 +59,4 @@ func TestToolInvokeDecodesThenDispatches(t *testing.T) {
 	if !ok || status.PreparationID != "tool-prep" || status.Phase != preparation.PhaseExploring {
 		t.Fatalf("tool invoke = %#v", result)
 	}
-}
-
-func writeToolFile(t *testing.T, dir, name string, data []byte) string {
-	t.Helper()
-	path := filepath.Join(dir, name)
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	return path
 }

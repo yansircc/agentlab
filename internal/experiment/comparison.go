@@ -8,6 +8,10 @@ import (
 )
 
 func (o *Operation) Compare(observation comparison.Observation) (comparison.Result, error) {
+	return o.compare(observation, nil)
+}
+
+func (o *Operation) compare(observation comparison.Observation, decision *SupervisorDecision) (comparison.Result, error) {
 	if err := observation.Validate(); err != nil {
 		return comparison.Result{}, err
 	}
@@ -34,8 +38,11 @@ func (o *Operation) Compare(observation comparison.Observation) (comparison.Resu
 		return comparison.Result{}, err
 	}
 	err = o.mutate(func(current *state) error {
-		if current.comparisons[observation.ID].ID != "" {
+		if current.comparisons[observation.ID].ID != "" || (decision != nil && current.decisions[decision.ID].ID != "") {
 			return errors.New("comparison id already exists")
+		}
+		if decision != nil {
+			return o.append(eventDecisionComparison, DecisionBoundComparison{Decision: *decision, Observation: observation})
 		}
 		return o.append(eventComparison, observation)
 	})

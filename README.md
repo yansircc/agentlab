@@ -57,6 +57,19 @@ agentlab tool schemas|invoke
 
 Mutation commands accept strict JSON requests. Secrets are referenced by environment-variable handles, never accepted as CLI values, and resolved values are redacted before evidence persistence.
 
+## Supervisor tool boundary
+
+Provider integrations expose exactly four host-bound tools:
+
+```text
+agentlab_apply
+agentlab_run
+agentlab_inspect
+agentlab_compare
+```
+
+Their input is strict JSON on stdin. The Host, not the model, binds the AgentLab root, preparation, experiment, runtime profile, executable, session locator, and capability profile. Tool schemas and their decoder reject root, request-file, stream/session, executable, raw-transcript, and audit-root locators.
+
 ## Verification and scope
 
 The current MVP evidence and Phase 0 spike reports are in [docs/completion-evidence.md](docs/completion-evidence.md) and [docs/spikes](docs/spikes).

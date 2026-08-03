@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"flag"
+	"io"
 	"os"
 
 	"github.com/yansircc/agentlab/internal/tool"
@@ -39,20 +40,23 @@ func toolInvoke(args []string) (any, error) {
 	set := flag.NewFlagSet("tool invoke", flag.ContinueOnError)
 	set.SetOutput(os.Stderr)
 	name := set.String("name", "", "AgentLab tool name")
-	input := set.String("input", "", "tool input JSON file")
+	root := set.String("root", "", "host-bound storage root")
+	preparationID := set.String("preparation", "", "host-bound preparation id")
+	experimentID := set.String("experiment", "", "host-bound experiment id")
+	authority := set.String("authority", "supervisor", "host-bound authority profile")
 	if err := set.Parse(args); err != nil {
 		return nil, err
 	}
-	if *name == "" || *input == "" || *input == "-" || set.NArg() != 0 {
-		return nil, errors.New("tool invoke requires name and input file")
+	if *name == "" || *root == "" || set.NArg() != 0 {
+		return nil, errors.New("tool invoke requires host-bound name and root; input is stdin")
 	}
-	data, err := os.ReadFile(*input)
+	data, err := io.ReadAll(io.LimitReader(os.Stdin, 1<<20))
 	if err != nil {
 		return nil, err
 	}
-	invocation, err := tool.Decode(*name, data)
+	operation, err := tool.Decode(*name, data)
 	if err != nil {
 		return nil, err
 	}
-	return dispatch(invocation.Args)
+	return tool.Execute(tool.Binding{Root: *root, PreparationID: *preparationID, ExperimentID: *experimentID, Authority: *authority}, operation)
 }

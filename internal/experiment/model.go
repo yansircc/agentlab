@@ -9,17 +9,23 @@ import (
 )
 
 const (
-	eventBegun           = "experiment_begun"
-	eventFinding         = "finding_recorded"
-	eventDisposition     = "finding_dispositioned"
-	eventDiagnosis       = "diagnosis_recorded"
-	eventCandidate       = "repair_candidate_bound"
-	eventRunBound        = "run_manifest_bound"
-	eventComparison      = "comparison_observed"
-	eventGate            = "candidate_gate_recorded"
-	eventDecisionEffect  = "decision_effect_intended"
-	eventDecisionFinding = "decision_finding_recorded"
-	eventDecisionHandoff = "decision_handoff_recorded"
+	eventBegun              = "experiment_begun"
+	eventFinding            = "finding_recorded"
+	eventDisposition        = "finding_dispositioned"
+	eventDiagnosis          = "diagnosis_recorded"
+	eventCandidate          = "repair_candidate_bound"
+	eventRunBound           = "run_manifest_bound"
+	eventComparison         = "comparison_observed"
+	eventGate               = "candidate_gate_recorded"
+	eventDecisionEffect     = "decision_effect_intended"
+	eventDecisionFinding    = "decision_finding_recorded"
+	eventDecisionHandoff    = "decision_handoff_recorded"
+	eventDecisionDiagnosis  = "decision_diagnosis_recorded"
+	eventDecisionCandidate  = "decision_candidate_bound"
+	eventDecisionRun        = "decision_run_bound"
+	eventDecisionComparison = "decision_comparison_recorded"
+	eventDecisionGate       = "decision_gate_recorded"
+	eventDecisionContinue   = "decision_continue_recorded"
 )
 
 type begun struct {

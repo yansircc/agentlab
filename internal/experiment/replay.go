@@ -1,11 +1,7 @@
 package experiment
 
 import (
-	"bytes"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 
 	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/comparison"
@@ -131,6 +127,18 @@ func (s *state) apply(record ledger.Record) error {
 		return s.decisionFinding(record)
 	case eventDecisionHandoff:
 		return s.decisionHandoff(record)
+	case eventDecisionDiagnosis:
+		return s.decisionDiagnosis(record)
+	case eventDecisionCandidate:
+		return s.decisionCandidate(record)
+	case eventDecisionRun:
+		return s.decisionRun(record)
+	case eventDecisionComparison:
+		return s.decisionComparison(record)
+	case eventDecisionGate:
+		return s.decisionGate(record)
+	case eventDecisionContinue:
+		return s.decisionContinue(record)
 	default:
 		return fmt.Errorf("unknown experiment event %q", record.Kind)
 	}
@@ -170,20 +178,4 @@ func (s *state) hasFindings(ids []string) bool {
 		}
 	}
 	return true
-}
-
-func decode(data []byte, target any) error {
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(target); err != nil {
-		return err
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return errors.New("event data has trailing input")
-	}
-	return nil
-}
-
-func invalid(record ledger.Record, reason string) error {
-	return fmt.Errorf("%s at sequence %d", reason, record.Sequence)
 }

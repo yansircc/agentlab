@@ -1,80 +1,151 @@
 package tool
 
-import "errors"
+import (
+	"errors"
+	"reflect"
 
-type runInput struct {
-	Action         string `json:"action"`
-	Root           string `json:"root,omitempty"`
-	ExperimentID   string `json:"experiment_id"`
-	RunID          string `json:"run_id"`
-	Adapter        string `json:"adapter,omitempty"`
-	StreamPath     string `json:"stream_path,omitempty"`
-	RequestPath    string `json:"request_path,omitempty"`
-	FirstEvent     string `json:"first_event,omitempty"`
-	SoftIdle       string `json:"soft_idle,omitempty"`
-	HardIdle       string `json:"hard_idle,omitempty"`
-	KillOnHardIdle bool   `json:"kill_on_hard_idle,omitempty"`
-	Reason         string `json:"reason,omitempty"`
+	"github.com/yansircc/agentlab/internal/effect"
+	"github.com/yansircc/agentlab/internal/experiment"
+	"github.com/yansircc/agentlab/internal/processidentity"
+	"github.com/yansircc/agentlab/internal/run"
+)
+
+type runOperation interface {
+	Operation
+	runOperation()
 }
 
-func (input runInput) invocation() (Invocation, error) {
-	if input.ExperimentID == "" || input.RunID == "" {
-		return Invocation{}, errors.New("run tool requires experiment and run ids")
+func decodeRun(data []byte) (Operation, error) {
+	action, err := decodeAction(data)
+	if err != nil {
+		return nil, err
 	}
-	base := rootArgs(input.Root)
-	base = append(base, "-experiment", input.ExperimentID, "-run", input.RunID)
-	switch input.Action {
-	case "start":
-		if input.RequestPath == "" || input.RequestPath == "-" || !input.hasDeadlines() || input.Adapter != "" || input.StreamPath != "" || input.Reason != "" {
-			return Invocation{}, errors.New("owned start input is invalid")
-		}
-		args := append([]string{"run", "start"}, base...)
-		args = append(args, "-request", input.RequestPath)
-		args = append(args, input.deadlineArgs()...)
-		if input.KillOnHardIdle {
-			args = append(args, "-kill-on-hard-idle")
-		}
-		return Invocation{Args: args}, nil
-	case "attach_begin":
-		if input.Adapter == "" || input.StreamPath == "" || !input.hasDeadlines() || input.RequestPath != "" || input.KillOnHardIdle || input.Reason != "" {
-			return Invocation{}, errors.New("attach begin input is invalid")
-		}
-		args := append([]string{"run", "attach", "begin"}, base...)
-		args = append(args, "-adapter", input.Adapter, "-stream", input.StreamPath)
-		return Invocation{Args: append(args, input.deadlineArgs()...)}, nil
-	case "attach_poll":
-		if input.Adapter == "" || input.StreamPath == "" || input.hasAnyDeadline() || input.RequestPath != "" || input.KillOnHardIdle || input.Reason != "" {
-			return Invocation{}, errors.New("attach poll input is invalid")
-		}
-		args := append([]string{"run", "attach", "poll"}, base...)
-		return Invocation{Args: append(args, "-adapter", input.Adapter, "-stream", input.StreamPath)}, nil
+	switch action {
+	case "start", "checkpoint", "fork":
+		var value runtimeEffect
+		return decodeRunValue(data, &value)
 	case "stop":
-		if input.Adapter != "" || input.StreamPath != "" || input.hasAnyDeadline() || input.RequestPath != "" || input.KillOnHardIdle {
-			return Invocation{}, errors.New("stop input is invalid")
-		}
-		args := append([]string{"run", "stop"}, base...)
-		if input.Reason != "" {
-			args = append(args, "-reason", input.Reason)
-		}
-		return Invocation{Args: args}, nil
+		var value stopRun
+		return decodeRunValue(data, &value)
+	case "poll":
+		var value pollRun
+		return decodeRunValue(data, &value)
 	case "status":
-		if input.Adapter != "" || input.StreamPath != "" || input.hasAnyDeadline() || input.RequestPath != "" || input.KillOnHardIdle || input.Reason != "" {
-			return Invocation{}, errors.New("status input is invalid")
-		}
-		return Invocation{Args: append([]string{"run", "status"}, base...)}, nil
+		var value statusRun
+		return decodeRunValue(data, &value)
 	default:
-		return Invocation{}, errors.New("unknown run action")
+		return nil, errors.New("unknown run action")
 	}
 }
 
-func (input runInput) hasDeadlines() bool {
-	return input.FirstEvent != "" && input.SoftIdle != "" && input.HardIdle != ""
+func decodeRunValue(data []byte, value runOperation) (Operation, error) {
+	if err := strictDecode(data, value); err != nil {
+		return nil, err
+	}
+	return value, nil
 }
 
-func (input runInput) hasAnyDeadline() bool {
-	return input.FirstEvent != "" || input.SoftIdle != "" || input.HardIdle != ""
+type runtimeEffect struct {
+	Action     string                         `json:"action"`
+	Effect     experiment.DecisionBoundEffect `json:"effect"`
+	RuntimeRef string                         `json:"runtime_ref"`
 }
 
-func (input runInput) deadlineArgs() []string {
-	return []string{"-first-event", input.FirstEvent, "-soft-idle", input.SoftIdle, "-hard-idle", input.HardIdle}
+func (runtimeEffect) toolName() string { return RunTool }
+func (runtimeEffect) runOperation()    {}
+
+func (value runtimeEffect) execute(binding Binding) (any, error) {
+	if value.RuntimeRef == "" || binding.Runtime == nil {
+		return nil, errors.New("tool runtime profile is unavailable")
+	}
+	kind := value.Effect.Intent.Kind
+	if (value.Action == "start" && kind != effect.WorkerStart && kind != effect.CoderStart) || (value.Action == "checkpoint" && kind != effect.Checkpoint) || (value.Action == "fork" && kind != effect.Fork) {
+		return nil, errors.New("run action and effect kind differ")
+	}
+	op, err := binding.experiment()
+	if err != nil {
+		return nil, err
+	}
+	if err := commitEffect(op, value.Effect); err != nil {
+		return nil, err
+	}
+	switch value.Action {
+	case "start":
+		return binding.Runtime.Start(binding, value.Effect.Intent, value.RuntimeRef)
+	case "checkpoint":
+		return binding.Runtime.Checkpoint(binding, value.Effect.Intent, value.RuntimeRef)
+	case "fork":
+		return binding.Runtime.Fork(binding, value.Effect.Intent, value.RuntimeRef)
+	default:
+		return nil, errors.New("runtime action is invalid")
+	}
+}
+
+func commitEffect(op *experiment.Operation, value experiment.DecisionBoundEffect) error {
+	existing, err := op.DecisionBoundEffect(value.Intent.ID)
+	if err == nil {
+		if reflect.DeepEqual(existing, value) {
+			return nil
+		}
+		return errors.New("effect intent identity changed")
+	}
+	return op.CommitDecisionBoundEffect(value)
+}
+
+type stopRun struct {
+	Action string                         `json:"action"`
+	Effect experiment.DecisionBoundEffect `json:"effect"`
+}
+
+func (stopRun) toolName() string { return RunTool }
+func (stopRun) runOperation()    {}
+func (value stopRun) execute(binding Binding) (any, error) {
+	if value.Effect.Intent.Kind != effect.Stop {
+		return nil, errors.New("stop action requires stop effect")
+	}
+	op, err := binding.experiment()
+	if err != nil {
+		return nil, err
+	}
+	if err = commitEffect(op, value.Effect); err != nil {
+		return nil, err
+	}
+	target, err := run.Open(binding.Root, binding.ExperimentID, value.Effect.Intent.RunID)
+	if err != nil {
+		return nil, err
+	}
+	return target.RequestStopEffect(value.Effect.Intent)
+}
+
+type pollRun struct {
+	Action     string `json:"action"`
+	RunID      string `json:"run_id"`
+	RuntimeRef string `json:"runtime_ref"`
+}
+
+func (pollRun) toolName() string { return RunTool }
+func (pollRun) runOperation()    {}
+func (value pollRun) execute(binding Binding) (any, error) {
+	if value.RunID == "" || value.RuntimeRef == "" || binding.Runtime == nil {
+		return nil, errors.New("tool runtime profile is unavailable")
+	}
+	return binding.Runtime.Poll(binding, value.RunID, value.RuntimeRef)
+}
+
+type statusRun struct {
+	Action string `json:"action"`
+	RunID  string `json:"run_id"`
+}
+
+func (statusRun) toolName() string { return RunTool }
+func (statusRun) runOperation()    {}
+func (value statusRun) execute(binding Binding) (any, error) {
+	if value.RunID == "" {
+		return nil, errors.New("run id is required")
+	}
+	op, err := run.Open(binding.Root, binding.ExperimentID, value.RunID)
+	if err != nil {
+		return nil, err
+	}
+	return op.ProjectStatus(processidentity.SystemProber{})
 }

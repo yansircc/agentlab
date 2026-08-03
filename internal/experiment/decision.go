@@ -21,6 +21,12 @@ const (
 	DecisionFork        DecisionAction = "fork"
 	DecisionFinding     DecisionAction = "finding"
 	DecisionHandoff     DecisionAction = "coder_handoff"
+	DecisionDiagnosis   DecisionAction = "diagnosis"
+	DecisionCandidate   DecisionAction = "candidate"
+	DecisionRunBinding  DecisionAction = "run_binding"
+	DecisionComparison  DecisionAction = "comparison"
+	DecisionGate        DecisionAction = "gate"
+	DecisionContinue    DecisionAction = "continue"
 )
 
 // SupervisorDecision is public evidence only. Its timestamp is the enclosing
@@ -48,6 +54,12 @@ type DecisionBoundFinding struct {
 type DecisionBoundHandoff struct {
 	Decision SupervisorDecision `json:"decision"`
 	Handoff  HandoffRecord      `json:"handoff"`
+}
+
+// DecisionBoundContinue makes an otherwise effect-free material decision
+// durable without inventing a second ledger owner.
+type DecisionBoundContinue struct {
+	Decision SupervisorDecision `json:"decision"`
 }
 
 func (value SupervisorDecision) Validate() error {
@@ -78,8 +90,15 @@ func (value DecisionBoundHandoff) Validate() error {
 	return nil
 }
 
+func (value DecisionBoundContinue) Validate() error {
+	if value.Decision.Validate() != nil || value.Decision.Action != DecisionContinue {
+		return errors.New("decision-bound continue is invalid")
+	}
+	return nil
+}
+
 func (value DecisionAction) valid() bool {
-	return value.effectKind() != "" || value == DecisionFinding || value == DecisionHandoff
+	return value.effectKind() != "" || value == DecisionFinding || value == DecisionHandoff || value == DecisionDiagnosis || value == DecisionCandidate || value == DecisionRunBinding || value == DecisionComparison || value == DecisionGate || value == DecisionContinue
 }
 
 func (value DecisionBoundEffect) Validate() error {

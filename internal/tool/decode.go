@@ -7,38 +7,18 @@ import (
 	"io"
 )
 
-type Invocation struct {
-	Args []string `json:"args"`
-}
-
-func Decode(name string, input []byte) (Invocation, error) {
+func Decode(name string, input []byte) (Operation, error) {
 	switch name {
-	case PrepareTool:
-		var value prepareInput
-		if err := strictDecode(input, &value); err != nil {
-			return Invocation{}, err
-		}
-		return value.invocation()
+	case ApplyTool:
+		return decodeApply(input)
 	case RunTool:
-		var value runInput
-		if err := strictDecode(input, &value); err != nil {
-			return Invocation{}, err
-		}
-		return value.invocation()
+		return decodeRun(input)
 	case InspectTool:
-		var value inspectInput
-		if err := strictDecode(input, &value); err != nil {
-			return Invocation{}, err
-		}
-		return value.invocation()
+		return decodeInspect(input)
 	case CompareTool:
-		var value compareInput
-		if err := strictDecode(input, &value); err != nil {
-			return Invocation{}, err
-		}
-		return value.invocation()
+		return decodeCompare(input)
 	default:
-		return Invocation{}, errors.New("unknown AgentLab tool")
+		return nil, errors.New("unknown AgentLab tool")
 	}
 }
 
@@ -54,9 +34,14 @@ func strictDecode(input []byte, target any) error {
 	return nil
 }
 
-func rootArgs(root string) []string {
-	if root == "" {
-		return nil
+type actionHeader struct {
+	Action string `json:"action"`
+}
+
+func decodeAction(data []byte) (string, error) {
+	var value actionHeader
+	if err := json.Unmarshal(data, &value); err != nil || value.Action == "" {
+		return "", errors.New("tool action is invalid")
 	}
-	return []string{"-root", root}
+	return value.Action, nil
 }

@@ -40,6 +40,10 @@ type runBinding struct {
 }
 
 func (o *Operation) BindRun(runID string, origin RunOrigin, inputs RunInputs) (artifact.Ref, error) {
+	return o.bindRun(runID, origin, inputs, nil)
+}
+
+func (o *Operation) bindRun(runID string, origin RunOrigin, inputs RunInputs, decision *SupervisorDecision) (artifact.Ref, error) {
 	if !idPattern.MatchString(runID) {
 		return artifact.Ref{}, errors.New("invalid run id")
 	}
@@ -73,6 +77,9 @@ func (o *Operation) BindRun(runID string, origin RunOrigin, inputs RunInputs) (a
 	if current.begun == nil {
 		return artifact.Ref{}, ErrNotBegun
 	}
+	if decision != nil && current.decisions[decision.ID].ID != "" {
+		return artifact.Ref{}, errors.New("decision identity already exists")
+	}
 	if err := o.validateOrigin(runID, origin, current); err != nil {
 		return artifact.Ref{}, err
 	}
@@ -88,10 +95,16 @@ func (o *Operation) BindRun(runID string, origin RunOrigin, inputs RunInputs) (a
 	binding := runBinding{RunID: runID, Manifest: manifestRef}
 	err = o.mutate(func(current *state) error {
 		existing := current.runs[runID]
+		if decision != nil && current.decisions[decision.ID].ID != "" {
+			return errors.New("decision identity already exists")
+		}
 		if existing.RunID != "" && existing != binding {
 			return errors.New("run already has a different manifest")
 		}
 		if existing.RunID == "" {
+			if decision != nil {
+				return o.append(eventDecisionRun, decisionRunRecord{Decision: *decision, Binding: binding})
+			}
 			return o.append(eventRunBound, binding)
 		}
 		return nil

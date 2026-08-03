@@ -2,13 +2,6 @@ package tool
 
 import "errors"
 
-const (
-	PrepareTool = "agentlab_prepare"
-	RunTool     = "agentlab_run"
-	InspectTool = "agentlab_inspect"
-	CompareTool = "agentlab_compare"
-)
-
 type Definition struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description"`
@@ -17,17 +10,16 @@ type Definition struct {
 
 func Definitions() []Definition {
 	return []Definition{
-		{Name: PrepareTool, Description: "Mutate or inspect one AgentLab preparation.", InputSchema: prepareSchema()},
-		{Name: RunTool, Description: "Start, attach, stop, or inspect one experiment-scoped Worker run.", InputSchema: runSchema()},
-		{Name: InspectTool, Description: "Read one bounded page from a preparation, experiment, or run ledger.", InputSchema: inspectSchema()},
-		{Name: CompareTool, Description: "Record or read an exact-candidate comparison or gate.", InputSchema: compareSchema()},
+		{Name: ApplyTool, Description: "Submit a closed AgentLab domain operation.", InputSchema: applySchema()},
+		{Name: RunTool, Description: "Execute one decision-bound AgentLab runtime operation.", InputSchema: runSchema()},
+		{Name: InspectTool, Description: "Read one bounded public AgentLab projection.", InputSchema: inspectSchema()},
+		{Name: CompareTool, Description: "Record or read exact-candidate comparison and gate facts.", InputSchema: compareSchema()},
 	}
 }
 
 func Projection(provider string) ([]map[string]any, error) {
-	definitions := Definitions()
-	result := make([]map[string]any, 0, len(definitions))
-	for _, definition := range definitions {
+	result := make([]map[string]any, 0, 4)
+	for _, definition := range Definitions() {
 		switch provider {
 		case "anthropic":
 			result = append(result, map[string]any{"name": definition.Name, "description": definition.Description, "input_schema": definition.InputSchema})
@@ -40,64 +32,47 @@ func Projection(provider string) ([]map[string]any, error) {
 	return result, nil
 }
 
-func objectSchema(properties map[string]any, required ...string) map[string]any {
-	return map[string]any{
-		"type": "object", "properties": properties, "required": required,
-		"additionalProperties": false,
-	}
+func object(properties map[string]any, required ...string) map[string]any {
+	return map[string]any{"type": "object", "properties": properties, "required": required, "additionalProperties": false}
 }
 
-func stringProperty(description string) map[string]any {
+func enum(values ...string) map[string]any { return map[string]any{"type": "string", "enum": values} }
+func text(description string) map[string]any {
 	return map[string]any{"type": "string", "description": description}
 }
-
-func enumProperty(values ...string) map[string]any {
-	items := make([]any, len(values))
-	for index, value := range values {
-		items[index] = value
-	}
-	return map[string]any{"type": "string", "enum": items}
+func opaque(description string) map[string]any {
+	return map[string]any{"type": "object", "description": description}
 }
 
-func prepareSchema() map[string]any {
-	return objectSchema(map[string]any{
-		"action":         enumProperty("begin", "record_fact", "propose_decision", "resolve", "assay", "challenge_basis", "challenge", "seal", "status"),
-		"root":           stringProperty("Optional AgentLab storage root."),
-		"preparation_id": stringProperty("Preparation id for non-request actions."),
-		"request_path":   stringProperty("Strict JSON request file for mutation actions."),
+func applySchema() map[string]any {
+	return object(map[string]any{
+		"action":           enum("begin_preparation", "record_fact", "propose_preparation_decision", "resolve_preparation_decision", "record_leakage_assay", "challenge_basis", "challenge", "seal_preparation", "begin_experiment", "bind_run", "record_finding", "render_handoff", "record_diagnosis", "bind_candidate", "continue"),
+		"user_intent":      opaque("Host-issued immutable user-intent artifact ref."),
+		"source_snapshot":  opaque("Host-issued immutable source-snapshot artifact ref."),
+		"public_artifacts": map[string]any{"type": "array", "items": opaque("Host-issued public artifact ref.")},
+		"fact":             opaque("Repository fact."), "decision": opaque("Supervisor decision."), "resolution": opaque("Preparation resolution."), "assay": opaque("Leakage assay."), "challenge": opaque("Challenge."),
+		"binding": opaque("Decision-bound run binding."), "origin": opaque("Closed run origin."), "inputs": opaque("Run inputs of immutable artifact refs."), "value": opaque("Closed decision-bound domain value."),
+		"finding_ids": map[string]any{"type": "array", "items": text("Finding id.")},
 	}, "action")
 }
 
 func runSchema() map[string]any {
-	return objectSchema(map[string]any{
-		"action":        enumProperty("start", "attach_begin", "attach_poll", "stop", "status"),
-		"root":          stringProperty("Optional AgentLab storage root."),
-		"experiment_id": stringProperty("Experiment id."), "run_id": stringProperty("Run id."),
-		"adapter":      stringProperty("Attached runtime adapter name."),
-		"stream_path":  stringProperty("Adapter-owned stream locator path."),
-		"request_path": stringProperty("Strict owned-run request file for start."),
-		"first_event":  stringProperty("First-event duration."), "soft_idle": stringProperty("Soft-idle duration."),
-		"hard_idle": stringProperty("Hard-idle duration."), "kill_on_hard_idle": map[string]any{"type": "boolean"},
-		"reason": stringProperty("Durable stop reason."),
-	}, "action", "experiment_id", "run_id")
+	return object(map[string]any{
+		"action": enum("start", "poll", "stop", "checkpoint", "fork", "status"),
+		"effect": opaque("Closed decision-bound effect."), "runtime_ref": text("Host-issued opaque runtime profile ref."), "run_id": text("Experiment-scoped opaque run ref."),
+	}, "action")
 }
 
 func inspectSchema() map[string]any {
-	return objectSchema(map[string]any{
-		"root":           stringProperty("Optional AgentLab storage root."),
-		"scope":          enumProperty("preparation", "experiment", "run"),
-		"preparation_id": stringProperty("Preparation id."), "experiment_id": stringProperty("Experiment id."),
-		"run_id": stringProperty("Run id."), "after": map[string]any{"type": "integer", "minimum": 0},
-		"limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 1000},
+	return object(map[string]any{
+		"scope": enum("preparation", "experiment", "run"), "run_id": text("Experiment-scoped opaque run ref."),
+		"after": map[string]any{"type": "integer", "minimum": 0}, "limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 1000},
 	}, "scope", "after", "limit")
 }
 
 func compareSchema() map[string]any {
-	return objectSchema(map[string]any{
-		"action": enumProperty("record", "show", "gate_record", "gate_show"), "root": stringProperty("Optional AgentLab storage root."),
-		"experiment_id": stringProperty("Experiment id for show."),
-		"comparison_id": stringProperty("Comparison id for show."),
-		"gate_id":       stringProperty("Gate id for gate show."),
-		"request_path":  stringProperty("Strict comparison or gate request file for record."),
+	return object(map[string]any{
+		"action": enum("record", "show", "gate_record", "gate_show"), "value": opaque("Closed decision-bound comparison or gate."),
+		"comparison_id": text("Experiment-scoped opaque comparison ref."), "gate_id": text("Experiment-scoped opaque gate ref."),
 	}, "action")
 }

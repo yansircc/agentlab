@@ -2,43 +2,63 @@ package tool
 
 import (
 	"errors"
-	"strconv"
+
+	"github.com/yansircc/agentlab/internal/run"
 )
 
-type inspectInput struct {
-	Root          string  `json:"root,omitempty"`
-	Scope         string  `json:"scope"`
-	PreparationID string  `json:"preparation_id,omitempty"`
-	ExperimentID  string  `json:"experiment_id,omitempty"`
-	RunID         string  `json:"run_id,omitempty"`
-	After         *uint64 `json:"after"`
-	Limit         int     `json:"limit"`
+type inspectOperation struct {
+	Scope string  `json:"scope"`
+	RunID string  `json:"run_id,omitempty"`
+	After *uint64 `json:"after"`
+	Limit int     `json:"limit"`
 }
 
-func (input inspectInput) invocation() (Invocation, error) {
-	if input.After == nil || input.Limit < 1 || input.Limit > 1000 {
-		return Invocation{}, errors.New("inspect requires after and limit 1..1000")
+func decodeInspect(data []byte) (Operation, error) {
+	var value inspectOperation
+	if err := strictDecode(data, &value); err != nil {
+		return nil, err
 	}
-	args := append([]string{"inspect"}, rootArgs(input.Root)...)
-	switch input.Scope {
-	case "preparation":
-		if input.PreparationID == "" || input.ExperimentID != "" || input.RunID != "" {
-			return Invocation{}, errors.New("preparation inspect target is invalid")
+	if value.After == nil || value.Limit < 1 || value.Limit > 1000 {
+		return nil, errors.New("inspect page is invalid")
+	}
+	switch value.Scope {
+	case "preparation", "experiment":
+		if value.RunID != "" {
+			return nil, errors.New("inspect scope carries a run id")
 		}
-		args = append(args, "-preparation", input.PreparationID)
-	case "experiment":
-		if input.PreparationID != "" || input.ExperimentID == "" || input.RunID != "" {
-			return Invocation{}, errors.New("experiment inspect target is invalid")
-		}
-		args = append(args, "-experiment", input.ExperimentID)
 	case "run":
-		if input.PreparationID != "" || input.ExperimentID == "" || input.RunID == "" {
-			return Invocation{}, errors.New("run inspect target is invalid")
+		if value.RunID == "" {
+			return nil, errors.New("run inspect requires a run id")
 		}
-		args = append(args, "-experiment", input.ExperimentID, "-run", input.RunID)
 	default:
-		return Invocation{}, errors.New("unknown inspect scope")
+		return nil, errors.New("inspect scope is invalid")
 	}
-	args = append(args, "-after", strconv.FormatUint(*input.After, 10), "-limit", strconv.Itoa(input.Limit))
-	return Invocation{Args: args}, nil
+	return value, nil
+}
+
+func (inspectOperation) toolName() string { return InspectTool }
+
+func (value inspectOperation) execute(binding Binding) (any, error) {
+	switch value.Scope {
+	case "preparation":
+		op, err := binding.preparation()
+		if err != nil {
+			return nil, err
+		}
+		return op.Inspect(*value.After, value.Limit)
+	case "experiment":
+		op, err := binding.experiment()
+		if err != nil {
+			return nil, err
+		}
+		return op.Inspect(*value.After, value.Limit)
+	case "run":
+		op, err := run.Open(binding.Root, binding.ExperimentID, value.RunID)
+		if err != nil {
+			return nil, err
+		}
+		return op.Inspect(*value.After, value.Limit)
+	default:
+		return nil, errors.New("inspect scope is invalid")
+	}
 }

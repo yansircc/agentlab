@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestProviderProjectionsHaveOneEquivalentSchemaPerTool(t *testing.T) {
+func TestProviderProjectionsHaveExactlyFourLocatorFreeTools(t *testing.T) {
 	anthropic, err := Projection("anthropic")
 	if err != nil {
 		t.Fatal(err)
@@ -15,18 +15,15 @@ func TestProviderProjectionsHaveOneEquivalentSchemaPerTool(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantNames := []string{PrepareTool, RunTool, InspectTool, CompareTool}
-	if len(anthropic) != len(wantNames) || len(openAI) != len(wantNames) {
-		t.Fatalf("tool count = %d/%d, want %d", len(anthropic), len(openAI), len(wantNames))
+	want := []string{ApplyTool, RunTool, InspectTool, CompareTool}
+	if len(anthropic) != len(want) || len(openAI) != len(want) {
+		t.Fatalf("tool count = %d/%d", len(anthropic), len(openAI))
 	}
-	for index, name := range wantNames {
-		if anthropic[index]["name"] != name || openAI[index]["name"] != name {
-			t.Fatalf("tool %d names = %v/%v, want %q", index, anthropic[index]["name"], openAI[index]["name"], name)
+	for index, name := range want {
+		if anthropic[index]["name"] != name || openAI[index]["name"] != name || !reflect.DeepEqual(anthropic[index]["input_schema"], openAI[index]["parameters"]) {
+			t.Fatalf("projection %d differs", index)
 		}
-		if !reflect.DeepEqual(anthropic[index]["input_schema"], openAI[index]["parameters"]) {
-			t.Fatalf("provider schemas differ for %s", name)
-		}
-		assertSimpleSchema(t, anthropic[index]["input_schema"])
+		assertNoLocator(t, anthropic[index]["input_schema"])
 	}
 }
 
@@ -36,27 +33,33 @@ func TestProjectionRejectsUnknownProvider(t *testing.T) {
 	}
 }
 
-func assertSimpleSchema(t *testing.T, value any) {
+func assertNoLocator(t *testing.T, value any) {
 	t.Helper()
 	data, err := json.Marshal(value)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var walk func(any)
-	walk = func(node any) {
-		switch typed := node.(type) {
-		case map[string]any:
-			for key, child := range typed {
-				if key == "oneOf" || key == "anyOf" || key == "allOf" || key == "$ref" {
-					t.Fatalf("unsupported schema keyword %q in %s", key, data)
-				}
-				walk(child)
+	for _, banned := range []string{"root", "request_path", "stream_path", "session_path", "executable_path", "raw_transcript", "audit_root"} {
+		if string(data) == banned || containsJSONKey(value, banned) {
+			t.Fatalf("schema exposes %q: %s", banned, data)
+		}
+	}
+}
+
+func containsJSONKey(value any, want string) bool {
+	switch node := value.(type) {
+	case map[string]any:
+		for key, child := range node {
+			if key == want || containsJSONKey(child, want) {
+				return true
 			}
-		case []any:
-			for _, child := range typed {
-				walk(child)
+		}
+	case []any:
+		for _, child := range node {
+			if containsJSONKey(child, want) {
+				return true
 			}
 		}
 	}
-	walk(value)
+	return false
 }

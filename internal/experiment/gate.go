@@ -9,6 +9,10 @@ import (
 )
 
 func (o *Operation) RecordGate(spec gate.Spec) (gate.Result, error) {
+	return o.recordGate(spec, nil)
+}
+
+func (o *Operation) recordGate(spec gate.Spec, decision *SupervisorDecision) (gate.Result, error) {
 	if err := spec.Validate(); err != nil {
 		return gate.Result{}, err
 	}
@@ -28,7 +32,7 @@ func (o *Operation) RecordGate(spec gate.Spec) (gate.Result, error) {
 		if candidate.ID == "" {
 			return errors.New("gate candidate does not exist")
 		}
-		if current.gates[spec.ID].ID != "" {
+		if current.gates[spec.ID].ID != "" || (decision != nil && current.decisions[decision.ID].ID != "") {
 			return errors.New("gate id already exists")
 		}
 		for _, blocker := range spec.BlockerFindings() {
@@ -41,6 +45,9 @@ func (o *Operation) RecordGate(spec gate.Spec) (gate.Result, error) {
 		}
 		receipt := gate.Receipt{Spec: spec, Candidate: candidate.Artifact}
 		result = gate.Result{Receipt: receipt, Verdict: spec.Verdict()}
+		if decision != nil {
+			return o.append(eventDecisionGate, DecisionBoundGate{Decision: *decision, Receipt: receipt})
+		}
 		return o.append(eventGate, receipt)
 	})
 	return result, err
