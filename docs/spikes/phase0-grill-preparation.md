@@ -27,8 +27,8 @@ Vague intent:
 
 Repository evidence:
 
-- `/Users/yansir/code/52/zeroY/README.md` identifies runner, sandbox, WordPress plugin, plugin UI, contracts, workflow model, kernel, and compiler boundaries.
-- `/Users/yansir/code/52/zeroY/.codex/AGENTS.md` declares the root gate surface and the `protocol -> workflow-model -> workflow-compiler -> workflow-kernel -> app` layer order.
+- The zeroY repository's `README.md` identifies runner, sandbox, WordPress plugin, plugin UI, contracts, workflow model, kernel, and compiler boundaries.
+- zeroY's `.codex/AGENTS.md` declares the root gate surface and the `protocol -> workflow-model -> workflow-compiler -> workflow-kernel -> app` layer order.
 - The README declares `candidate-plan.json`, apply/verify separation, per-site write leases, and `baseline_run_id` optimistic concurrency.
 
 Dependency order:
@@ -82,9 +82,9 @@ Vague intent:
 
 Repository evidence:
 
-- `/Users/yansir/code/52/llm-broker/AGENTS.md` makes provider the change axis and `driver.Driver` the provider boundary.
-- `/Users/yansir/code/52/llm-broker/docs/request-envelope-analysis-2026-03-18.md` distinguishes accepted and rejected request-envelope families using complete request artifacts and hashes.
-- `/Users/yansir/code/52/llm-broker/docs/compat-debugging-2026-03-18.md` records replay ablations and shows that a correct local fix may still be absent from production after deployment rollback.
+- llm-broker's `AGENTS.md` makes provider the change axis and `driver.Driver` the provider boundary.
+- llm-broker's `docs/request-envelope-analysis-2026-03-18.md` distinguishes accepted and rejected request-envelope families using complete request artifacts and hashes.
+- llm-broker's `docs/compat-debugging-2026-03-18.md` records replay ablations and shows that a correct local fix may still be absent from production after deployment rollback.
 
 Dependency order:
 
