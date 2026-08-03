@@ -4,14 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/effect"
 	"github.com/yansircc/agentlab/internal/strictjson"
 )
-
-type StartPayload struct {
-	Handoff *artifact.Ref `json:"handoff,omitempty"`
-}
 
 type AttachedStartResult struct {
 	State   AdapterState   `json:"state"`
@@ -25,53 +20,13 @@ type attachedStartAttempt struct {
 	Capabilities AdapterCapabilities `json:"capabilities"`
 }
 
-func EncodeStartPayload(kind effect.Kind, value StartPayload) ([]byte, error) {
-	if (kind == effect.WorkerStart && value.Handoff != nil) || (kind == effect.CoderStart && (value.Handoff == nil || !validRef(*value.Handoff))) || (kind != effect.WorkerStart && kind != effect.CoderStart) {
-		return nil, errors.New("start payload is invalid")
-	}
-	return json.Marshal(value)
-}
-
-func (o *Operation) CoderHandoff(intent effect.Intent) (artifact.Ref, error) {
-	if intent.Kind != effect.CoderStart || intent.RunID != o.runID || intent.Validate() != nil {
-		return artifact.Ref{}, errors.New("coder start intent is invalid")
-	}
-	payload, err := o.ReadEffectPayload(intent)
-	if err != nil {
-		return artifact.Ref{}, err
-	}
-	var value StartPayload
-	if strictjson.Decode(payload, &value) != nil || value.Handoff == nil {
-		return artifact.Ref{}, errors.New("coder handoff is invalid")
-	}
-	if _, err := EncodeStartPayload(effect.CoderStart, value); err != nil {
-		return artifact.Ref{}, err
-	}
-	if _, err := o.artifacts.Read(*value.Handoff); err != nil {
-		return artifact.Ref{}, err
-	}
-	return *value.Handoff, nil
-}
-
 func (o *Operation) BeginAttachedEffect(intent effect.Intent, spec AttachedSpec) (AttachedStartResult, error) {
 	if intent.RunID != o.runID || (intent.Kind != effect.WorkerStart && intent.Kind != effect.CoderStart) || intent.Validate() != nil || validateAttachedSpec(spec) != nil {
 		return AttachedStartResult{}, errors.New("attached start effect is invalid")
 	}
-	payload, err := o.ReadEffectPayload(intent)
+	start, err := o.startPayload(intent)
 	if err != nil {
 		return AttachedStartResult{}, err
-	}
-	var start StartPayload
-	if strictjson.Decode(payload, &start) != nil {
-		return AttachedStartResult{}, errors.New("start payload is invalid")
-	}
-	if _, err := EncodeStartPayload(intent.Kind, start); err != nil {
-		return AttachedStartResult{}, err
-	}
-	if start.Handoff != nil {
-		if _, err := o.artifacts.Read(*start.Handoff); err != nil {
-			return AttachedStartResult{}, err
-		}
 	}
 	attempt, err := json.Marshal(attachedStartAttempt{Adapter: spec.Adapter, StreamID: spec.StreamID, Policy: spec.Policy, Capabilities: spec.Capabilities})
 	if err != nil {
@@ -82,13 +37,13 @@ func (o *Operation) BeginAttachedEffect(intent effect.Intent, spec AttachedSpec)
 		return AttachedStartResult{}, err
 	}
 	if !created {
-		return o.reconcileAttachedStart(intent, spec)
+		return o.reconcileAttachedStart(intent, spec, start)
 	}
 	state, err := o.BeginAttached(spec)
 	if err != nil {
 		return AttachedStartResult{}, err
 	}
-	evidence, err := json.Marshal(state)
+	evidence, err := encodeStartObservation(state, start)
 	if err != nil {
 		return AttachedStartResult{}, err
 	}
@@ -98,7 +53,29 @@ func (o *Operation) BeginAttachedEffect(intent effect.Intent, spec AttachedSpec)
 	return o.settleAttachedStart(intent, evidence)
 }
 
-func (o *Operation) reconcileAttachedStart(intent effect.Intent, spec AttachedSpec) (AttachedStartResult, error) {
+func (o *Operation) startPayload(intent effect.Intent) (StartPayload, error) {
+	payload, err := o.ReadEffectPayload(intent)
+	if err != nil {
+		return StartPayload{}, err
+	}
+	var value StartPayload
+	if strictjson.Decode(payload, &value) != nil {
+		return StartPayload{}, errors.New("start payload is invalid")
+	}
+	if _, err := EncodeStartPayload(intent.Kind, value); err != nil {
+		return StartPayload{}, err
+	}
+	if value.Coder != nil {
+		for _, ref := range value.Coder.refs() {
+			if _, err := o.artifacts.Read(ref); err != nil {
+				return StartPayload{}, err
+			}
+		}
+	}
+	return value, nil
+}
+
+func (o *Operation) reconcileAttachedStart(intent effect.Intent, spec AttachedSpec, payload StartPayload) (AttachedStartResult, error) {
 	evidence, exists, err := o.EffectObservation(intent)
 	if err != nil {
 		return AttachedStartResult{}, err
@@ -110,7 +87,7 @@ func (o *Operation) reconcileAttachedStart(intent effect.Intent, spec AttachedSp
 	if err != nil || state.StreamID != spec.StreamID {
 		return AttachedStartResult{}, errors.New("attached start outcome is unknown; refusing to repeat it")
 	}
-	evidence, err = json.Marshal(state)
+	evidence, err = encodeStartObservation(state, payload)
 	if err != nil {
 		return AttachedStartResult{}, err
 	}
@@ -121,8 +98,8 @@ func (o *Operation) reconcileAttachedStart(intent effect.Intent, spec AttachedSp
 }
 
 func (o *Operation) settleAttachedStart(intent effect.Intent, evidence []byte) (AttachedStartResult, error) {
-	var state AdapterState
-	if strictjson.Decode(evidence, &state) != nil || state.Adapter == "" || state.StreamID == "" {
+	state, err := decodeStartObservation(evidence, intent.Kind)
+	if err != nil {
 		return AttachedStartResult{}, errors.New("attached start observation is invalid")
 	}
 	if receipt, exists, err := o.EffectReceipt(intent.ID); err != nil {

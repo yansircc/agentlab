@@ -58,8 +58,10 @@ func applySchema() map[string]any {
 
 func runSchema() map[string]any {
 	return object(map[string]any{
-		"action": enum("start", "poll", "stop", "checkpoint", "fork", "status"),
-		"effect": opaque("Closed decision-bound effect."), "runtime_ref": text("Host-issued opaque runtime profile ref."), "run_id": text("Experiment-scoped opaque run ref."),
+		"action":   enum("start", "poll", "stop", "checkpoint", "fork", "status"),
+		"decision": opaque("Supervisor decision bound atomically to the requested effect."), "effect_id": text("Write-once effect identity."),
+		"runtime_ref": text("Host-issued opaque runtime profile ref."), "run_id": text("Experiment-scoped opaque run ref."), "handoff": opaque("Experiment-owned Coder handoff ref."),
+		"reason": text("Durable stop reason."), "entry_locator": text("Public runtime-tree entry locator."), "checkpoint": opaque("Runtime checkpoint ref."),
 	}, "action")
 }
 

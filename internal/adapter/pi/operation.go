@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/yansircc/agentlab/internal/effect"
 	"github.com/yansircc/agentlab/internal/processidentity"
 	"github.com/yansircc/agentlab/internal/run"
 )
@@ -47,6 +48,23 @@ func Begin(operation *run.Operation, sessionPath string, policy run.StopPolicy, 
 		return BeginResult{}, err
 	}
 	return BeginResult{SessionID: cursor.SessionID, Offset: cursor.Offset}, nil
+}
+
+// BeginEffect is the decision-bound counterpart to Begin. The session locator
+// is Host authority; model input reaches it only through an opaque profile.
+func BeginEffect(operation *run.Operation, intent effect.Intent, sessionPath string, policy run.StopPolicy, identity *processidentity.Identity) (run.AttachedStartResult, error) {
+	cursor, err := Attach(sessionPath)
+	if err != nil {
+		return run.AttachedStartResult{}, err
+	}
+	encoded, err := encodeCursor(cursor)
+	if err != nil {
+		return run.AttachedStartResult{}, err
+	}
+	return operation.BeginAttachedEffect(intent, run.AttachedSpec{
+		Adapter: adapterName, StreamID: cursor.SessionID, InitialCursor: encoded,
+		Policy: policy, Identity: identity, Capabilities: run.RequiredAdapterCapabilities(),
+	})
 }
 
 func Poll(operation *run.Operation, sessionPath string) (result PollResult, resultErr error) {

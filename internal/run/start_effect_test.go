@@ -4,7 +4,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/effect"
+	"github.com/yansircc/agentlab/internal/strictjson"
 )
 
 func TestAttachedWorkerStartEffectSettlesOneIntent(t *testing.T) {
@@ -34,5 +36,43 @@ func TestAttachedWorkerStartEffectSettlesOneIntent(t *testing.T) {
 func TestCoderStartRequiresBoundedHandoff(t *testing.T) {
 	if _, err := EncodeStartPayload(effect.CoderStart, StartPayload{}); err == nil {
 		t.Fatal("coder start accepted no handoff")
+	}
+	if _, err := EncodeStartPayload(effect.WorkerStart, StartPayload{Coder: &CoderProfile{}}); err == nil {
+		t.Fatal("worker start accepted coder profile")
+	}
+}
+
+func TestCoderStartReceiptBindsHostProfile(t *testing.T) {
+	op, _ := Open(t.TempDir(), "effect-experiment", "effect-run")
+	bindTestManifest(t, op)
+	put := func(name string) artifact.Ref {
+		ref, err := op.artifacts.Put([]byte(name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ref
+	}
+	profile := CoderProfile{Handoff: put("handoff"), SourceSnapshot: put("source"), CandidateWorkspace: put("workspace"), CapabilityProfile: put("profile")}
+	payload, err := EncodeStartPayload(effect.CoderStart, StartPayload{Coder: &profile})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref, err := op.artifacts.Put(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	intent := effect.Intent{ID: "coder-start", RunID: "effect-run", Kind: effect.CoderStart, Payload: ref}
+	policy := StopPolicy{FirstEventTimeout: time.Second, SoftIdleTimeout: 2 * time.Second, HardIdleTimeout: 3 * time.Second}
+	result, err := op.BeginAttachedEffect(intent, AttachedSpec{Adapter: "test", StreamID: "coder-session", InitialCursor: []byte("cursor"), Policy: policy, Capabilities: RequiredAdapterCapabilities()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	evidence, err := op.artifacts.Read(result.Receipt.Evidence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var observed startObservation
+	if strictjson.Decode(evidence, &observed) != nil || observed.Coder == nil || *observed.Coder != profile || observed.State.StreamID != "coder-session" {
+		t.Fatalf("receipt = %#v", observed)
 	}
 }

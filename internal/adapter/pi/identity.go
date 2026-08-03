@@ -12,12 +12,12 @@ import (
 var sdkBridge []byte
 
 type IdentityConfig struct {
-	SDKRoot          string
-	AdapterDigest    string
-	Provider         string
-	Model            string
-	ThinkingPolicy   string
-	CompactionPolicy string
+	SDKRoot          string `json:"sdk_root"`
+	AdapterDigest    string `json:"adapter_digest"`
+	Provider         string `json:"provider"`
+	Model            string `json:"model"`
+	ThinkingPolicy   string `json:"thinking_policy"`
+	CompactionPolicy string `json:"compaction_policy"`
 }
 
 func DiscoverIdentity(config IdentityConfig) (AdapterIdentity, error) {

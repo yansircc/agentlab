@@ -44,6 +44,7 @@ func toolInvoke(args []string) (any, error) {
 	preparationID := set.String("preparation", "", "host-bound preparation id")
 	experimentID := set.String("experiment", "", "host-bound experiment id")
 	authority := set.String("authority", "supervisor", "host-bound authority profile")
+	piRuntimePlan := set.String("pi-runtime-plan", "", "host-bound Pi runtime plan")
 	if err := set.Parse(args); err != nil {
 		return nil, err
 	}
@@ -58,5 +59,17 @@ func toolInvoke(args []string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return tool.Execute(tool.Binding{Root: *root, PreparationID: *preparationID, ExperimentID: *experimentID, Authority: *authority}, operation)
+	binding := tool.Binding{Root: *root, PreparationID: *preparationID, ExperimentID: *experimentID, Authority: *authority}
+	if *piRuntimePlan != "" {
+		plan, err := os.ReadFile(*piRuntimePlan)
+		if err != nil {
+			return nil, err
+		}
+		host, err := tool.DecodePiRuntimeHost(plan)
+		if err != nil {
+			return nil, err
+		}
+		binding.Runtime = host
+	}
+	return tool.Execute(binding, operation)
 }

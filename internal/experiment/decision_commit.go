@@ -32,8 +32,8 @@ func (o *Operation) CommitDecisionBoundEffect(value DecisionBoundEffect) error {
 			if err != nil {
 				return err
 			}
-			handoff, err := target.CoderHandoff(value.Intent)
-			if err != nil || current.handoffs[handoff].Artifact != handoff {
+			profile, err := target.CoderProfile(value.Intent)
+			if err != nil || current.handoffs[profile.Handoff].Artifact != profile.Handoff || profile.SourceSnapshot != current.begun.Source {
 				return errors.New("coder start requires an experiment-owned handoff")
 			}
 		}

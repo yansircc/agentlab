@@ -4,9 +4,9 @@ import (
 	"errors"
 	"reflect"
 
+	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/effect"
 	"github.com/yansircc/agentlab/internal/experiment"
-	"github.com/yansircc/agentlab/internal/processidentity"
 	"github.com/yansircc/agentlab/internal/run"
 )
 
@@ -21,11 +21,17 @@ func decodeRun(data []byte) (Operation, error) {
 		return nil, err
 	}
 	switch action {
-	case "start", "checkpoint", "fork":
-		var value runtimeEffect
+	case "start":
+		var value startRun
 		return decodeRunValue(data, &value)
 	case "stop":
 		var value stopRun
+		return decodeRunValue(data, &value)
+	case "checkpoint":
+		var value checkpointRun
+		return decodeRunValue(data, &value)
+	case "fork":
+		var value forkRun
 		return decodeRunValue(data, &value)
 	case "poll":
 		var value pollRun
@@ -45,44 +51,121 @@ func decodeRunValue(data []byte, value runOperation) (Operation, error) {
 	return value, nil
 }
 
-type runtimeEffect struct {
-	Action     string                         `json:"action"`
-	Effect     experiment.DecisionBoundEffect `json:"effect"`
-	RuntimeRef string                         `json:"runtime_ref"`
+type startRun struct {
+	Action     string                        `json:"action"`
+	Decision   experiment.SupervisorDecision `json:"decision"`
+	EffectID   string                        `json:"effect_id"`
+	RunID      string                        `json:"run_id"`
+	RuntimeRef string                        `json:"runtime_ref"`
+	Handoff    *artifact.Ref                 `json:"handoff,omitempty"`
 }
 
-func (runtimeEffect) toolName() string { return RunTool }
-func (runtimeEffect) runOperation()    {}
-
-func (value runtimeEffect) execute(binding Binding) (any, error) {
-	if value.RuntimeRef == "" || binding.Runtime == nil {
-		return nil, errors.New("tool runtime profile is unavailable")
+func (startRun) toolName() string { return RunTool }
+func (startRun) runOperation()    {}
+func (value startRun) execute(binding Binding) (any, error) {
+	if binding.Runtime == nil || value.EffectID != value.Decision.ID {
+		return nil, errors.New("start operation is invalid")
 	}
-	kind := value.Effect.Intent.Kind
-	if (value.Action == "start" && kind != effect.WorkerStart && kind != effect.CoderStart) || (value.Action == "checkpoint" && kind != effect.Checkpoint) || (value.Action == "fork" && kind != effect.Fork) {
-		return nil, errors.New("run action and effect kind differ")
-	}
-	op, err := binding.experiment()
+	intent, err := binding.Runtime.StartIntent(binding, StartRequest{ID: value.EffectID, RunID: value.RunID, RuntimeRef: value.RuntimeRef, Handoff: value.Handoff})
 	if err != nil {
 		return nil, err
 	}
-	if err := commitEffect(op, value.Effect); err != nil {
+	if err := commitEffectForDecision(binding, value.Decision, intent); err != nil {
 		return nil, err
 	}
-	switch value.Action {
-	case "start":
-		return binding.Runtime.Start(binding, value.Effect.Intent, value.RuntimeRef)
-	case "checkpoint":
-		return binding.Runtime.Checkpoint(binding, value.Effect.Intent, value.RuntimeRef)
-	case "fork":
-		return binding.Runtime.Fork(binding, value.Effect.Intent, value.RuntimeRef)
-	default:
-		return nil, errors.New("runtime action is invalid")
-	}
+	return binding.Runtime.Start(binding, intent, value.RuntimeRef)
 }
 
-func commitEffect(op *experiment.Operation, value experiment.DecisionBoundEffect) error {
-	existing, err := op.DecisionBoundEffect(value.Intent.ID)
+type stopRun struct {
+	Action   string                        `json:"action"`
+	Decision experiment.SupervisorDecision `json:"decision"`
+	EffectID string                        `json:"effect_id"`
+	RunID    string                        `json:"run_id"`
+	Reason   string                        `json:"reason"`
+}
+
+func (stopRun) toolName() string { return RunTool }
+func (stopRun) runOperation()    {}
+func (value stopRun) execute(binding Binding) (any, error) {
+	if value.EffectID != value.Decision.ID || value.RunID == "" {
+		return nil, errors.New("stop operation is invalid")
+	}
+	payload, err := run.EncodeStopPayload(run.StopPayload{Reason: value.Reason})
+	if err != nil {
+		return nil, err
+	}
+	ref, err := binding.store().Put(payload)
+	if err != nil {
+		return nil, err
+	}
+	intent := effect.Intent{ID: value.EffectID, RunID: value.RunID, Kind: effect.Stop, Payload: ref}
+	if err := commitEffectForDecision(binding, value.Decision, intent); err != nil {
+		return nil, err
+	}
+	op, err := run.Open(binding.Root, binding.ExperimentID, value.RunID)
+	if err != nil {
+		return nil, err
+	}
+	return op.RequestStopEffect(intent)
+}
+
+type checkpointRun struct {
+	Action       string                        `json:"action"`
+	Decision     experiment.SupervisorDecision `json:"decision"`
+	EffectID     string                        `json:"effect_id"`
+	RunID        string                        `json:"run_id"`
+	RuntimeRef   string                        `json:"runtime_ref"`
+	EntryLocator string                        `json:"entry_locator"`
+}
+
+func (checkpointRun) toolName() string { return RunTool }
+func (checkpointRun) runOperation()    {}
+func (value checkpointRun) execute(binding Binding) (any, error) {
+	if binding.Runtime == nil || value.EffectID != value.Decision.ID {
+		return nil, errors.New("checkpoint operation is invalid")
+	}
+	intent, err := binding.Runtime.CheckpointIntent(binding, CheckpointRequest{ID: value.EffectID, RunID: value.RunID, RuntimeRef: value.RuntimeRef, EntryLocator: value.EntryLocator})
+	if err != nil {
+		return nil, err
+	}
+	if err := commitEffectForDecision(binding, value.Decision, intent); err != nil {
+		return nil, err
+	}
+	return binding.Runtime.Checkpoint(binding, intent, value.RuntimeRef)
+}
+
+type forkRun struct {
+	Action     string                        `json:"action"`
+	Decision   experiment.SupervisorDecision `json:"decision"`
+	EffectID   string                        `json:"effect_id"`
+	RunID      string                        `json:"run_id"`
+	RuntimeRef string                        `json:"runtime_ref"`
+	Checkpoint artifact.Ref                  `json:"checkpoint"`
+}
+
+func (forkRun) toolName() string { return RunTool }
+func (forkRun) runOperation()    {}
+func (value forkRun) execute(binding Binding) (any, error) {
+	if binding.Runtime == nil || value.EffectID != value.Decision.ID {
+		return nil, errors.New("fork operation is invalid")
+	}
+	intent, err := binding.Runtime.ForkIntent(binding, ForkRequest{ID: value.EffectID, RunID: value.RunID, RuntimeRef: value.RuntimeRef, Checkpoint: value.Checkpoint})
+	if err != nil {
+		return nil, err
+	}
+	if err := commitEffectForDecision(binding, value.Decision, intent); err != nil {
+		return nil, err
+	}
+	return binding.Runtime.Fork(binding, intent, value.RuntimeRef)
+}
+
+func commitEffectForDecision(binding Binding, decision experiment.SupervisorDecision, intent effect.Intent) error {
+	op, err := binding.experiment()
+	if err != nil {
+		return err
+	}
+	value := experiment.DecisionBoundEffect{Decision: decision, Intent: intent}
+	existing, err := op.DecisionBoundEffect(intent.ID)
 	if err == nil {
 		if reflect.DeepEqual(existing, value) {
 			return nil
@@ -90,62 +173,4 @@ func commitEffect(op *experiment.Operation, value experiment.DecisionBoundEffect
 		return errors.New("effect intent identity changed")
 	}
 	return op.CommitDecisionBoundEffect(value)
-}
-
-type stopRun struct {
-	Action string                         `json:"action"`
-	Effect experiment.DecisionBoundEffect `json:"effect"`
-}
-
-func (stopRun) toolName() string { return RunTool }
-func (stopRun) runOperation()    {}
-func (value stopRun) execute(binding Binding) (any, error) {
-	if value.Effect.Intent.Kind != effect.Stop {
-		return nil, errors.New("stop action requires stop effect")
-	}
-	op, err := binding.experiment()
-	if err != nil {
-		return nil, err
-	}
-	if err = commitEffect(op, value.Effect); err != nil {
-		return nil, err
-	}
-	target, err := run.Open(binding.Root, binding.ExperimentID, value.Effect.Intent.RunID)
-	if err != nil {
-		return nil, err
-	}
-	return target.RequestStopEffect(value.Effect.Intent)
-}
-
-type pollRun struct {
-	Action     string `json:"action"`
-	RunID      string `json:"run_id"`
-	RuntimeRef string `json:"runtime_ref"`
-}
-
-func (pollRun) toolName() string { return RunTool }
-func (pollRun) runOperation()    {}
-func (value pollRun) execute(binding Binding) (any, error) {
-	if value.RunID == "" || value.RuntimeRef == "" || binding.Runtime == nil {
-		return nil, errors.New("tool runtime profile is unavailable")
-	}
-	return binding.Runtime.Poll(binding, value.RunID, value.RuntimeRef)
-}
-
-type statusRun struct {
-	Action string `json:"action"`
-	RunID  string `json:"run_id"`
-}
-
-func (statusRun) toolName() string { return RunTool }
-func (statusRun) runOperation()    {}
-func (value statusRun) execute(binding Binding) (any, error) {
-	if value.RunID == "" {
-		return nil, errors.New("run id is required")
-	}
-	op, err := run.Open(binding.Root, binding.ExperimentID, value.RunID)
-	if err != nil {
-		return nil, err
-	}
-	return op.ProjectStatus(processidentity.SystemProber{})
 }

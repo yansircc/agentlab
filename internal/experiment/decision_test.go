@@ -3,6 +3,7 @@ package experiment
 import (
 	"testing"
 
+	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/effect"
 	"github.com/yansircc/agentlab/internal/finding"
 	"github.com/yansircc/agentlab/internal/gate"
@@ -108,6 +109,55 @@ func TestCoderHandoffMustBeExperimentOwnedAndDecisionBound(t *testing.T) {
 	}
 	if record, err := operation.Handoff(result.Artifact); err != nil || len(record.FindingIDs) != 1 || record.FindingIDs[0] != bound.Finding.ID {
 		t.Fatalf("owned handoff = %#v, %v", record, err)
+	}
+}
+
+func TestCoderEffectBindsHandoffSourceWorkspaceAndProfile(t *testing.T) {
+	_, operation, _, value := decisionFixture(t)
+	value.Decision.Action = DecisionFinding
+	findingValue := finding.Finding{ID: "finding-coder", Class: "target_mismatch", Severity: finding.SeverityHigh, Symptom: "receipt differs", Impact: "production changed", Evidence: value.Decision.Evidence, Confidence: finding.ConfidenceHigh, Falsifier: "target agrees"}
+	if err := operation.RecordFindingWithDecision(DecisionBoundFinding{Decision: value.Decision, Finding: findingValue}); err != nil {
+		t.Fatal(err)
+	}
+	handoffDecision := value.Decision
+	handoffDecision.ID, handoffDecision.Action = "handoff-coder", DecisionHandoff
+	handoff, err := operation.RenderHandoffWithDecision(handoffDecision, []string{findingValue.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindTestRun(t, operation, "coder")
+	current, err := operation.current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	put := func(name string) artifact.Ref {
+		ref, err := operation.artifacts.Put([]byte(name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ref
+	}
+	profile := run.CoderProfile{Handoff: handoff.Artifact, SourceSnapshot: current.begun.Source, CandidateWorkspace: put("workspace"), CapabilityProfile: put("capability")}
+	payload, err := run.EncodeStartPayload(effect.CoderStart, run.StartPayload{Coder: &profile})
+	if err != nil {
+		t.Fatal(err)
+	}
+	payloadRef, err := operation.artifacts.Put(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	coderDecision := value.Decision
+	coderDecision.ID, coderDecision.Action = "coder-start", DecisionCoderStart
+	coder := DecisionBoundEffect{Decision: coderDecision, Intent: effect.Intent{ID: "coder-start", RunID: "coder", Kind: effect.CoderStart, Payload: payloadRef}}
+	if err := operation.CommitDecisionBoundEffect(coder); err != nil {
+		t.Fatal(err)
+	}
+	profile.SourceSnapshot = put("wrong-source")
+	payload, _ = run.EncodeStartPayload(effect.CoderStart, run.StartPayload{Coder: &profile})
+	payloadRef, _ = operation.artifacts.Put(payload)
+	coder.Decision.ID, coder.Intent.ID, coder.Intent.Payload = "coder-wrong-source", "coder-wrong-source", payloadRef
+	if err := operation.CommitDecisionBoundEffect(coder); err == nil {
+		t.Fatal("coder start accepted a foreign source snapshot")
 	}
 }
 

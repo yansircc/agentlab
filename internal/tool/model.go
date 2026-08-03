@@ -31,10 +31,34 @@ type Binding struct {
 // RuntimeHost owns adapter locators, executable selection, session paths, and
 // role capability profiles. The model can only select an opaque profile ref.
 type RuntimeHost interface {
+	StartIntent(Binding, StartRequest) (effect.Intent, error)
+	CheckpointIntent(Binding, CheckpointRequest) (effect.Intent, error)
+	ForkIntent(Binding, ForkRequest) (effect.Intent, error)
 	Start(Binding, effect.Intent, string) (any, error)
 	Poll(Binding, string, string) (any, error)
 	Checkpoint(Binding, effect.Intent, string) (any, error)
 	Fork(Binding, effect.Intent, string) (any, error)
+}
+
+type StartRequest struct {
+	ID         string
+	RunID      string
+	RuntimeRef string
+	Handoff    *artifact.Ref
+}
+
+type CheckpointRequest struct {
+	ID           string
+	RunID        string
+	RuntimeRef   string
+	EntryLocator string
+}
+
+type ForkRequest struct {
+	ID         string
+	RunID      string
+	RuntimeRef string
+	Checkpoint artifact.Ref
 }
 
 func (b Binding) Validate() error {
