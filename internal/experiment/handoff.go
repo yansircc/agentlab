@@ -15,13 +15,36 @@ type HandoffResult struct {
 	EvidenceCount int          `json:"evidence_count"`
 }
 
-func (o *Operation) RenderHandoff(findingIDs []string) (HandoffResult, error) {
-	if len(findingIDs) == 0 || len(findingIDs) > 50 {
-		return HandoffResult{}, errors.New("handoff requires 1..50 findings")
+type HandoffRecord struct {
+	Artifact   artifact.Ref `json:"artifact"`
+	FindingIDs []string     `json:"finding_ids"`
+}
+
+func (value HandoffRecord) Validate() error {
+	if !validRef(value.Artifact) || len(value.FindingIDs) == 0 || len(value.FindingIDs) > 50 {
+		return errors.New("handoff record is invalid")
 	}
+	seen := map[string]bool{}
+	for _, id := range value.FindingIDs {
+		if !idPattern.MatchString(id) || seen[id] {
+			return errors.New("handoff finding ids are invalid")
+		}
+		seen[id] = true
+	}
+	return nil
+}
+
+func (o *Operation) RenderHandoff(findingIDs []string) (HandoffResult, error) {
 	current, err := o.current()
 	if err != nil {
 		return HandoffResult{}, err
+	}
+	return o.renderHandoff(current, findingIDs)
+}
+
+func (o *Operation) renderHandoff(current state, findingIDs []string) (HandoffResult, error) {
+	if len(findingIDs) == 0 || len(findingIDs) > 50 {
+		return HandoffResult{}, errors.New("handoff requires 1..50 findings")
 	}
 	seen := map[string]bool{}
 	var document strings.Builder

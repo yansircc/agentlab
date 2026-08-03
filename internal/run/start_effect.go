@@ -32,6 +32,27 @@ func EncodeStartPayload(kind effect.Kind, value StartPayload) ([]byte, error) {
 	return json.Marshal(value)
 }
 
+func (o *Operation) CoderHandoff(intent effect.Intent) (artifact.Ref, error) {
+	if intent.Kind != effect.CoderStart || intent.RunID != o.runID || intent.Validate() != nil {
+		return artifact.Ref{}, errors.New("coder start intent is invalid")
+	}
+	payload, err := o.ReadEffectPayload(intent)
+	if err != nil {
+		return artifact.Ref{}, err
+	}
+	var value StartPayload
+	if strictjson.Decode(payload, &value) != nil || value.Handoff == nil {
+		return artifact.Ref{}, errors.New("coder handoff is invalid")
+	}
+	if _, err := EncodeStartPayload(effect.CoderStart, value); err != nil {
+		return artifact.Ref{}, err
+	}
+	if _, err := o.artifacts.Read(*value.Handoff); err != nil {
+		return artifact.Ref{}, err
+	}
+	return *value.Handoff, nil
+}
+
 func (o *Operation) BeginAttachedEffect(intent effect.Intent, spec AttachedSpec) (AttachedStartResult, error) {
 	if intent.RunID != o.runID || (intent.Kind != effect.WorkerStart && intent.Kind != effect.CoderStart) || intent.Validate() != nil || validateAttachedSpec(spec) != nil {
 		return AttachedStartResult{}, errors.New("attached start effect is invalid")

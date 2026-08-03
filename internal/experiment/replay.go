@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/comparison"
 	"github.com/yansircc/agentlab/internal/diagnosis"
 	"github.com/yansircc/agentlab/internal/finding"
@@ -24,6 +25,7 @@ func initialState() state {
 		gates:       map[string]gate.Receipt{},
 		effects:     map[string]DecisionBoundEffect{},
 		decisions:   map[string]SupervisorDecision{},
+		handoffs:    map[artifact.Ref]HandoffRecord{},
 	}
 }
 
@@ -127,6 +129,8 @@ func (s *state) apply(record ledger.Record) error {
 		return s.decisionEffect(record)
 	case eventDecisionFinding:
 		return s.decisionFinding(record)
+	case eventDecisionHandoff:
+		return s.decisionHandoff(record)
 	default:
 		return fmt.Errorf("unknown experiment event %q", record.Kind)
 	}

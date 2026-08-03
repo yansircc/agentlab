@@ -19,6 +19,7 @@ const (
 	eventGate            = "candidate_gate_recorded"
 	eventDecisionEffect  = "decision_effect_intended"
 	eventDecisionFinding = "decision_finding_recorded"
+	eventDecisionHandoff = "decision_handoff_recorded"
 )
 
 type begun struct {
@@ -61,5 +62,6 @@ type state struct {
 	effectOrder     []string
 	decisions       map[string]SupervisorDecision
 	decisionOrder   []string
+	handoffs        map[artifact.Ref]HandoffRecord
 	eventCount      uint64
 }

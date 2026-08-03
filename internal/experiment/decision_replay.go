@@ -28,3 +28,23 @@ func (s *state) decisionFinding(record ledger.Record) error {
 	s.decisionOrder = append(s.decisionOrder, value.Decision.ID)
 	return nil
 }
+
+func (s *state) decisionHandoff(record ledger.Record) error {
+	var value DecisionBoundHandoff
+	if decode(record.Data, &value) != nil || value.Validate() != nil {
+		return invalid(record, "invalid decision-bound handoff")
+	}
+	_, exists := s.handoffs[value.Handoff.Artifact]
+	if s.runs[value.Decision.WorkerRun].RunID == "" || s.decisions[value.Decision.ID].ID != "" || exists {
+		return invalid(record, "invalid decision-bound handoff")
+	}
+	for _, id := range value.Handoff.FindingIDs {
+		if s.findings[id].ID == "" {
+			return invalid(record, "handoff references absent finding")
+		}
+	}
+	s.handoffs[value.Handoff.Artifact] = value.Handoff
+	s.decisions[value.Decision.ID] = value.Decision
+	s.decisionOrder = append(s.decisionOrder, value.Decision.ID)
+	return nil
+}

@@ -27,6 +27,16 @@ func (o *Operation) CommitDecisionBoundEffect(value DecisionBoundEffect) error {
 		if _, exists := current.effects[value.Intent.ID]; exists {
 			return errors.New("decision-bound effect id already exists")
 		}
+		if value.Intent.Kind == effect.CoderStart {
+			target, err := run.Open(o.root, o.id, value.Intent.RunID)
+			if err != nil {
+				return err
+			}
+			handoff, err := target.CoderHandoff(value.Intent)
+			if err != nil || current.handoffs[handoff].Artifact != handoff {
+				return errors.New("coder start requires an experiment-owned handoff")
+			}
+		}
 		return o.append(eventDecisionEffect, value)
 	})
 }

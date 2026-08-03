@@ -90,6 +90,27 @@ func TestFindingCannotBeSeparatedFromItsSupervisorDecision(t *testing.T) {
 	}
 }
 
+func TestCoderHandoffMustBeExperimentOwnedAndDecisionBound(t *testing.T) {
+	_, operation, _, value := decisionFixture(t)
+	value.Decision.Action = DecisionFinding
+	bound := DecisionBoundFinding{Decision: value.Decision, Finding: finding.Finding{
+		ID: "finding-1", Class: "target_mismatch", Severity: finding.SeverityHigh, Symptom: "receipt differs", Impact: "production changed",
+		Evidence: value.Decision.Evidence, Confidence: finding.ConfidenceHigh, Falsifier: "target agrees",
+	}}
+	if err := operation.RecordFindingWithDecision(bound); err != nil {
+		t.Fatal(err)
+	}
+	handoffDecision := value.Decision
+	handoffDecision.ID, handoffDecision.Action = "handoff-1", DecisionHandoff
+	result, err := operation.RenderHandoffWithDecision(handoffDecision, []string{bound.Finding.ID})
+	if err != nil || result.Artifact.Digest == "" {
+		t.Fatalf("handoff = %#v, %v", result, err)
+	}
+	if record, err := operation.Handoff(result.Artifact); err != nil || len(record.FindingIDs) != 1 || record.FindingIDs[0] != bound.Finding.ID {
+		t.Fatalf("owned handoff = %#v, %v", record, err)
+	}
+}
+
 func decisionFixture(t *testing.T) (string, *Operation, *run.Operation, DecisionBoundEffect) {
 	t.Helper()
 	root := t.TempDir()
