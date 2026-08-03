@@ -78,4 +78,4 @@ AgentLab does not coach Workers, capture private thinking, modify source automat
 
 ## Contributing and security
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md). The project is released under the [MIT License](LICENSE).
+See [CONTRIBUTING.md](CONTRIBUTING.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), and [SECURITY.md](SECURITY.md). The project is released under the [MIT License](LICENSE).

@@ -27,3 +27,5 @@ Avoid compatibility shims, shadow state, provider-specific kernel types, and fal
 ## Pull requests
 
 Keep changes focused, document any public CLI or artifact-contract change, and do not include tokens, session files, artifacts, or local `.agentlab` state. Public APIs currently remain experimental.
+
+All project spaces follow the [Code of Conduct](CODE_OF_CONDUCT.md). Security-sensitive reports follow [SECURITY.md](SECURITY.md), not public issues.
