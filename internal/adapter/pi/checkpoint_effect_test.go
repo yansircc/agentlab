@@ -64,7 +64,7 @@ func checkpointEffectFixture(t *testing.T) (string, *run.Operation, effect.Inten
 		t.Fatal(err)
 	}
 	sdkRoot := installedSDKRoot(t)
-	identity, err := DiscoverIdentity(IdentityConfig{SDKRoot: sdkRoot, AdapterDigest: strings.Repeat("a", 64), Provider: "test", Model: "test", ThinkingPolicy: "off", CompactionPolicy: "off"})
+	identity, err := DiscoverIdentity(IdentityConfig{SDKRoot: sdkRoot, ContextFilterPath: contextFilterPath(t), AdapterDigest: strings.Repeat("a", 64), Provider: "test", Model: "test", ThinkingPolicy: "off", CompactionPolicy: "off"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,5 +80,5 @@ func checkpointEffectFixture(t *testing.T) (string, *run.Operation, effect.Inten
 	if err != nil {
 		t.Fatal(err)
 	}
-	return root, operation, effect.Intent{ID: "checkpoint-1", RunID: "worker", Kind: effect.Checkpoint, Payload: ref}, CheckpointEffectSpec{SDKRoot: sdkRoot, SessionPath: session}
+	return root, operation, effect.Intent{ID: "checkpoint-1", RunID: "worker", Kind: effect.Checkpoint, Payload: ref}, CheckpointEffectSpec{SDKRoot: sdkRoot, ContextFilterPath: contextFilterPath(t), SessionPath: session}
 }

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/yansircc/agentlab/internal/processidentity"
 	"github.com/yansircc/agentlab/internal/transaction"
 )
 
@@ -49,6 +50,29 @@ func (o *Operation) RequestStop(reason string) (StopResult, error) {
 		request = &created
 	}
 	result := StopResult{ID: request.ID, At: request.At, Reason: request.Reason, Admitted: state.stopRequested}
+	if state.started.Process.Kind == processManaged {
+		if !state.stopRequested {
+			lease, err := transaction.Acquire(filepath.Join(o.dir, "producer.lock"))
+			if errors.Is(err, transaction.ErrLeaseHeld) {
+				return result, nil
+			}
+			if err != nil {
+				return StopResult{}, err
+			}
+			defer lease.Release()
+			if err := o.admitPendingStop(); err != nil {
+				return StopResult{}, err
+			}
+			result.Admitted = true
+		}
+		if state.started.Process.Identity == nil {
+			return StopResult{}, errors.New("managed process identity is absent")
+		}
+		if err := o.stopManagedProcess(*state.started.Process.Identity); err != nil {
+			return StopResult{}, err
+		}
+		return result, nil
+	}
 	if state.started.Process.Kind != processAttached || state.stopRequested {
 		return result, nil
 	}
@@ -65,6 +89,17 @@ func (o *Operation) RequestStop(reason string) (StopResult, error) {
 	}
 	result.Admitted = true
 	return result, nil
+}
+
+func (o *Operation) stopManagedProcess(identity processidentity.Identity) error {
+	switch o.attemptProber.Observe(identity) {
+	case processidentity.Dead, processidentity.Mismatch:
+		return nil
+	case processidentity.Matches:
+		return o.terminateIdentity(identity)
+	default:
+		return errors.New("managed process identity is unverifiable")
+	}
 }
 
 func (o *Operation) admitPendingStop() error {

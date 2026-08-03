@@ -131,6 +131,8 @@ func validProcessStarted(value processStarted) bool {
 		return value.AttemptID != "" && identityValid && value.Process.Identity != nil && value.Policy.OwnsWorkerProcess && value.Adapter == nil
 	case processAttached:
 		return value.AttemptID == "" && identityValid && !value.Policy.OwnsWorkerProcess && !value.Policy.KillOnHardIdle && value.Adapter != nil && value.Adapter.Adapter != "" && value.Adapter.StreamID != "" && validRef(value.Adapter.Cursor) && value.Adapter.Capabilities == RequiredAdapterCapabilities()
+	case processManaged:
+		return value.AttemptID != "" && identityValid && value.Process.Identity != nil && value.Policy.OwnsWorkerProcess && value.Adapter != nil && value.Adapter.Adapter != "" && value.Adapter.StreamID != "" && validRef(value.Adapter.Cursor) && value.Adapter.Capabilities == RequiredAdapterCapabilities()
 	default:
 		return false
 	}

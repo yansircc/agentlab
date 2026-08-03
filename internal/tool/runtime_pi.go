@@ -27,6 +27,7 @@ type PiRuntimeProfile struct {
 	Policy          run.StopPolicy           `json:"policy"`
 	Coder           *run.CoderProfile        `json:"coder,omitempty"`
 	CoderWorkspace  string                   `json:"coder_workspace,omitempty"`
+	CoderLaunch     *PiCoderLaunch           `json:"coder_launch,omitempty"`
 }
 
 type PiRuntimeHost struct{ profiles map[string]PiRuntimeProfile }
@@ -34,9 +35,9 @@ type PiRuntimeHost struct{ profiles map[string]PiRuntimeProfile }
 func NewPiRuntimeHost(profiles []PiRuntimeProfile) (*PiRuntimeHost, error) {
 	result := &PiRuntimeHost{profiles: make(map[string]PiRuntimeProfile, len(profiles))}
 	sessions := map[string]bool{}
-	workspaces := map[string]bool{}
+	var workspaces, runtimes []string
 	for _, profile := range profiles {
-		if err := profile.Validate(); err != nil || result.profiles[profile.Ref].Ref != "" || sessions[profile.SessionPath] || (profile.CoderWorkspace != "" && workspaces[profile.CoderWorkspace]) {
+		if err := profile.Validate(); err != nil || result.profiles[profile.Ref].Ref != "" || sessions[profile.SessionPath] || profileOverlaps(profile, workspaces, runtimes) {
 			return nil, errors.New("Pi runtime profile is invalid")
 		}
 		copy := profile
@@ -44,10 +45,17 @@ func NewPiRuntimeHost(profiles []PiRuntimeProfile) (*PiRuntimeHost, error) {
 			coder := *profile.Coder
 			copy.Coder = &coder
 		}
+		if profile.CoderLaunch != nil {
+			launch := profile.CoderLaunch.clone()
+			copy.CoderLaunch = &launch
+		}
 		result.profiles[profile.Ref] = copy
 		sessions[profile.SessionPath] = true
 		if profile.CoderWorkspace != "" {
-			workspaces[profile.CoderWorkspace] = true
+			workspaces = append(workspaces, profile.CoderWorkspace)
+		}
+		if profile.CoderLaunch != nil {
+			runtimes = append(runtimes, profile.CoderLaunch.RuntimeRoot)
 		}
 	}
 	return result, nil
@@ -65,13 +73,13 @@ func DecodePiRuntimeHost(data []byte) (*PiRuntimeHost, error) {
 }
 
 func (value PiRuntimeProfile) Validate() error {
-	if value.Ref == "" || value.ExperimentID == "" || value.RunID == "" || (value.Role != effect.WorkerStart && value.Role != effect.CoderStart) || !filepath.IsAbs(value.SessionPath) || !filepath.IsAbs(value.Identity.SDKRoot) || value.Policy.Validate() != nil || value.Policy.OwnsWorkerProcess || value.Policy.KillOnHardIdle {
+	if value.Ref == "" || value.ExperimentID == "" || value.RunID == "" || (value.Role != effect.WorkerStart && value.Role != effect.CoderStart) || !filepath.IsAbs(value.SessionPath) || !filepath.IsAbs(value.Identity.SDKRoot) || !filepath.IsAbs(value.Identity.ContextFilterPath) || value.Policy.Validate() != nil {
 		return errors.New("Pi runtime profile is invalid")
 	}
-	if value.Role == effect.WorkerStart && (value.Coder != nil || value.CoderWorkspace != "") {
+	if value.Role == effect.WorkerStart && (value.Coder != nil || value.CoderWorkspace != "" || value.CoderLaunch != nil || value.Policy.OwnsWorkerProcess || value.Policy.KillOnHardIdle) {
 		return errors.New("worker runtime carries coder profile")
 	}
-	if value.Role == effect.CoderStart && (value.Coder == nil || value.Coder.Validate() != nil || !filepath.IsAbs(value.CoderWorkspace)) {
+	if value.Role == effect.CoderStart && (value.Coder == nil || value.Coder.Validate() != nil || !filepath.IsAbs(value.CoderWorkspace) || value.CoderLaunch == nil || value.CoderLaunch.Validate() != nil || !value.Policy.OwnsWorkerProcess || value.Policy.KillOnHardIdle || !inside(value.CoderLaunch.RuntimeRoot, value.SessionPath) || overlaps(value.CoderWorkspace, value.CoderLaunch.RuntimeRoot)) {
 		return errors.New("coder runtime profile is invalid")
 	}
 	if value.ChildSessionDir != "" && !filepath.IsAbs(value.ChildSessionDir) {
@@ -80,10 +88,25 @@ func (value PiRuntimeProfile) Validate() error {
 	return nil
 }
 
+func profileOverlaps(profile PiRuntimeProfile, workspaces, runtimes []string) bool {
+	if profile.CoderLaunch == nil {
+		return false
+	}
+	for _, path := range append(append([]string{}, workspaces...), runtimes...) {
+		if overlaps(profile.CoderWorkspace, path) || overlaps(profile.CoderLaunch.RuntimeRoot, path) {
+			return true
+		}
+	}
+	return false
+}
+
 func (h *PiRuntimeHost) Start(binding Binding, intent effect.Intent, ref string) (any, error) {
 	profile, err := h.profile(binding, intent.RunID, ref)
 	if err != nil || intent.Kind != profile.Role {
 		return nil, errors.New("Pi start profile differs from intent")
+	}
+	if _, err := piadapter.DiscoverIdentity(profile.Identity); err != nil {
+		return nil, errors.New("Pi runtime identity differs from Host binding")
 	}
 	op, err := run.Open(binding.Root, binding.ExperimentID, intent.RunID)
 	if err != nil {
@@ -97,6 +120,7 @@ func (h *PiRuntimeHost) Start(binding Binding, intent effect.Intent, ref string)
 		if _, err := coder.Open(binding.store(), profileReceipt.CandidateWorkspace, profileReceipt.SourceSnapshot, profile.CoderWorkspace); err != nil {
 			return nil, errors.New("coder workspace differs from Host capability")
 		}
+		return startPiCoder(binding, op, intent, profile, profileReceipt)
 	}
 	return piadapter.BeginEffect(op, intent, profile.SessionPath, profile.Policy, nil)
 }
@@ -122,7 +146,7 @@ func (h *PiRuntimeHost) Checkpoint(binding Binding, intent effect.Intent, ref st
 	if err != nil {
 		return nil, err
 	}
-	return piadapter.CheckpointEffect(op, intent, piadapter.CheckpointEffectSpec{SDKRoot: profile.Identity.SDKRoot, SessionPath: profile.SessionPath})
+	return piadapter.CheckpointEffect(op, intent, piadapter.CheckpointEffectSpec{SDKRoot: profile.Identity.SDKRoot, ContextFilterPath: profile.Identity.ContextFilterPath, SessionPath: profile.SessionPath})
 }
 
 func (h *PiRuntimeHost) Fork(binding Binding, intent effect.Intent, ref string) (any, error) {
@@ -134,7 +158,7 @@ func (h *PiRuntimeHost) Fork(binding Binding, intent effect.Intent, ref string) 
 	if err != nil {
 		return nil, err
 	}
-	return piadapter.Fork(op, intent, piadapter.ForkSpec{SDKRoot: profile.Identity.SDKRoot, ParentSession: profile.SessionPath, ChildSessionDir: profile.ChildSessionDir})
+	return piadapter.Fork(op, intent, piadapter.ForkSpec{SDKRoot: profile.Identity.SDKRoot, ContextFilterPath: profile.Identity.ContextFilterPath, ParentSession: profile.SessionPath, ChildSessionDir: profile.ChildSessionDir})
 }
 
 func (h *PiRuntimeHost) profile(binding Binding, runID, ref string) (PiRuntimeProfile, error) {

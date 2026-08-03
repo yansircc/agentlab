@@ -1,6 +1,7 @@
 package tool
 
 import (
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -23,6 +24,9 @@ func TestPiRuntimeHostDerivesStartPayloadFromBoundProfile(t *testing.T) {
 	if err != nil || intent.Kind != effect.WorkerStart {
 		t.Fatalf("worker intent = %#v, %v", intent, err)
 	}
+	if _, err := worker.Start(binding, intent, "worker-profile"); err == nil {
+		t.Fatal("Pi start accepted an unverified runtime identity")
+	}
 	data, _ := binding.store().Read(intent.Payload)
 	var payload run.StartPayload
 	if strictjson.Decode(data, &payload) != nil || payload.Coder != nil {
@@ -38,7 +42,10 @@ func TestPiRuntimeHostDerivesStartPayloadFromBoundProfile(t *testing.T) {
 		return ref
 	}
 	coder := run.CoderProfile{Handoff: put("handoff"), SourceSnapshot: put("source"), CandidateWorkspace: put("workspace"), CapabilityProfile: put("capability")}
-	host, err := NewPiRuntimeHost([]PiRuntimeProfile{{Ref: "coder-profile", ExperimentID: "exp", RunID: "coder", Role: effect.CoderStart, SessionPath: t.TempDir() + "/coder.jsonl", Identity: testIdentity(t), Policy: policy, Coder: &coder, CoderWorkspace: t.TempDir()}})
+	coderPolicy := policy
+	coderPolicy.OwnsWorkerProcess = true
+	launch := testCoderLaunch(t)
+	host, err := NewPiRuntimeHost([]PiRuntimeProfile{{Ref: "coder-profile", ExperimentID: "exp", RunID: "coder", Role: effect.CoderStart, SessionPath: filepath.Join(launch.RuntimeRoot, "coder.jsonl"), Identity: testIdentity(t), Policy: coderPolicy, Coder: &coder, CoderWorkspace: t.TempDir(), CoderLaunch: launch}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,16 +68,23 @@ func TestPiRuntimeHostDerivesStartPayloadFromBoundProfile(t *testing.T) {
 
 func TestPiRuntimeHostRejectsSharedSessionsAndUnboundCoderWorkspace(t *testing.T) {
 	policy := run.StopPolicy{FirstEventTimeout: time.Second, SoftIdleTimeout: 2 * time.Second, HardIdleTimeout: 3 * time.Second}
-	shared := t.TempDir() + "/session.jsonl"
+	launch := testCoderLaunch(t)
+	shared := filepath.Join(launch.RuntimeRoot, "session.jsonl")
 	worker := PiRuntimeProfile{Ref: "worker", ExperimentID: "exp", RunID: "worker", Role: effect.WorkerStart, SessionPath: shared, Identity: testIdentity(t), Policy: policy}
-	coder := PiRuntimeProfile{Ref: "coder", ExperimentID: "exp", RunID: "coder", Role: effect.CoderStart, SessionPath: shared, Identity: testIdentity(t), Policy: policy, Coder: &run.CoderProfile{Handoff: testRef(), SourceSnapshot: testRef(), CandidateWorkspace: testRef(), CapabilityProfile: testRef()}, CoderWorkspace: t.TempDir()}
+	coderPolicy := policy
+	coderPolicy.OwnsWorkerProcess = true
+	coder := PiRuntimeProfile{Ref: "coder", ExperimentID: "exp", RunID: "coder", Role: effect.CoderStart, SessionPath: shared, Identity: testIdentity(t), Policy: coderPolicy, Coder: &run.CoderProfile{Handoff: testRef(), SourceSnapshot: testRef(), CandidateWorkspace: testRef(), CapabilityProfile: testRef()}, CoderWorkspace: t.TempDir(), CoderLaunch: launch}
 	if _, err := NewPiRuntimeHost([]PiRuntimeProfile{worker, coder}); err == nil {
 		t.Fatal("shared Worker and Coder session was accepted")
 	}
-	coder.SessionPath = t.TempDir() + "/coder.jsonl"
+	coder.SessionPath = filepath.Join(launch.RuntimeRoot, "coder.jsonl")
 	coder.CoderWorkspace = ""
 	if _, err := NewPiRuntimeHost([]PiRuntimeProfile{coder}); err == nil {
 		t.Fatal("coder profile omitted workspace capability")
+	}
+	coder.CoderWorkspace = launch.RuntimeRoot
+	if _, err := NewPiRuntimeHost([]PiRuntimeProfile{coder}); err == nil {
+		t.Fatal("coder workspace overlapped its runtime root")
 	}
 }
 
@@ -80,5 +94,12 @@ func testRef() artifact.Ref {
 
 func testIdentity(t *testing.T) piadapter.IdentityConfig {
 	t.Helper()
-	return piadapter.IdentityConfig{SDKRoot: t.TempDir(), AdapterDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Provider: "provider", Model: "model", ThinkingPolicy: "off", CompactionPolicy: "off"}
+	root := t.TempDir()
+	return piadapter.IdentityConfig{SDKRoot: root, ContextFilterPath: filepath.Join(root, "context-filter.ts"), AdapterDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Provider: "provider", Model: "model", ThinkingPolicy: "off", CompactionPolicy: "off"}
+}
+
+func testCoderLaunch(t *testing.T) *PiCoderLaunch {
+	t.Helper()
+	root := t.TempDir()
+	return &PiCoderLaunch{NodePath: filepath.Join(root, "node"), RuntimeRoot: filepath.Join(root, "runtime"), ReadOnlyRoots: []string{root}, AllowedExecutables: []string{filepath.Join(root, "shell")}}
 }

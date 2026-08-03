@@ -16,9 +16,10 @@ import (
 const forkAttemptContract = "agentlab.pi-fork-attempt.v1"
 
 type ForkSpec struct {
-	SDKRoot         string
-	ParentSession   string
-	ChildSessionDir string
+	SDKRoot           string
+	ContextFilterPath string
+	ParentSession     string
+	ChildSessionDir   string
 }
 
 type ForkResult struct {
@@ -69,7 +70,7 @@ func Fork(operation *run.Operation, intent effect.Intent, spec ForkSpec) (ForkRe
 	if strictjson.Decode(payloadData, &payload) != nil || payload.Validate() != nil {
 		return ForkResult{}, errors.New("Pi fork payload is invalid")
 	}
-	discovered, err := DiscoverIdentity(IdentityConfig{SDKRoot: spec.SDKRoot, AdapterDigest: payload.Identity.AdapterDigest, Provider: payload.Identity.Provider, Model: payload.Identity.Model, ThinkingPolicy: payload.Identity.ThinkingPolicy, CompactionPolicy: payload.Identity.CompactionPolicy})
+	discovered, err := DiscoverIdentity(IdentityConfig{SDKRoot: spec.SDKRoot, ContextFilterPath: spec.ContextFilterPath, AdapterDigest: payload.Identity.AdapterDigest, Provider: payload.Identity.Provider, Model: payload.Identity.Model, ThinkingPolicy: payload.Identity.ThinkingPolicy, CompactionPolicy: payload.Identity.CompactionPolicy})
 	if err != nil || !reflect.DeepEqual(discovered, payload.Identity) {
 		return ForkResult{}, errors.New("Pi fork adapter identity differs from intent")
 	}

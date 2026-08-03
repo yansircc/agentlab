@@ -12,16 +12,17 @@ import (
 var sdkBridge []byte
 
 type IdentityConfig struct {
-	SDKRoot          string `json:"sdk_root"`
-	AdapterDigest    string `json:"adapter_digest"`
-	Provider         string `json:"provider"`
-	Model            string `json:"model"`
-	ThinkingPolicy   string `json:"thinking_policy"`
-	CompactionPolicy string `json:"compaction_policy"`
+	SDKRoot           string `json:"sdk_root"`
+	AdapterDigest     string `json:"adapter_digest"`
+	ContextFilterPath string `json:"context_filter_path"`
+	Provider          string `json:"provider"`
+	Model             string `json:"model"`
+	ThinkingPolicy    string `json:"thinking_policy"`
+	CompactionPolicy  string `json:"compaction_policy"`
 }
 
 func DiscoverIdentity(config IdentityConfig) (AdapterIdentity, error) {
-	if config.SDKRoot == "" || !digest(config.AdapterDigest) || !identityText(config.Provider) || !identityText(config.Model) || !identityText(config.ThinkingPolicy) || !identityText(config.CompactionPolicy) {
+	if !filepath.IsAbs(config.SDKRoot) || !filepath.IsAbs(config.ContextFilterPath) || !digest(config.AdapterDigest) || !identityText(config.Provider) || !identityText(config.Model) || !identityText(config.ThinkingPolicy) || !identityText(config.CompactionPolicy) {
 		return AdapterIdentity{}, errors.New("Pi identity configuration is invalid")
 	}
 	data, err := os.ReadFile(filepath.Join(config.SDKRoot, "package.json"))
@@ -39,9 +40,13 @@ func DiscoverIdentity(config IdentityConfig) (AdapterIdentity, error) {
 	if err != nil {
 		return AdapterIdentity{}, err
 	}
+	contextFilter, err := os.ReadFile(config.ContextFilterPath)
+	if err != nil {
+		return AdapterIdentity{}, err
+	}
 	identity := AdapterIdentity{
 		Contract: AdapterIdentityContract, PackageName: packageInfo.Name, PackageVersion: packageInfo.Version,
-		AdapterDigest: config.AdapterDigest, BridgeDigest: sha256Digest(sdkBridge), ContextBuilderDigest: sha256Digest(contextBuilder),
+		AdapterDigest: config.AdapterDigest, BridgeDigest: sha256Digest(sdkBridge), ContextBuilderDigest: sha256Digest(contextBuilder), ContextFilterDigest: sha256Digest(contextFilter),
 		Provider: config.Provider, Model: config.Model, ThinkingPolicy: config.ThinkingPolicy, CompactionPolicy: config.CompactionPolicy,
 		Capabilities: []Capability{CapabilityPublicTree, CapabilityArbitraryFork, CapabilityContextSemantics},
 	}

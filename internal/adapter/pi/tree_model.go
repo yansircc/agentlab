@@ -31,6 +31,7 @@ type AdapterIdentity struct {
 	AdapterDigest        string       `json:"adapter_digest"`
 	BridgeDigest         string       `json:"bridge_digest"`
 	ContextBuilderDigest string       `json:"context_builder_digest"`
+	ContextFilterDigest  string       `json:"context_filter_digest"`
 	Provider             string       `json:"provider"`
 	Model                string       `json:"model"`
 	ThinkingPolicy       string       `json:"thinking_policy"`
@@ -39,7 +40,7 @@ type AdapterIdentity struct {
 }
 
 func (i AdapterIdentity) Validate() error {
-	if i.Contract != AdapterIdentityContract || i.PackageName != PinnedPackageName || i.PackageVersion != PinnedPackageVersion || !digest(i.AdapterDigest) || !digest(i.BridgeDigest) || !digest(i.ContextBuilderDigest) || !identityText(i.Provider) || !identityText(i.Model) || !identityText(i.ThinkingPolicy) || !identityText(i.CompactionPolicy) {
+	if i.Contract != AdapterIdentityContract || i.PackageName != PinnedPackageName || i.PackageVersion != PinnedPackageVersion || !digest(i.AdapterDigest) || !digest(i.BridgeDigest) || !digest(i.ContextBuilderDigest) || !digest(i.ContextFilterDigest) || !identityText(i.Provider) || !identityText(i.Model) || !identityText(i.ThinkingPolicy) || !identityText(i.CompactionPolicy) {
 		return errors.New("Pi adapter identity is invalid")
 	}
 	required := map[Capability]bool{CapabilityPublicTree: false, CapabilityArbitraryFork: false, CapabilityContextSemantics: false}

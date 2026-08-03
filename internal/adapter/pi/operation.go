@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
+	"time"
 
 	"github.com/yansircc/agentlab/internal/effect"
 	"github.com/yansircc/agentlab/internal/processidentity"
@@ -65,6 +67,37 @@ func BeginEffect(operation *run.Operation, intent effect.Intent, sessionPath str
 		Adapter: adapterName, StreamID: cursor.SessionID, InitialCursor: encoded,
 		Policy: policy, Identity: identity, Capabilities: run.RequiredAdapterCapabilities(),
 	})
+}
+
+// BeginManagedEffect launches one Host-selected Pi command and attaches only
+// its public session projection. The command itself never crosses a model
+// boundary; run owns its durable identity and stop lifecycle.
+func BeginManagedEffect(operation *run.Operation, intent effect.Intent, sessionPath string, policy run.StopPolicy, command, environment []string, workingDirectory string) (run.AttachedStartResult, error) {
+	if !filepath.IsAbs(sessionPath) {
+		return run.AttachedStartResult{}, errors.New("managed Pi session path is invalid")
+	}
+	return operation.BeginManagedAttachedEffect(intent, run.ManagedAttachedSpec{
+		Adapter: adapterName, Policy: policy, Capabilities: run.RequiredAdapterCapabilities(), Command: command,
+		Environment: environment, WorkingDirectory: workingDirectory,
+		Ready: func() (string, []byte, error) {
+			return waitForSession(sessionPath, policy.FirstEventTimeout)
+		},
+	})
+}
+
+func waitForSession(path string, timeout time.Duration) (string, []byte, error) {
+	deadline := time.Now().Add(timeout)
+	for {
+		cursor, err := Attach(path)
+		if err == nil {
+			encoded, encodeErr := encodeCursor(cursor)
+			return cursor.SessionID, encoded, encodeErr
+		}
+		if time.Now().After(deadline) {
+			return "", nil, fmt.Errorf("Pi session did not become attachable: %w", err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 func Poll(operation *run.Operation, sessionPath string) (result PollResult, resultErr error) {

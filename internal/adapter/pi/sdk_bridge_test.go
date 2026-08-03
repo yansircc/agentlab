@@ -3,6 +3,7 @@ package pi
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -66,11 +67,41 @@ func TestPinnedSDKForksExactAssistantPublicPrefix(t *testing.T) {
 
 func TestDiscoverIdentityBindsInstalledSDKAndBridge(t *testing.T) {
 	identity, err := DiscoverIdentity(IdentityConfig{
-		SDKRoot: installedSDKRoot(t), AdapterDigest: strings.Repeat("a", 64), Provider: "test", Model: "test", ThinkingPolicy: "off", CompactionPolicy: "off",
+		SDKRoot: installedSDKRoot(t), ContextFilterPath: contextFilterPath(t), AdapterDigest: strings.Repeat("a", 64), Provider: "test", Model: "test", ThinkingPolicy: "off", CompactionPolicy: "off",
 	})
-	if err != nil || identity.PackageVersion != PinnedPackageVersion || identity.BridgeDigest != sha256Digest(sdkBridge) || !digest(identity.ContextBuilderDigest) {
+	if err != nil || identity.PackageVersion != PinnedPackageVersion || identity.BridgeDigest != sha256Digest(sdkBridge) || !digest(identity.ContextBuilderDigest) || !digest(identity.ContextFilterDigest) {
 		t.Fatalf("Pi adapter identity = %#v, %v", identity, err)
 	}
+}
+
+func TestDiscoverIdentityBindsContextFilterBytes(t *testing.T) {
+	source := contextFilterPath(t)
+	data, err := os.ReadFile(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	filter := filepath.Join(t.TempDir(), "extension.ts")
+	if err := os.WriteFile(filter, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	config := IdentityConfig{SDKRoot: installedSDKRoot(t), ContextFilterPath: filter, AdapterDigest: strings.Repeat("a", 64), Provider: "test", Model: "test", ThinkingPolicy: "off", CompactionPolicy: "off"}
+	first, err := DiscoverIdentity(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filter, append(data, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	second, err := DiscoverIdentity(config)
+	if err != nil || first.ContextFilterDigest == second.ContextFilterDigest {
+		t.Fatalf("context filter digest did not change: %#v, %#v, %v", first, second, err)
+	}
+}
+
+func contextFilterPath(t *testing.T) string {
+	t.Helper()
+	_, source, _, _ := runtime.Caller(0)
+	return filepath.Join(filepath.Dir(source), "..", "..", "..", "skills", "agentlab", "extension.ts")
 }
 
 func installedSDKRoot(t *testing.T) string {

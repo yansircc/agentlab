@@ -33,7 +33,7 @@ func TestForkReconcilesOneUnknownSDKChildWithoutRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 	sdkRoot := installedSDKRoot(t)
-	identity, err := DiscoverIdentity(IdentityConfig{SDKRoot: sdkRoot, AdapterDigest: strings.Repeat("a", 64), Provider: "test", Model: "test", ThinkingPolicy: "off", CompactionPolicy: "off"})
+	identity, err := DiscoverIdentity(IdentityConfig{SDKRoot: sdkRoot, ContextFilterPath: contextFilterPath(t), AdapterDigest: strings.Repeat("a", 64), Provider: "test", Model: "test", ThinkingPolicy: "off", CompactionPolicy: "off"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,7 @@ func TestForkReconcilesOneUnknownSDKChildWithoutRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 	intent := effect.Intent{ID: "fork-1", RunID: "parent-run", Kind: effect.Fork, Payload: payload}
-	spec := ForkSpec{SDKRoot: sdkRoot, ParentSession: parentPath, ChildSessionDir: filepath.Join(dir, "children")}
+	spec := ForkSpec{SDKRoot: sdkRoot, ContextFilterPath: contextFilterPath(t), ParentSession: parentPath, ChildSessionDir: filepath.Join(dir, "children")}
 	if err := stageUnknownFork(t, operation, intent, spec); err != nil {
 		t.Fatal(err)
 	}

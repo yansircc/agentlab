@@ -117,6 +117,7 @@ type processKind string
 const (
 	processOwned    processKind = "owned"
 	processAttached processKind = "attached"
+	processManaged  processKind = "managed_adapter"
 )
 
 type processHandle struct {

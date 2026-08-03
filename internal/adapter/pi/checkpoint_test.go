@@ -43,7 +43,7 @@ func testAdapterIdentity() AdapterIdentity {
 	digest := strings.Repeat("a", 64)
 	return AdapterIdentity{
 		Contract: AdapterIdentityContract, PackageName: PinnedPackageName, PackageVersion: PinnedPackageVersion,
-		AdapterDigest: digest, BridgeDigest: digest, ContextBuilderDigest: digest, Provider: "test", Model: "test", ThinkingPolicy: "off", CompactionPolicy: "off",
+		AdapterDigest: digest, BridgeDigest: digest, ContextBuilderDigest: digest, ContextFilterDigest: digest, Provider: "test", Model: "test", ThinkingPolicy: "off", CompactionPolicy: "off",
 		Capabilities: []Capability{CapabilityPublicTree, CapabilityArbitraryFork, CapabilityContextSemantics},
 	}
 }
