@@ -71,6 +71,25 @@ func TestEffectSettlementRejectsOrphanReceipt(t *testing.T) {
 	}
 }
 
+func TestFindingCannotBeSeparatedFromItsSupervisorDecision(t *testing.T) {
+	_, operation, _, value := decisionFixture(t)
+	value.Decision.Action = DecisionFinding
+	bound := DecisionBoundFinding{Decision: value.Decision, Finding: finding.Finding{
+		ID: "finding-1", Class: "target_mismatch", Severity: finding.SeverityHigh, Symptom: "receipt differs from target", Impact: "production changed",
+		Evidence: value.Decision.Evidence, Confidence: finding.ConfidenceHigh, Falsifier: "target and receipt agree",
+	}}
+	if err := operation.RecordFindingWithDecision(bound); err != nil {
+		t.Fatal(err)
+	}
+	if err := operation.RecordFindingWithDecision(bound); err == nil {
+		t.Fatal("duplicate decision-bound finding was accepted")
+	}
+	status, err := operation.Status()
+	if err != nil || len(status.DecisionIDs) != 1 || len(status.FindingIDs) != 1 {
+		t.Fatalf("status = %#v, %v", status, err)
+	}
+}
+
 func decisionFixture(t *testing.T) (string, *Operation, *run.Operation, DecisionBoundEffect) {
 	t.Helper()
 	root := t.TempDir()

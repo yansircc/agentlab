@@ -23,6 +23,7 @@ func initialState() state {
 		comparisons: map[string]comparison.Observation{},
 		gates:       map[string]gate.Receipt{},
 		effects:     map[string]DecisionBoundEffect{},
+		decisions:   map[string]SupervisorDecision{},
 	}
 }
 
@@ -39,8 +40,8 @@ func (o *Operation) current() (state, error) {
 		err = o.validateRunLineage(current)
 	}
 	if err == nil {
-		for _, id := range current.effectOrder {
-			if err = o.validateDecisionEvidence(current.effects[id].Decision); err != nil {
+		for _, id := range current.decisionOrder {
+			if err = o.validateDecisionEvidence(current.decisions[id]); err != nil {
 				break
 			}
 		}
@@ -123,15 +124,9 @@ func (s *state) apply(record ledger.Record) error {
 		s.gates[value.ID] = value
 		s.gateOrder = append(s.gateOrder, value.ID)
 	case eventDecisionEffect:
-		var value DecisionBoundEffect
-		if decode(record.Data, &value) != nil || value.Validate() != nil || s.runs[value.Decision.WorkerRun].RunID == "" || s.runs[value.Intent.RunID].RunID == "" {
-			return invalid(record, "invalid decision-bound effect")
-		}
-		if _, exists := s.effects[value.Intent.ID]; exists {
-			return invalid(record, "duplicate decision-bound effect")
-		}
-		s.effects[value.Intent.ID] = value
-		s.effectOrder = append(s.effectOrder, value.Intent.ID)
+		return s.decisionEffect(record)
+	case eventDecisionFinding:
+		return s.decisionFinding(record)
 	default:
 		return fmt.Errorf("unknown experiment event %q", record.Kind)
 	}

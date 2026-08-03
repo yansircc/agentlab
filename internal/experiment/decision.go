@@ -5,6 +5,7 @@ import (
 	"regexp"
 
 	"github.com/yansircc/agentlab/internal/effect"
+	"github.com/yansircc/agentlab/internal/finding"
 	"github.com/yansircc/agentlab/internal/run"
 )
 
@@ -18,6 +19,7 @@ const (
 	DecisionStop        DecisionAction = "stop"
 	DecisionCheckpoint  DecisionAction = "checkpoint"
 	DecisionFork        DecisionAction = "fork"
+	DecisionFinding     DecisionAction = "finding"
 )
 
 // SupervisorDecision is public evidence only. Its timestamp is the enclosing
@@ -37,8 +39,13 @@ type DecisionBoundEffect struct {
 	Intent   effect.Intent      `json:"intent"`
 }
 
+type DecisionBoundFinding struct {
+	Decision SupervisorDecision `json:"decision"`
+	Finding  finding.Finding    `json:"finding"`
+}
+
 func (value SupervisorDecision) Validate() error {
-	if !decisionIDPattern.MatchString(value.ID) || !idPattern.MatchString(value.WorkerRun) || value.EvidenceThrough == 0 || value.Claim == "" || len(value.Claim) > 4096 || value.Falsifier == "" || len(value.Falsifier) > 4096 || len(value.Evidence) == 0 || len(value.Evidence) > 100 || value.Action.effectKind() == "" {
+	if !decisionIDPattern.MatchString(value.ID) || !idPattern.MatchString(value.WorkerRun) || value.EvidenceThrough == 0 || value.Claim == "" || len(value.Claim) > 4096 || value.Falsifier == "" || len(value.Falsifier) > 4096 || len(value.Evidence) == 0 || len(value.Evidence) > 100 || !value.Action.valid() {
 		return errors.New("supervisor decision is invalid")
 	}
 	seen := map[run.EvidenceRef]bool{}
@@ -49,6 +56,17 @@ func (value SupervisorDecision) Validate() error {
 		seen[ref] = true
 	}
 	return nil
+}
+
+func (value DecisionBoundFinding) Validate() error {
+	if value.Decision.Validate() != nil || value.Decision.Action != DecisionFinding || value.Finding.Validate() != nil {
+		return errors.New("decision-bound finding is invalid")
+	}
+	return nil
+}
+
+func (value DecisionAction) valid() bool {
+	return value.effectKind() != "" || value == DecisionFinding
 }
 
 func (value DecisionBoundEffect) Validate() error {

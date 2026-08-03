@@ -9,15 +9,16 @@ import (
 )
 
 const (
-	eventBegun          = "experiment_begun"
-	eventFinding        = "finding_recorded"
-	eventDisposition    = "finding_dispositioned"
-	eventDiagnosis      = "diagnosis_recorded"
-	eventCandidate      = "repair_candidate_bound"
-	eventRunBound       = "run_manifest_bound"
-	eventComparison     = "comparison_observed"
-	eventGate           = "candidate_gate_recorded"
-	eventDecisionEffect = "decision_effect_intended"
+	eventBegun           = "experiment_begun"
+	eventFinding         = "finding_recorded"
+	eventDisposition     = "finding_dispositioned"
+	eventDiagnosis       = "diagnosis_recorded"
+	eventCandidate       = "repair_candidate_bound"
+	eventRunBound        = "run_manifest_bound"
+	eventComparison      = "comparison_observed"
+	eventGate            = "candidate_gate_recorded"
+	eventDecisionEffect  = "decision_effect_intended"
+	eventDecisionFinding = "decision_finding_recorded"
 )
 
 type begun struct {
@@ -58,5 +59,7 @@ type state struct {
 	gateOrder       []string
 	effects         map[string]DecisionBoundEffect
 	effectOrder     []string
+	decisions       map[string]SupervisorDecision
+	decisionOrder   []string
 	eventCount      uint64
 }
