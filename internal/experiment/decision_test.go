@@ -185,7 +185,7 @@ func TestCoderHandoffMustBeExperimentOwnedAndDecisionBound(t *testing.T) {
 }
 
 func TestCoderEffectBindsHandoffSourceWorkspaceAndProfile(t *testing.T) {
-	_, operation, _, value := decisionFixture(t)
+	root, operation, _, value := decisionFixture(t)
 	value.Decision.Action = DecisionFinding
 	findingValue := finding.Finding{ID: "finding-coder", Class: "target_mismatch", Severity: finding.SeverityHigh, Symptom: "receipt differs", Impact: "production changed", Evidence: value.Decision.Evidence, Confidence: finding.ConfidenceHigh, Falsifier: "target agrees"}
 	if err := operation.RecordFindingWithDecision(DecisionBoundFinding{Decision: value.Decision, Finding: findingValue}); err != nil {
@@ -223,6 +223,15 @@ func TestCoderEffectBindsHandoffSourceWorkspaceAndProfile(t *testing.T) {
 	coder := DecisionBoundEffect{Decision: coderDecision, Intent: effect.Intent{ID: "coder-start", RunID: "coder", Kind: effect.CoderStart, Payload: payloadRef}}
 	if err := operation.CommitDecisionBoundEffect(coder); err != nil {
 		t.Fatal(err)
+	}
+	bindTestRun(t, operation, "other-worker")
+	attachedRunWithEvidence(t, root, "decision-exp", "other-worker")
+	bindTestRun(t, operation, "foreign-coder")
+	foreign := coder
+	foreign.Decision.ID, foreign.Decision.WorkerRun, foreign.Decision.EvidenceThrough, foreign.Decision.Evidence = "coder-foreign-handoff", "other-worker", 2, []run.EvidenceRef{{ExperimentID: "decision-exp", RunID: "other-worker", Sequence: 2, Item: 0}}
+	foreign.Intent.ID, foreign.Intent.RunID = foreign.Decision.ID, "foreign-coder"
+	if err := operation.CommitDecisionBoundEffect(foreign); err == nil {
+		t.Fatal("Coder start accepted a handoff issued by another Worker run")
 	}
 	profile.SourceSnapshot = put("wrong-source")
 	payload, _ = run.EncodeStartPayload(effect.CoderStart, run.StartPayload{Coder: &profile})

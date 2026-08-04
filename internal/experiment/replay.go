@@ -22,9 +22,10 @@ func initialState() state {
 		runs:              map[string]runBinding{},
 		comparisons:       map[string]comparison.Observation{},
 		gates:             map[string]gate.Receipt{}, gateDecisions: map[string]SupervisorDecision{},
-		effects:   map[string]DecisionBoundEffect{},
-		decisions: map[string]SupervisorDecision{},
-		handoffs:  map[artifact.Ref]HandoffRecord{},
+		effects:      map[string]DecisionBoundEffect{},
+		decisions:    map[string]SupervisorDecision{},
+		handoffs:     map[artifact.Ref]HandoffRecord{},
+		handoffOwner: map[artifact.Ref]string{},
 	}
 }
 

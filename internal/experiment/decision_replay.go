@@ -59,6 +59,7 @@ func (s *state) decisionHandoff(record ledger.Record) error {
 		}
 	}
 	s.handoffs[value.Handoff.Artifact] = value.Handoff
+	s.handoffOwner[value.Handoff.Artifact] = value.Decision.WorkerRun
 	s.decisions[value.Decision.ID] = value.Decision
 	s.decisionOrder = append(s.decisionOrder, value.Decision.ID)
 	return nil

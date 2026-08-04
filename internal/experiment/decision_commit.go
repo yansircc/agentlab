@@ -36,12 +36,7 @@ func (o *Operation) CommitDecisionBoundEffect(value DecisionBoundEffect) error {
 			return errors.New("fresh Worker already has a start intent")
 		}
 		if value.Intent.Kind == effect.CoderStart {
-			target, err := run.Open(o.root, o.id, value.Intent.RunID)
-			if err != nil {
-				return err
-			}
-			profile, err := target.CoderProfile(value.Intent)
-			if err != nil || current.handoffs[profile.Handoff].Artifact != profile.Handoff || profile.SourceSnapshot != current.begun.Source {
+			if _, err := o.coderStartProfile(*current, value); err != nil {
 				return errors.New("coder start requires an experiment-owned handoff")
 			}
 		}

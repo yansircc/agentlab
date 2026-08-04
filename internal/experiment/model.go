@@ -75,5 +75,6 @@ type state struct {
 	decisions         map[string]SupervisorDecision
 	decisionOrder     []string
 	handoffs          map[artifact.Ref]HandoffRecord
+	handoffOwner      map[artifact.Ref]string
 	eventCount        uint64
 }

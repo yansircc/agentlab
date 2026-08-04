@@ -36,16 +36,16 @@ func (o *Operation) coderStartForCompletion(current state, runID string, complet
 	if result == nil {
 		return DecisionBoundEffect{}, errors.New("coder completion has no decision-bound start")
 	}
+	profile, err := o.coderStartProfile(current, *result)
+	if err != nil || profile != completion.Profile {
+		return DecisionBoundEffect{}, errors.New("coder completion differs from start effect")
+	}
 	coder, err := run.Open(o.root, o.id, runID)
 	if err != nil {
 		return DecisionBoundEffect{}, err
 	}
-	profile, err := coder.CoderProfile(result.Intent)
-	if err != nil || profile != completion.Profile {
-		return DecisionBoundEffect{}, errors.New("coder completion differs from start effect")
-	}
 	receipt, exists, err := coder.EffectReceipt(result.Intent.ID)
-	if err != nil || !exists || receipt.Kind != effect.CoderStart {
+	if err != nil || !exists || receipt.IntentID != result.Intent.ID || receipt.Kind != effect.CoderStart {
 		return DecisionBoundEffect{}, errors.New("coder start effect is not settled")
 	}
 	return *result, nil
@@ -57,14 +57,28 @@ func (o *Operation) validateDecisionEffects(current state) error {
 		if value.Intent.Kind != effect.CoderStart {
 			continue
 		}
-		coder, err := run.Open(o.root, o.id, value.Intent.RunID)
-		if err != nil {
-			return err
-		}
-		profile, err := coder.CoderProfile(value.Intent)
-		if err != nil || current.handoffs[profile.Handoff].Artifact != profile.Handoff || current.begun == nil || profile.SourceSnapshot != current.begun.Source {
+		if _, err := o.coderStartProfile(current, value); err != nil {
 			return errors.New("coder start effect has no experiment-owned profile")
 		}
 	}
 	return nil
+}
+
+// coderStartProfile resolves the Coder's bounded authority from the effect
+// payload and requires its decision to remain attached to the Worker run that
+// issued the handoff. handoffOwner is replay-derived from the one handoff
+// event; it is not a second durable fact.
+func (o *Operation) coderStartProfile(current state, value DecisionBoundEffect) (run.CoderProfile, error) {
+	if current.begun == nil || value.Intent.Kind != effect.CoderStart {
+		return run.CoderProfile{}, errors.New("coder start has no experiment authority")
+	}
+	coder, err := run.Open(o.root, o.id, value.Intent.RunID)
+	if err != nil {
+		return run.CoderProfile{}, err
+	}
+	profile, err := coder.CoderProfile(value.Intent)
+	if err != nil || current.handoffs[profile.Handoff].Artifact != profile.Handoff || current.handoffOwner[profile.Handoff] != value.Decision.WorkerRun || profile.SourceSnapshot != current.begun.Source {
+		return run.CoderProfile{}, errors.New("coder start has no experiment-owned handoff")
+	}
+	return profile, nil
 }
