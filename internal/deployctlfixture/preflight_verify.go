@@ -24,15 +24,15 @@ func (value Preflight) Verify() error {
 	if err := value.verifyProvision(); err != nil {
 		return err
 	}
+	return value.verifyRuntime()
+}
+
+func (value Preflight) verifyRuntime() error {
 	if value.FixtureReset != (artifact.Ref{}) || value.Inputs != (experiment.RunInputs{}) {
 		if !value.FixtureReset.Valid() || !value.LiveCanary.Valid() || value.Inputs.Adapter != value.LiveCanary || value.runtimePlanPath == "" {
 			return errors.New("deployctl runtime preflight is incomplete")
 		}
-		plan, err := os.ReadFile(value.runtimePlanPath)
-		if err != nil {
-			return err
-		}
-		host, err := tool.DecodePiRuntimeHost(plan)
+		host, err := tool.LoadPiRuntimeHost(value.runtimePlanPath)
 		if err != nil {
 			return errors.New("deployctl runtime plan is invalid")
 		}
@@ -48,12 +48,31 @@ func (value Preflight) Verify() error {
 		if err != nil || !reflect.DeepEqual(discovered, identity) {
 			return errors.New("deployctl runtime identity differs from live canary")
 		}
+		binding, err := loadRuntimeBinding(artifact.NewStore(filepath.Join(value.EvaluatedRoot, "artifacts")), value.Inputs.WorkerRuntime)
+		if err != nil || binding.Adapter != value.LiveCanary || binding.CandidateExecutable != value.CandidateExecutable {
+			return errors.New("deployctl runtime binding differs from preflight")
+		}
 		return value.verifyManifest()
 	}
 	return errors.New("deployctl runtime preflight is absent")
 }
 
 func (value Preflight) verifyProvision() error {
+	if err := value.verifyRecordedRoots(); err != nil {
+		return err
+	}
+	audit, err := metaaudit.Open(value.AuditRoot, value.AuditID)
+	if err != nil {
+		return err
+	}
+	auditStatus, err := audit.Status()
+	if err != nil || auditStatus.Sealed || auditStatus.Intervened || len(auditStatus.FindingIDs) != 0 {
+		return errors.New("deployctl audit preflight differs")
+	}
+	return nil
+}
+
+func (value Preflight) verifyRecordedRoots() error {
 	if !disjointRoots(value.EvaluatedRoot, value.AuditRoot) {
 		return errors.New("deployctl preflight roots overlap")
 	}
@@ -84,7 +103,7 @@ func (value Preflight) verifyProvision() error {
 		return err
 	}
 	auditStatus, err := audit.Status()
-	if err != nil || auditStatus.Sealed || auditStatus.Intervened || auditStatus.Trial.ExperimentID != value.ExperimentID || auditStatus.Trial.EvaluatedScope != store.Scope() || auditStatus.Trial.GroundTruth != value.GroundTruth {
+	if err != nil || auditStatus.Trial.ExperimentID != value.ExperimentID || auditStatus.Trial.EvaluatedScope != store.Scope() || auditStatus.Trial.GroundTruth != value.GroundTruth {
 		return errors.New("deployctl audit preflight differs")
 	}
 	return nil

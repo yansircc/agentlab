@@ -2,8 +2,9 @@ package pi
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
-	"strings"
+	"runtime"
 	"testing"
 	"time"
 
@@ -64,7 +65,14 @@ func checkpointEffectFixture(t *testing.T) (string, *run.Operation, effect.Inten
 		t.Fatal(err)
 	}
 	sdkRoot := installedSDKRoot(t)
-	identity, err := DiscoverIdentity(IdentityConfig{SDKRoot: sdkRoot, ContextFilterPath: contextFilterPath(t), AdapterDigest: strings.Repeat("a", 64), Provider: "test", Model: "test", ThinkingPolicy: "off", CompactionPolicy: "off"})
+	_, source, _, _ := runtime.Caller(0)
+	artifactRoot := buildContextArtifact(t, source)
+	binary, err := os.ReadFile(filepath.Join(artifactRoot, "bin", "agentlab"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := IdentityConfig{SDKRoot: sdkRoot, ContextFilterPath: filepath.Join(artifactRoot, "extension.ts"), AdapterDigest: sha256Digest(binary), Provider: "test", Model: "test", ThinkingPolicy: "off", CompactionPolicy: "off"}
+	identity, err := VerifyRuntimeIdentity(config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,5 +88,5 @@ func checkpointEffectFixture(t *testing.T) (string, *run.Operation, effect.Inten
 	if err != nil {
 		t.Fatal(err)
 	}
-	return root, operation, effect.Intent{ID: "checkpoint-1", RunID: "worker", Kind: effect.Checkpoint, Payload: ref}, CheckpointEffectSpec{SDKRoot: sdkRoot, ContextFilterPath: contextFilterPath(t), SessionPath: session}
+	return root, operation, effect.Intent{ID: "checkpoint-1", RunID: "worker", Kind: effect.Checkpoint, Payload: ref}, CheckpointEffectSpec{SDKRoot: sdkRoot, ContextFilterPath: config.ContextFilterPath, SessionPath: session}
 }

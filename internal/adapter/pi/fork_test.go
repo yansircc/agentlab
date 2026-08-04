@@ -2,8 +2,9 @@ package pi
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
-	"strings"
+	"runtime"
 	"testing"
 	"time"
 
@@ -33,7 +34,14 @@ func TestForkReconcilesOneUnknownSDKChildWithoutRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 	sdkRoot := installedSDKRoot(t)
-	identity, err := DiscoverIdentity(IdentityConfig{SDKRoot: sdkRoot, ContextFilterPath: contextFilterPath(t), AdapterDigest: strings.Repeat("a", 64), Provider: "test", Model: "test", ThinkingPolicy: "off", CompactionPolicy: "off"})
+	_, source, _, _ := runtime.Caller(0)
+	artifactRoot := buildContextArtifact(t, source)
+	binary, err := os.ReadFile(filepath.Join(artifactRoot, "bin", "agentlab"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := IdentityConfig{SDKRoot: sdkRoot, ContextFilterPath: filepath.Join(artifactRoot, "extension.ts"), AdapterDigest: sha256Digest(binary), Provider: "test", Model: "test", ThinkingPolicy: "off", CompactionPolicy: "off"}
+	identity, err := VerifyRuntimeIdentity(config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +58,7 @@ func TestForkReconcilesOneUnknownSDKChildWithoutRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 	intent := effect.Intent{ID: "fork-1", RunID: "parent-run", Kind: effect.Fork, Payload: payload}
-	spec := ForkSpec{SDKRoot: sdkRoot, ContextFilterPath: contextFilterPath(t), ParentSession: parentPath, ChildSessionDir: filepath.Join(dir, "children")}
+	spec := ForkSpec{SDKRoot: sdkRoot, ContextFilterPath: config.ContextFilterPath, ParentSession: parentPath, ChildSessionDir: filepath.Join(dir, "children")}
 	if err := stageUnknownFork(t, operation, intent, spec); err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +67,11 @@ func TestForkReconcilesOneUnknownSDKChildWithoutRetry(t *testing.T) {
 	if err != nil || result.Receipt.IntentID != intent.ID || result.Forked.ChildSession.Digest == "" {
 		t.Fatalf("reconciled fork = %#v, %v", result, err)
 	}
-	if again, err := Fork(reopened, intent, spec); err != nil || again.Receipt != result.Receipt {
+	recovered, err := ReconcileForkedSession(reopened, intent.ID, spec, config)
+	if err != nil || recovered.Forked != result.Forked || !withinDirectory(spec.ChildSessionDir, recovered.ChildSessionPath) {
+		t.Fatalf("recovered fork = %#v, %v", recovered, err)
+	}
+	if again, err := Fork(reopened, intent, spec); err != nil || again.Receipt != result.Receipt || again.Forked != result.Forked {
 		t.Fatalf("idempotent fork = %#v, %v", again, err)
 	}
 	children, err := filepath.Glob(filepath.Join(spec.ChildSessionDir, "*.jsonl"))

@@ -70,7 +70,8 @@ func Fork(operation *run.Operation, intent effect.Intent, spec ForkSpec) (ForkRe
 	if strictjson.Decode(payloadData, &payload) != nil || payload.Validate() != nil {
 		return ForkResult{}, errors.New("Pi fork payload is invalid")
 	}
-	discovered, err := DiscoverIdentity(IdentityConfig{SDKRoot: spec.SDKRoot, ContextFilterPath: spec.ContextFilterPath, AdapterDigest: payload.Identity.AdapterDigest, Provider: payload.Identity.Provider, Model: payload.Identity.Model, ThinkingPolicy: payload.Identity.ThinkingPolicy, CompactionPolicy: payload.Identity.CompactionPolicy})
+	config := IdentityConfig{SDKRoot: spec.SDKRoot, ContextFilterPath: spec.ContextFilterPath, AdapterDigest: payload.Identity.AdapterDigest, Provider: payload.Identity.Provider, Model: payload.Identity.Model, ThinkingPolicy: payload.Identity.ThinkingPolicy, CompactionPolicy: payload.Identity.CompactionPolicy}
+	discovered, err := VerifyRuntimeIdentity(config)
 	if err != nil || !reflect.DeepEqual(discovered, payload.Identity) {
 		return ForkResult{}, errors.New("Pi fork adapter identity differs from intent")
 	}
@@ -80,7 +81,11 @@ func Fork(operation *run.Operation, intent effect.Intent, spec ForkSpec) (ForkRe
 		if receipt.Kind != effect.Fork {
 			return ForkResult{}, errors.New("Pi fork receipt kind changed")
 		}
-		return ForkResult{Receipt: receipt}, nil
+		reconciled, err := ReconcileForkedSession(operation, intent.ID, spec, config)
+		if err != nil {
+			return ForkResult{}, err
+		}
+		return ForkResult{Forked: reconciled.Forked, Receipt: receipt}, nil
 	}
 	checkpoint, prefix, session, opaque, err := operation.RuntimeCheckpointData(payload.Checkpoint)
 	if err != nil || checkpoint.Adapter != adapterName {

@@ -13,6 +13,7 @@ import (
 	"github.com/yansircc/agentlab/internal/experiment"
 	"github.com/yansircc/agentlab/internal/metaaudit"
 	"github.com/yansircc/agentlab/internal/preparation"
+	"github.com/yansircc/agentlab/internal/tool"
 )
 
 func TestProvisionPreflightBuildsDisjointHostAssembly(t *testing.T) {
@@ -70,6 +71,20 @@ func TestProvisionPreflightRejectsExistingOrOverlappingRoots(t *testing.T) {
 	}
 }
 
+func TestLoadRuntimePreflightRejectsTamperedHostLocator(t *testing.T) {
+	root := t.TempDir()
+	host := filepath.Join(root, "host")
+	if err := os.Mkdir(host, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(host, "preflight.json"), []byte(`{"contract":"agentlab.deployctl-runtime-preflight.v1","evaluated_root":"/tmp/evaluated","audit_root":"/tmp/evaluated"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadRuntimePreflight(host); err == nil {
+		t.Fatal("overlapping roots in Host locator were accepted")
+	}
+}
+
 func TestBindRuntimeBuildsAHostPrivateExactProfilePlan(t *testing.T) {
 	piPath, err := exec.LookPath("pi")
 	if err != nil {
@@ -103,6 +118,25 @@ func TestBindRuntimeBuildsAHostPrivateExactProfilePlan(t *testing.T) {
 	}
 	if value.FixtureReset == (artifact.Ref{}) || value.Inputs.Adapter == (artifact.Ref{}) || value.Inputs.WorkerRuntime == (artifact.Ref{}) {
 		t.Fatalf("runtime preflight omitted exact inputs: %#v", value)
+	}
+	host, err := tool.LoadPiRuntimeHost(filepath.Join(spec.HostRoot, "pi-runtime-plan.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile, err := host.Profile("baseline-worker")
+	if err != nil || profile.ChildSessionDir != filepath.Join(spec.HostRoot, "worker-children") {
+		t.Fatalf("baseline fork namespace = %#v, %v", profile, err)
+	}
+	reopened, err := LoadRuntimePreflight(spec.HostRoot)
+	if err != nil || reopened.EvaluatedRoot != value.EvaluatedRoot || reopened.AuditRoot != value.AuditRoot || reopened.Inputs != value.Inputs || reopened.CandidateExecutable != value.CandidateExecutable {
+		t.Fatalf("reopened runtime preflight = %#v, %v", reopened, err)
+	}
+	audit, err := metaaudit.Open(value.AuditRoot, value.AuditID)
+	if err != nil || audit.MarkIntervened() != nil {
+		t.Fatalf("advance audit lifecycle: %v", err)
+	}
+	if _, err := LoadRuntimePreflight(spec.HostRoot); err != nil {
+		t.Fatalf("runtime preflight did not survive later audit state: %v", err)
 	}
 }
 

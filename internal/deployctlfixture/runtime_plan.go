@@ -16,6 +16,7 @@ import (
 	"github.com/yansircc/agentlab/internal/experiment"
 	"github.com/yansircc/agentlab/internal/run"
 	"github.com/yansircc/agentlab/internal/tool"
+	"github.com/yansircc/agentlab/internal/transaction"
 )
 
 // RuntimeSpec is supplied by the Host after it has built dist/skill. It is
@@ -87,7 +88,7 @@ func (value Preflight) bindRuntime(spec RuntimeSpec, canary liveCanaryRunner) (P
 	if err != nil {
 		return Preflight{}, err
 	}
-	runtime, err := putCanonical(store, map[string]any{"contract": "agentlab.deployctl-worker-runtime.v1", "adapter": canaryRef, "candidate_executable": value.CandidateExecutable, "worker_profile": "baseline-worker", "coder_profile": "coder-repair"})
+	runtime, err := recordRuntimeBinding(store, runtimeBinding{Contract: runtimeBindingContract, Adapter: canaryRef, CandidateExecutable: value.CandidateExecutable, WorkerProfile: "baseline-worker", CoderProfile: "coder-repair"})
 	if err != nil {
 		return Preflight{}, err
 	}
@@ -106,7 +107,10 @@ func (value Preflight) bindRuntime(spec RuntimeSpec, canary liveCanaryRunner) (P
 		return Preflight{}, err
 	}
 	planPath := filepath.Join(spec.HostRoot, "pi-runtime-plan.json")
-	if err := os.WriteFile(planPath, plan, 0o600); err != nil {
+	if err := transaction.Replace(planPath, plan, 0o600); err != nil {
+		return Preflight{}, err
+	}
+	if err := writeRuntimePreflightLocator(spec.HostRoot, value.EvaluatedRoot, value.AuditRoot); err != nil {
 		return Preflight{}, err
 	}
 	value.FixtureReset, value.LiveCanary, value.Inputs, value.hostRoot, value.runtimePlanPath = reset, canaryRef, inputs, spec.HostRoot, planPath
@@ -126,8 +130,9 @@ func runtimeProfiles(value Preflight, spec RuntimeSpec, identity piadapter.Adapt
 	coderRuntime := filepath.Join(spec.HostRoot, "coder-runtime")
 	worker := tool.PiRuntimeProfile{
 		Ref: "baseline-worker", ExperimentID: value.ExperimentID, RunID: value.BaselineRunID, Role: effect.WorkerStart, SessionPath: filepath.Join(workerRuntime, "session.jsonl"),
-		Identity: piadapter.IdentityConfig{SDKRoot: spec.SDKRoot, ContextFilterPath: filepath.Join(spec.SkillRoot, "extension.ts"), AdapterDigest: identity.AdapterDigest, Provider: spec.Provider, Model: spec.Model, ThinkingPolicy: spec.ThinkingPolicy, CompactionPolicy: spec.CompactionPolicy},
-		Policy:   policy, WorkerLaunch: &tool.PiWorkerLaunch{Launch: tool.PiLaunch{NodePath: spec.NodePath, RuntimeRoot: workerRuntime, ReadOnlyRoots: []string{spec.SDKRoot}, AllowNetwork: true}, FixtureRoot: value.Fixture.Root(), DeployctlExecutable: filepath.Join(value.EvaluatedRoot, "baseline-candidate", "bin", "deployctl"), CandidateExecutable: value.CandidateExecutable, WorkerInput: value.WorkerInput},
+		Identity:        piadapter.IdentityConfig{SDKRoot: spec.SDKRoot, ContextFilterPath: filepath.Join(spec.SkillRoot, "extension.ts"), AdapterDigest: identity.AdapterDigest, Provider: spec.Provider, Model: spec.Model, ThinkingPolicy: spec.ThinkingPolicy, CompactionPolicy: spec.CompactionPolicy},
+		ChildSessionDir: filepath.Join(spec.HostRoot, "worker-children"),
+		Policy:          policy, WorkerLaunch: &tool.PiWorkerLaunch{Launch: tool.PiLaunch{NodePath: spec.NodePath, RuntimeRoot: workerRuntime, ReadOnlyRoots: []string{spec.SDKRoot}, AllowNetwork: true}, FixtureRoot: value.Fixture.Root(), DeployctlExecutable: filepath.Join(value.EvaluatedRoot, "baseline-candidate", "bin", "deployctl"), CandidateExecutable: value.CandidateExecutable, WorkerInput: value.WorkerInput},
 	}
 	coder := tool.PiRuntimeProfile{
 		Ref: "coder-repair", ExperimentID: value.ExperimentID, RunID: coderRunID, Role: effect.CoderStart, SessionPath: filepath.Join(coderRuntime, "session.jsonl"),

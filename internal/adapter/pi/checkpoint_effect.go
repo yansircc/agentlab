@@ -56,7 +56,8 @@ func CheckpointEffect(operation *run.Operation, intent effect.Intent, spec Check
 	if _, err := EncodeCheckpointPayload(payload); err != nil {
 		return CheckpointEffectResult{}, err
 	}
-	discovered, err := DiscoverIdentity(IdentityConfig{SDKRoot: spec.SDKRoot, ContextFilterPath: spec.ContextFilterPath, AdapterDigest: payload.Identity.AdapterDigest, Provider: payload.Identity.Provider, Model: payload.Identity.Model, ThinkingPolicy: payload.Identity.ThinkingPolicy, CompactionPolicy: payload.Identity.CompactionPolicy})
+	config := IdentityConfig{SDKRoot: spec.SDKRoot, ContextFilterPath: spec.ContextFilterPath, AdapterDigest: payload.Identity.AdapterDigest, Provider: payload.Identity.Provider, Model: payload.Identity.Model, ThinkingPolicy: payload.Identity.ThinkingPolicy, CompactionPolicy: payload.Identity.CompactionPolicy}
+	discovered, err := VerifyRuntimeIdentity(config)
 	if err != nil || !reflect.DeepEqual(discovered, payload.Identity) {
 		return CheckpointEffectResult{}, errors.New("Pi checkpoint adapter identity differs from intent")
 	}
