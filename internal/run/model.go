@@ -24,6 +24,7 @@ const (
 	eventTerminalAccepted = "terminal_accepted"
 	eventTerminalRejected = "terminal_rejected"
 	eventAdapterBatch     = "adapter_batch"
+	eventHostOracle       = "host_oracle_evidence"
 )
 
 type StopPolicy struct {
@@ -146,6 +147,12 @@ type evidence struct {
 	Stream string       `json:"stream"`
 	Raw    artifact.Ref `json:"raw"`
 	Label  string       `json:"label"`
+}
+
+// hostOracleEvidence is emitted only by Host runtime code. Provider tools do
+// not expose a corresponding operation, and the artifact remains immutable.
+type hostOracleEvidence struct {
+	Raw artifact.Ref `json:"raw"`
 }
 
 type streamFact struct {

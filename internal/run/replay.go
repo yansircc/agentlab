@@ -30,6 +30,7 @@ type replayState struct {
 	effectReceipts     map[string]effect.Receipt
 	sessionForks       map[artifact.Ref]SessionForked
 	coderCompletion    *coderCompletionRecorded
+	hostOracleRecorded bool
 }
 
 func replayRun(records []ledger.Record) (replayState, error) {
@@ -62,6 +63,8 @@ func (s *replayState) apply(record ledger.Record) error {
 		return s.evidence(record)
 	case eventAdapterBatch:
 		return s.adapter(record)
+	case eventHostOracle:
+		return s.hostOracle(record)
 	case eventProgressObserved, eventNoProgress:
 		return s.progress(record)
 	case eventFirstTimeout:
@@ -96,6 +99,17 @@ func (s *replayState) apply(record ledger.Record) error {
 	default:
 		return fmt.Errorf("unknown run event kind %q at sequence %d", record.Kind, record.Sequence)
 	}
+	return nil
+}
+
+func (s *replayState) hostOracle(record ledger.Record) error {
+	var value hostOracleEvidence
+	if s.exit != nil || s.stopRequested || s.hostOracleRecorded || json.Unmarshal(record.Data, &value) != nil || !validRef(value.Raw) {
+		return invalid(record, "invalid host oracle evidence")
+	}
+	s.hostOracleRecorded = true
+	at := record.At
+	s.lastEvidenceAt = &at
 	return nil
 }
 

@@ -137,6 +137,13 @@ func projectEvidence(experimentID, runID string, record ledger.Record) ([]Eviden
 		}
 		base.Label, base.Raw = value.Label, value.Raw
 		return []EvidenceItem{base}, nil
+	case eventHostOracle:
+		var value hostOracleEvidence
+		if json.Unmarshal(record.Data, &value) != nil {
+			return nil, errors.New("invalid host oracle evidence record")
+		}
+		base.Kind, base.Label, base.Raw = EvidenceOracle, "host_objective_oracle", value.Raw
+		return []EvidenceItem{base}, nil
 	case eventAdapterBatch:
 		return projectAdapterEvidence(base, record.Data)
 	default:
