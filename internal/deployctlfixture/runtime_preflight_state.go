@@ -17,9 +17,10 @@ import (
 const runtimePreflightLocatorContract = "agentlab.deployctl-runtime-preflight.v1"
 
 type runtimePreflightLocator struct {
-	Contract      string `json:"contract"`
-	EvaluatedRoot string `json:"evaluated_root"`
-	AuditRoot     string `json:"audit_root"`
+	Contract      string       `json:"contract"`
+	EvaluatedRoot string       `json:"evaluated_root"`
+	AuditRoot     string       `json:"audit_root"`
+	CoderPrepared artifact.Ref `json:"coder_prepared"`
 }
 
 // LoadRuntimePreflight reopens a verified Host assembly without copying
@@ -55,6 +56,10 @@ func LoadRuntimePreflight(hostRoot string) (Preflight, error) {
 	if err != nil {
 		return Preflight{}, err
 	}
+	coderPrepared, err := experiment.LoadPreparedRun(store, locator.CoderPrepared)
+	if err != nil || coderPrepared.RunID != coderRunID {
+		return Preflight{}, errors.New("deployctl Coder prepared run is unavailable")
+	}
 	audit, err := metaaudit.Open(locator.AuditRoot, auditID)
 	if err != nil {
 		return Preflight{}, err
@@ -66,7 +71,7 @@ func LoadRuntimePreflight(hostRoot string) (Preflight, error) {
 	value := Preflight{
 		EvaluatedRoot: locator.EvaluatedRoot, AuditRoot: locator.AuditRoot, PreparationID: preparationID, ExperimentID: experimentID, BaselineRunID: baselineRunID, AuditID: auditID,
 		Fixture: fixture, WorkerInput: prepared.WorkerInput, SourceSnapshot: prepared.Source, Candidate: manifest.Candidate, CandidateExecutable: binding.CandidateExecutable,
-		FixtureReset: manifest.FixtureReset, LiveCanary: manifest.Adapter, Inputs: manifest.RunInputs, GroundTruth: auditStatus.Trial.GroundTruth,
+		FixtureReset: manifest.FixtureReset, LiveCanary: manifest.Adapter, CoderPrepared: locator.CoderPrepared, Inputs: manifest.RunInputs, GroundTruth: auditStatus.Trial.GroundTruth,
 		hostRoot: hostRoot, runtimePlanPath: filepath.Join(hostRoot, "pi-runtime-plan.json"),
 	}
 	if err := value.verifyRecordedRoots(); err != nil {
@@ -75,11 +80,11 @@ func LoadRuntimePreflight(hostRoot string) (Preflight, error) {
 	return value, value.verifyRuntime()
 }
 
-func writeRuntimePreflightLocator(hostRoot, evaluatedRoot, auditRoot string) error {
-	if !validRuntimePreflightRoots(hostRoot, evaluatedRoot, auditRoot) {
+func writeRuntimePreflightLocator(hostRoot, evaluatedRoot, auditRoot string, coderPrepared artifact.Ref) error {
+	if !validRuntimePreflightRoots(hostRoot, evaluatedRoot, auditRoot) || !coderPrepared.Valid() {
 		return errors.New("deployctl runtime preflight locator is invalid")
 	}
-	data, err := json.Marshal(runtimePreflightLocator{Contract: runtimePreflightLocatorContract, EvaluatedRoot: evaluatedRoot, AuditRoot: auditRoot})
+	data, err := json.Marshal(runtimePreflightLocator{Contract: runtimePreflightLocatorContract, EvaluatedRoot: evaluatedRoot, AuditRoot: auditRoot, CoderPrepared: coderPrepared})
 	if err != nil {
 		return err
 	}
@@ -96,7 +101,7 @@ func readRuntimePreflightLocator(hostRoot string) (runtimePreflightLocator, erro
 		return runtimePreflightLocator{}, err
 	}
 	var value runtimePreflightLocator
-	if strictjson.Decode(data, &value) != nil || value.Contract != runtimePreflightLocatorContract || !validRuntimePreflightRoots(hostRoot, value.EvaluatedRoot, value.AuditRoot) {
+	if strictjson.Decode(data, &value) != nil || value.Contract != runtimePreflightLocatorContract || !validRuntimePreflightRoots(hostRoot, value.EvaluatedRoot, value.AuditRoot) || !value.CoderPrepared.Valid() {
 		return runtimePreflightLocator{}, errors.New("deployctl runtime preflight locator is invalid")
 	}
 	return value, nil

@@ -19,3 +19,12 @@ func TestCLIAcceptanceProvisionReturnsOnlyOpaqueEvaluatedRefs(t *testing.T) {
 		t.Fatalf("provision projection crossed capability roots: %#v", value)
 	}
 }
+
+func TestCLIAcceptancePrepareRunRejectsRawCandidateInput(t *testing.T) {
+	request := writeJSONFile(t, t.TempDir(), "prepare-run.json", map[string]any{
+		"run_id": "candidate", "completion": map[string]any{}, "candidate": map[string]any{},
+	})
+	if _, err := dispatch([]string{"acceptance", "prepare-run", "-host-root", t.TempDir(), "-request", request}); err == nil {
+		t.Fatal("Host producer command accepted a raw candidate input")
+	}
+}

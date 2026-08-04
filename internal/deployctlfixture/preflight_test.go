@@ -122,8 +122,13 @@ func TestBindRuntimeBuildsAHostPrivateExactProfilePlan(t *testing.T) {
 	if err := value.Verify(); err != nil {
 		t.Fatal(err)
 	}
-	if value.FixtureReset == (artifact.Ref{}) || value.Inputs.Adapter == (artifact.Ref{}) || value.Inputs.WorkerRuntime == (artifact.Ref{}) {
+	if value.FixtureReset == (artifact.Ref{}) || value.CoderPrepared == (artifact.Ref{}) || value.Inputs.Adapter == (artifact.Ref{}) || value.Inputs.WorkerRuntime == (artifact.Ref{}) {
 		t.Fatalf("runtime preflight omitted exact inputs: %#v", value)
+	}
+	store := artifact.NewStore(filepath.Join(value.EvaluatedRoot, "artifacts"))
+	coderPrepared, err := experiment.LoadPreparedRun(store, value.CoderPrepared)
+	if err != nil || coderPrepared.RunID != coderRunID || coderPrepared.Inputs.Candidate != value.Candidate {
+		t.Fatalf("Coder prepared run = %#v, %v", coderPrepared, err)
 	}
 	host, err := tool.LoadPiRuntimeHost(filepath.Join(spec.HostRoot, "pi-runtime-plan.json"))
 	if err != nil {
@@ -134,11 +139,10 @@ func TestBindRuntimeBuildsAHostPrivateExactProfilePlan(t *testing.T) {
 		t.Fatalf("baseline fork namespace = %#v, %v", profile, err)
 	}
 	reopened, err := LoadRuntimePreflight(spec.HostRoot)
-	if err != nil || reopened.EvaluatedRoot != value.EvaluatedRoot || reopened.AuditRoot != value.AuditRoot || reopened.Inputs != value.Inputs || reopened.CandidateExecutable != value.CandidateExecutable {
+	if err != nil || reopened.EvaluatedRoot != value.EvaluatedRoot || reopened.AuditRoot != value.AuditRoot || reopened.CoderPrepared != value.CoderPrepared || reopened.Inputs != value.Inputs || reopened.CandidateExecutable != value.CandidateExecutable {
 		t.Fatalf("reopened runtime preflight = %#v, %v", reopened, err)
 	}
 	completion, candidate := terminalCoderCompletion(t, value)
-	store := artifact.NewStore(filepath.Join(value.EvaluatedRoot, "artifacts"))
 	wrongCompletion, err := store.Put([]byte("not a terminal Coder completion"))
 	if err != nil {
 		t.Fatal(err)
@@ -202,19 +206,11 @@ func terminalCoderCompletion(t *testing.T, value Preflight) (artifact.Ref, artif
 	if err != nil || candidate == value.Candidate {
 		t.Fatalf("candidate snapshot = %#v, %v", candidate, err)
 	}
-	inputs, _, err := preflightInputs(store, coderRunID, value.reset, value.Candidate, value.LiveCanary, value.Inputs.WorkerRuntime)
-	if err != nil {
-		t.Fatal(err)
-	}
 	op, err := experiment.Open(value.EvaluatedRoot, value.ExperimentID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	prepared, err := experiment.RecordPreparedRun(store, experiment.PreparedRun{Contract: experiment.PreparedRunContract, RunID: coderRunID, Inputs: inputs})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := op.BindPreparedRun(coderRunID, experiment.NewFreshOrigin(), prepared); err != nil {
+	if _, err := op.BindPreparedRun(coderRunID, experiment.NewFreshOrigin(), value.CoderPrepared); err != nil {
 		t.Fatal(err)
 	}
 	host, err := tool.LoadPiRuntimeHost(value.runtimePlanPath)

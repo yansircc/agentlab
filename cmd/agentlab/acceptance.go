@@ -14,16 +14,52 @@ import (
 // effects after this preflight has bound their Host inputs.
 func acceptanceCommand(args []string) (any, error) {
 	if len(args) == 0 {
-		return nil, errors.New("usage: agentlab acceptance <provision|preflight>")
+		return nil, errors.New("usage: agentlab acceptance <provision|preflight|prepare-run>")
 	}
 	switch args[0] {
 	case "provision":
 		return acceptanceProvision(args[1:])
 	case "preflight":
 		return acceptancePreflight(args[1:])
+	case "prepare-run":
+		return acceptancePrepareRun(args[1:])
 	default:
 		return nil, errors.New("unknown acceptance command")
 	}
+}
+
+type acceptancePrepareRunRequest struct {
+	RunID      string       `json:"run_id"`
+	Completion artifact.Ref `json:"completion"`
+}
+
+// acceptancePrepareRun is Host-only continuation after a terminal Coder run.
+// The request carries only the terminal receipt reference and a future run
+// identity; all candidate and RunInputs facts remain Host-produced.
+func acceptancePrepareRun(args []string) (any, error) {
+	set := flag.NewFlagSet("acceptance prepare-run", flag.ContinueOnError)
+	set.SetOutput(os.Stderr)
+	hostRoot := set.String("host-root", "", "existing Host-private runtime root")
+	requestPath := set.String("request", "-", "Host JSON request path or - for stdin")
+	if err := set.Parse(args); err != nil {
+		return nil, err
+	}
+	if *hostRoot == "" || set.NArg() != 0 {
+		return nil, errors.New("acceptance prepare-run requires Host root and terminal Coder completion")
+	}
+	var request acceptancePrepareRunRequest
+	if err := readRequest(*requestPath, &request); err != nil {
+		return nil, err
+	}
+	preflight, err := deployctlfixture.LoadRuntimePreflight(*hostRoot)
+	if err != nil {
+		return nil, err
+	}
+	prepared, err := preflight.PrepareRunFromCoderCompletion(request.RunID, request.Completion)
+	if err != nil {
+		return nil, err
+	}
+	return acceptancePreparedRunProjection{RunID: request.RunID, Prepared: prepared}, nil
 }
 
 func acceptanceProvision(args []string) (any, error) {
@@ -71,7 +107,7 @@ func acceptancePreflight(args []string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return acceptancePreflightProjection{acceptanceProvisionProjection: acceptanceProvisionProjection{PreparationID: value.PreparationID, ExperimentID: value.ExperimentID, BaselineRunID: value.BaselineRunID, AuditID: value.AuditID, WorkerInput: value.WorkerInput, Candidate: value.Candidate, CandidateExecutable: value.CandidateExecutable}, FixtureReset: value.FixtureReset}, nil
+	return acceptancePreflightProjection{acceptanceProvisionProjection: acceptanceProvisionProjection{PreparationID: value.PreparationID, ExperimentID: value.ExperimentID, BaselineRunID: value.BaselineRunID, AuditID: value.AuditID, WorkerInput: value.WorkerInput, Candidate: value.Candidate, CandidateExecutable: value.CandidateExecutable}, FixtureReset: value.FixtureReset, CoderPrepared: value.CoderPrepared}, nil
 }
 
 // acceptanceProvisionProjection contains only opaque evaluated-root refs.
@@ -88,5 +124,11 @@ type acceptanceProvisionProjection struct {
 
 type acceptancePreflightProjection struct {
 	acceptanceProvisionProjection
-	FixtureReset artifact.Ref `json:"fixture_reset"`
+	FixtureReset  artifact.Ref `json:"fixture_reset"`
+	CoderPrepared artifact.Ref `json:"coder_prepared"`
+}
+
+type acceptancePreparedRunProjection struct {
+	RunID    string       `json:"run_id"`
+	Prepared artifact.Ref `json:"prepared"`
 }

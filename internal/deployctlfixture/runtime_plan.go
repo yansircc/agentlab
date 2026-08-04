@@ -96,6 +96,14 @@ func (value Preflight) bindRuntime(spec RuntimeSpec, canary liveCanaryRunner) (P
 	if err != nil {
 		return Preflight{}, err
 	}
+	coderInputs, _, err := preflightInputs(store, coderRunID, value.reset, value.Candidate, canaryRef, runtime)
+	if err != nil {
+		return Preflight{}, err
+	}
+	coderPrepared, err := experiment.RecordPreparedRun(store, experiment.PreparedRun{Contract: experiment.PreparedRunContract, RunID: coderRunID, Inputs: coderInputs})
+	if err != nil {
+		return Preflight{}, err
+	}
 	op, err := experiment.Open(value.EvaluatedRoot, value.ExperimentID)
 	if err != nil {
 		return Preflight{}, err
@@ -114,10 +122,10 @@ func (value Preflight) bindRuntime(spec RuntimeSpec, canary liveCanaryRunner) (P
 	if err := transaction.Replace(planPath, plan, 0o600); err != nil {
 		return Preflight{}, err
 	}
-	if err := writeRuntimePreflightLocator(spec.HostRoot, value.EvaluatedRoot, value.AuditRoot); err != nil {
+	if err := writeRuntimePreflightLocator(spec.HostRoot, value.EvaluatedRoot, value.AuditRoot, coderPrepared); err != nil {
 		return Preflight{}, err
 	}
-	value.FixtureReset, value.LiveCanary, value.Inputs, value.hostRoot, value.runtimePlanPath = reset, canaryRef, inputs, spec.HostRoot, planPath
+	value.FixtureReset, value.LiveCanary, value.CoderPrepared, value.Inputs, value.hostRoot, value.runtimePlanPath = reset, canaryRef, coderPrepared, inputs, spec.HostRoot, planPath
 	return value, value.Verify()
 }
 

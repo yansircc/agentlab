@@ -29,7 +29,7 @@ func (value Preflight) Verify() error {
 
 func (value Preflight) verifyRuntime() error {
 	if value.FixtureReset != (artifact.Ref{}) || value.Inputs != (experiment.RunInputs{}) {
-		if !value.FixtureReset.Valid() || !value.LiveCanary.Valid() || value.Inputs.Adapter != value.LiveCanary || value.runtimePlanPath == "" {
+		if !value.FixtureReset.Valid() || !value.LiveCanary.Valid() || !value.CoderPrepared.Valid() || value.Inputs.Adapter != value.LiveCanary || value.runtimePlanPath == "" {
 			return errors.New("deployctl runtime preflight is incomplete")
 		}
 		host, err := tool.LoadPiRuntimeHost(value.runtimePlanPath)
@@ -51,6 +51,10 @@ func (value Preflight) verifyRuntime() error {
 		binding, err := loadRuntimeBinding(artifact.NewStore(filepath.Join(value.EvaluatedRoot, "artifacts")), value.Inputs.WorkerRuntime)
 		if err != nil || binding.Adapter != value.LiveCanary || binding.CandidateExecutable != value.CandidateExecutable {
 			return errors.New("deployctl runtime binding differs from preflight")
+		}
+		coderPrepared, err := experiment.LoadPreparedRun(artifact.NewStore(filepath.Join(value.EvaluatedRoot, "artifacts")), value.CoderPrepared)
+		if err != nil || coderPrepared.RunID != coderRunID || coderPrepared.Inputs.Candidate != value.Candidate || coderPrepared.Inputs.Adapter != value.LiveCanary {
+			return errors.New("deployctl Coder prepared run differs from preflight")
 		}
 		return value.verifyManifest()
 	}
