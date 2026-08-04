@@ -72,7 +72,7 @@ func LoadRuntimePreflight(hostRoot string) (Preflight, error) {
 		EvaluatedRoot: locator.EvaluatedRoot, AuditRoot: locator.AuditRoot, PreparationID: preparationID, ExperimentID: experimentID, BaselineRunID: baselineRunID, AuditID: auditID,
 		Fixture: fixture, WorkerInput: prepared.WorkerInput, SourceSnapshot: prepared.Source, Candidate: manifest.Candidate, CandidateExecutable: binding.CandidateExecutable,
 		FixtureReset: manifest.FixtureReset, LiveCanary: manifest.Adapter, CoderPrepared: locator.CoderPrepared, Inputs: manifest.RunInputs, GroundTruth: auditStatus.Trial.GroundTruth,
-		hostRoot: hostRoot, runtimePlanPath: filepath.Join(hostRoot, "pi-runtime-plan.json"),
+		hostRoot: hostRoot, runtimePlanPath: filepath.Join(hostRoot, "pi-runtime-plan.json"), supervisorPlanPath: filepath.Join(hostRoot, "supervisor-plan.json"),
 	}
 	if err := value.verifyRecordedRoots(); err != nil {
 		return Preflight{}, err

@@ -3,11 +3,13 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"reflect"
 	"testing"
 
 	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/preparation"
 	"github.com/yansircc/agentlab/internal/source"
+	"github.com/yansircc/agentlab/internal/tool"
 )
 
 func TestToolSchemaCLIProjectsExactlyFourTools(t *testing.T) {
@@ -19,6 +21,17 @@ func TestToolSchemaCLIProjectsExactlyFourTools(t *testing.T) {
 		definitions, ok := result.([]map[string]any)
 		if !ok || len(definitions) != 4 {
 			t.Fatalf("%s schemas = %#v", provider, result)
+		}
+		names := make([]string, 0, len(definitions))
+		for _, definition := range definitions {
+			name, ok := definition["name"].(string)
+			if !ok {
+				t.Fatalf("%s schema has no function name: %#v", provider, definition)
+			}
+			names = append(names, name)
+		}
+		if !reflect.DeepEqual(names, tool.ActiveToolNames()) {
+			t.Fatalf("%s tool names = %#v", provider, names)
 		}
 	}
 }

@@ -15,13 +15,17 @@ import (
 // effects after this preflight has bound their Host inputs.
 func acceptanceCommand(args []string) (any, error) {
 	if len(args) == 0 {
-		return nil, errors.New("usage: agentlab acceptance <provision|preflight|prepare-baseline|prepare-run|verify-heldout|audit-status|audit-review|audit-finding|audit-seal|recursive-gate>")
+		return nil, errors.New("usage: agentlab acceptance <provision|preflight|supervisor-start|supervisor-status|prepare-baseline|prepare-run|verify-heldout|audit-status|audit-review|audit-finding|audit-seal|recursive-gate>")
 	}
 	switch args[0] {
 	case "provision":
 		return acceptanceProvision(args[1:])
 	case "preflight":
 		return acceptancePreflight(args[1:])
+	case "supervisor-start":
+		return acceptanceSupervisorStart(args[1:])
+	case "supervisor-status":
+		return acceptanceSupervisorStatus(args[1:])
 	case "prepare-run":
 		return acceptancePrepareRun(args[1:])
 	case "prepare-baseline":
@@ -64,7 +68,7 @@ type acceptanceRecursiveGateRequest struct {
 // the private preflight locator to reach the disjoint audit root and therefore
 // are intentionally unavailable from the bundled extension.
 func acceptanceAuditStatus(args []string) (any, error) {
-	preflight, err := acceptanceAuditPreflight("acceptance audit-status", args, false, nil)
+	preflight, err := acceptanceHostPreflight("acceptance audit-status", args, false, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +81,7 @@ func acceptanceAuditStatus(args []string) (any, error) {
 
 func acceptanceAuditReview(args []string) (any, error) {
 	var request acceptanceAuditReviewRequest
-	preflight, err := acceptanceAuditPreflight("acceptance audit-review", args, true, &request)
+	preflight, err := acceptanceHostPreflight("acceptance audit-review", args, true, &request)
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +97,7 @@ func acceptanceAuditReview(args []string) (any, error) {
 
 func acceptanceAuditFinding(args []string) (any, error) {
 	var request acceptanceAuditFindingRequest
-	preflight, err := acceptanceAuditPreflight("acceptance audit-finding", args, true, &request)
+	preflight, err := acceptanceHostPreflight("acceptance audit-finding", args, true, &request)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +112,7 @@ func acceptanceAuditFinding(args []string) (any, error) {
 }
 
 func acceptanceAuditSeal(args []string) (any, error) {
-	preflight, err := acceptanceAuditPreflight("acceptance audit-seal", args, false, nil)
+	preflight, err := acceptanceHostPreflight("acceptance audit-seal", args, false, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +128,7 @@ func acceptanceAuditSeal(args []string) (any, error) {
 
 func acceptanceRecursiveGate(args []string) (any, error) {
 	var request acceptanceRecursiveGateRequest
-	preflight, err := acceptanceAuditPreflight("acceptance recursive-gate", args, true, &request)
+	preflight, err := acceptanceHostPreflight("acceptance recursive-gate", args, true, &request)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +137,23 @@ func acceptanceRecursiveGate(args []string) (any, error) {
 	})
 }
 
-func acceptanceAuditPreflight(name string, args []string, requestRequired bool, request any) (deployctlfixture.Preflight, error) {
+func acceptanceSupervisorStart(args []string) (any, error) {
+	preflight, err := acceptanceHostPreflight("acceptance supervisor-start", args, false, nil)
+	if err != nil {
+		return nil, err
+	}
+	return preflight.StartSupervisor()
+}
+
+func acceptanceSupervisorStatus(args []string) (any, error) {
+	preflight, err := acceptanceHostPreflight("acceptance supervisor-status", args, false, nil)
+	if err != nil {
+		return nil, err
+	}
+	return preflight.SupervisorStatus()
+}
+
+func acceptanceHostPreflight(name string, args []string, requestRequired bool, request any) (deployctlfixture.Preflight, error) {
 	set := flag.NewFlagSet(name, flag.ContinueOnError)
 	set.SetOutput(os.Stderr)
 	hostRoot := set.String("host-root", "", "existing Host-private runtime root")

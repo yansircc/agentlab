@@ -58,3 +58,15 @@ func TestCLIAcceptanceAuditCommandsRejectProviderFields(t *testing.T) {
 		t.Fatal("audit seal accepted an unexpected request path")
 	}
 }
+
+func TestCLIAcceptanceSupervisorCommandsRejectProviderFields(t *testing.T) {
+	request := writeJSONFile(t, t.TempDir(), "supervisor-start.json", map[string]any{
+		"root": "/provider-selected", "runtime_plan": "/provider-selected/plan.json",
+	})
+	if _, err := dispatch([]string{"acceptance", "supervisor-start", "-host-root", t.TempDir(), "-request", request}); err == nil {
+		t.Fatal("Host Supervisor launcher accepted a provider-selected request path")
+	}
+	if _, err := dispatch([]string{"acceptance", "supervisor-status", "-host-root", t.TempDir(), "-request", request}); err == nil {
+		t.Fatal("Host Supervisor status accepted a provider-selected request path")
+	}
+}

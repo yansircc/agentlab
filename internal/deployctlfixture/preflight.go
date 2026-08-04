@@ -58,6 +58,7 @@ type Preflight struct {
 	reset               ResetReceipt
 	hostRoot            string
 	runtimePlanPath     string
+	supervisorPlanPath  string
 }
 
 // ProvisionPreflight creates the two disjoint roots, seals the exact public

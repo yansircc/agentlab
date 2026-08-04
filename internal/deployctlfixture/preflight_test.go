@@ -138,6 +138,13 @@ func TestBindRuntimeBuildsAHostPrivateExactProfilePlan(t *testing.T) {
 	if err != nil || profile.ChildSessionDir != filepath.Join(spec.HostRoot, "worker-children") {
 		t.Fatalf("baseline fork namespace = %#v, %v", profile, err)
 	}
+	supervisor, err := tool.LoadPiSupervisorPlan(filepath.Join(spec.HostRoot, "supervisor-plan.json"))
+	if err != nil || supervisor.Binding.Root != value.EvaluatedRoot || supervisor.Binding.PreparationID != value.PreparationID || supervisor.Binding.ExperimentID != value.ExperimentID || supervisor.Binding.RuntimePlanPath != filepath.Join(spec.HostRoot, "pi-runtime-plan.json") || supervisor.Identity != profile.Identity || supervisor.Launch.RuntimeRoot != filepath.Join(spec.HostRoot, "supervisor-runtime") || supervisor.SessionPath != filepath.Join(spec.HostRoot, "supervisor-runtime", "session.jsonl") {
+		t.Fatalf("Supervisor plan = %#v, %v", supervisor, err)
+	}
+	if _, err := value.SupervisorStatus(); err == nil {
+		t.Fatal("runtime preflight fabricated a Supervisor process receipt")
+	}
 	reopened, err := LoadRuntimePreflight(spec.HostRoot)
 	if err != nil || reopened.EvaluatedRoot != value.EvaluatedRoot || reopened.AuditRoot != value.AuditRoot || reopened.CoderPrepared != value.CoderPrepared || reopened.Inputs != value.Inputs || reopened.CandidateExecutable != value.CandidateExecutable {
 		t.Fatalf("reopened runtime preflight = %#v, %v", reopened, err)

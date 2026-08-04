@@ -52,10 +52,11 @@ func (value Preflight) bindRuntime(spec RuntimeSpec, canary liveCanaryRunner) (P
 	if err != nil {
 		return Preflight{}, err
 	}
-	identity, err := piadapter.DiscoverIdentity(piadapter.IdentityConfig{
+	identityConfig := piadapter.IdentityConfig{
 		SDKRoot: spec.SDKRoot, ContextFilterPath: extension, AdapterDigest: digest,
 		Provider: spec.Provider, Model: spec.Model, ThinkingPolicy: spec.ThinkingPolicy, CompactionPolicy: spec.CompactionPolicy,
-	})
+	}
+	identity, err := piadapter.DiscoverIdentity(identityConfig)
 	if err != nil {
 		return Preflight{}, err
 	}
@@ -122,10 +123,27 @@ func (value Preflight) bindRuntime(spec RuntimeSpec, canary liveCanaryRunner) (P
 	if err := transaction.Replace(planPath, plan, 0o600); err != nil {
 		return Preflight{}, err
 	}
+	supervisorPlan := tool.PiSupervisorPlan{
+		Contract: tool.PiSupervisorPlanContract,
+		Launch: tool.PiLaunch{
+			NodePath: spec.NodePath, RuntimeRoot: filepath.Join(spec.HostRoot, "supervisor-runtime"),
+			ReadOnlyRoots: []string{spec.SDKRoot, spec.SkillRoot}, AllowNetwork: true,
+		},
+		SessionPath: filepath.Join(spec.HostRoot, "supervisor-runtime", "session.jsonl"), SkillRoot: spec.SkillRoot, Identity: identityConfig,
+		Binding: tool.PiSupervisorBinding{Root: value.EvaluatedRoot, PreparationID: value.PreparationID, ExperimentID: value.ExperimentID, RuntimePlanPath: planPath},
+	}
+	supervisorData, err := tool.EncodePiSupervisorPlan(supervisorPlan)
+	if err != nil {
+		return Preflight{}, err
+	}
+	supervisorPath := filepath.Join(spec.HostRoot, "supervisor-plan.json")
+	if err := transaction.WriteOnce(supervisorPath, supervisorData, 0o600); err != nil {
+		return Preflight{}, err
+	}
 	if err := writeRuntimePreflightLocator(spec.HostRoot, value.EvaluatedRoot, value.AuditRoot, coderPrepared); err != nil {
 		return Preflight{}, err
 	}
-	value.FixtureReset, value.LiveCanary, value.CoderPrepared, value.Inputs, value.hostRoot, value.runtimePlanPath = reset, canaryRef, coderPrepared, inputs, spec.HostRoot, planPath
+	value.FixtureReset, value.LiveCanary, value.CoderPrepared, value.Inputs, value.hostRoot, value.runtimePlanPath, value.supervisorPlanPath = reset, canaryRef, coderPrepared, inputs, spec.HostRoot, planPath, supervisorPath
 	return value, value.Verify()
 }
 

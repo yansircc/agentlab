@@ -48,6 +48,10 @@ func (value Preflight) verifyRuntime() error {
 		if err != nil || !reflect.DeepEqual(discovered, identity) {
 			return errors.New("deployctl runtime identity differs from live canary")
 		}
+		supervisor, err := tool.LoadPiSupervisorPlan(value.supervisorPlanPath)
+		if err != nil || supervisor.Binding.Root != value.EvaluatedRoot || supervisor.Binding.PreparationID != value.PreparationID || supervisor.Binding.ExperimentID != value.ExperimentID || supervisor.Binding.RuntimePlanPath != value.runtimePlanPath || supervisor.Launch.RuntimeRoot != filepath.Join(value.hostRoot, "supervisor-runtime") || supervisor.SessionPath != filepath.Join(value.hostRoot, "supervisor-runtime", "session.jsonl") || !reflect.DeepEqual(supervisor.Identity, profile.Identity) {
+			return errors.New("deployctl Supervisor runtime plan differs from preflight")
+		}
 		binding, err := loadRuntimeBinding(artifact.NewStore(filepath.Join(value.EvaluatedRoot, "artifacts")), value.Inputs.WorkerRuntime)
 		if err != nil || binding.Adapter != value.LiveCanary || binding.CandidateExecutable != value.CandidateExecutable {
 			return errors.New("deployctl runtime binding differs from preflight")

@@ -9,16 +9,26 @@ type Definition struct {
 }
 
 func Definitions() []Definition {
-	return []Definition{
-		{Name: ApplyTool, Description: "Submit a closed AgentLab domain operation.", InputSchema: applySchema()},
-		{Name: RunTool, Description: "Execute one decision-bound AgentLab runtime operation.", InputSchema: runSchema()},
-		{Name: InspectTool, Description: "Read one bounded public AgentLab projection.", InputSchema: inspectSchema()},
-		{Name: CompareTool, Description: "Record or read exact-candidate comparison and gate facts.", InputSchema: compareSchema()},
+	result := make([]Definition, 0, len(ActiveToolNames()))
+	for _, name := range ActiveToolNames() {
+		switch name {
+		case ApplyTool:
+			result = append(result, Definition{Name: name, Description: "Submit a closed AgentLab domain operation.", InputSchema: applySchema()})
+		case RunTool:
+			result = append(result, Definition{Name: name, Description: "Execute one decision-bound AgentLab runtime operation.", InputSchema: runSchema()})
+		case InspectTool:
+			result = append(result, Definition{Name: name, Description: "Read one bounded public AgentLab projection.", InputSchema: inspectSchema()})
+		case CompareTool:
+			result = append(result, Definition{Name: name, Description: "Record or read exact-candidate comparison and gate facts.", InputSchema: compareSchema()})
+		default:
+			panic("unknown AgentLab provider tool")
+		}
 	}
+	return result
 }
 
 func Projection(provider string) ([]map[string]any, error) {
-	result := make([]map[string]any, 0, 4)
+	result := make([]map[string]any, 0, len(ActiveToolNames()))
 	for _, definition := range Definitions() {
 		switch provider {
 		case "anthropic":

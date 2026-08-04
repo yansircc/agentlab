@@ -18,6 +18,13 @@ const (
 	CompareTool = "agentlab_compare"
 )
 
+// ActiveToolNames is the one closed owner of the Supervisor's provider-visible
+// authority. The bundled extension and Host-side Pi launcher both derive their
+// allowlist from it; neither keeps an independent copy.
+func ActiveToolNames() []string {
+	return []string{ApplyTool, RunTool, InspectTool, CompareTool}
+}
+
 // Binding is host authority, never model-authored input. Empty preparation or
 // experiment bindings deny operations which require that scope.
 type Binding struct {
