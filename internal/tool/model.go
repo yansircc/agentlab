@@ -43,6 +43,7 @@ type RuntimeHost interface {
 	ForkIntent(Binding, ForkRequest) (effect.Intent, error)
 	Start(Binding, effect.Intent, string) (any, error)
 	Poll(Binding, string, string) (any, error)
+	RuntimeTree(Binding, string, uint64, int) (any, error)
 	Checkpoint(Binding, effect.Intent, string) (any, error)
 	Fork(Binding, effect.Intent, string, string) (any, error)
 }

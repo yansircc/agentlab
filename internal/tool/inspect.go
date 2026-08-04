@@ -26,7 +26,7 @@ func decodeInspect(data []byte) (Operation, error) {
 		if value.RunID != "" {
 			return nil, errors.New("inspect scope carries a run id")
 		}
-	case "run":
+	case "run", "runtime_tree":
 		if value.RunID == "" {
 			return nil, errors.New("run inspect requires a run id")
 		}
@@ -58,6 +58,11 @@ func (value inspectOperation) execute(binding Binding) (any, error) {
 			return nil, err
 		}
 		return op.Inspect(*value.After, value.Limit)
+	case "runtime_tree":
+		if binding.Runtime == nil {
+			return nil, errors.New("runtime tree inspection is unavailable")
+		}
+		return binding.Runtime.RuntimeTree(binding, value.RunID, *value.After, value.Limit)
 	default:
 		return nil, errors.New("inspect scope is invalid")
 	}

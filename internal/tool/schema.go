@@ -77,7 +77,7 @@ func runSchema() map[string]any {
 
 func inspectSchema() map[string]any {
 	return object(map[string]any{
-		"scope": enum("preparation", "experiment", "run"), "run_id": text("Experiment-scoped opaque run ref."),
+		"scope": enum("preparation", "experiment", "run", "runtime_tree"), "run_id": text("Experiment-scoped opaque run ref."),
 		"after": map[string]any{"type": "integer", "minimum": 0}, "limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 1000},
 	}, "scope", "after", "limit")
 }

@@ -36,6 +36,7 @@ func TestDecodeRejectsLocatorsAndIllegalProducts(t *testing.T) {
 		{RunTool, `{"action":"start","request_path":"/tmp/request.json"}`},
 		{RunTool, `{"action":"poll","run_id":"r","stream_path":"/tmp/session"}`},
 		{InspectTool, `{"scope":"run","after":0,"limit":1}`},
+		{InspectTool, `{"scope":"runtime_tree","run_id":"r","session_path":"/tmp/session","after":0,"limit":1}`},
 		{InspectTool, `{"scope":"experiment","run_id":"r","after":0,"limit":1}`},
 		{CompareTool, `{"action":"show","gate_id":"g"}`},
 		{"agentlab_prepare", `{"action":"status"}`},
