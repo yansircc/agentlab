@@ -103,7 +103,11 @@ func (value Preflight) bindRuntime(spec RuntimeSpec, canary liveCanaryRunner) (P
 	if _, err := op.Begin(value.PreparationID); err != nil {
 		return Preflight{}, err
 	}
-	if _, err := op.BindRun(value.BaselineRunID, experiment.NewFreshOrigin(), inputs); err != nil {
+	prepared, err := experiment.RecordPreparedRun(store, experiment.PreparedRun{Contract: experiment.PreparedRunContract, RunID: value.BaselineRunID, Inputs: inputs})
+	if err != nil {
+		return Preflight{}, err
+	}
+	if _, err := op.BindPreparedRun(value.BaselineRunID, experiment.NewFreshOrigin(), prepared); err != nil {
 		return Preflight{}, err
 	}
 	planPath := filepath.Join(spec.HostRoot, "pi-runtime-plan.json")

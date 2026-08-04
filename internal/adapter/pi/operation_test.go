@@ -129,11 +129,16 @@ func bindAdapterTestManifest(t *testing.T, root, experimentID, runID string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = operation.BindRun(runID, experiment.NewFreshOrigin(), experiment.RunInputs{
+	inputs := experiment.RunInputs{
 		Harness: put("harness"), Trial: put("trial"), Candidate: candidate, Adapter: put("pi-adapter"),
 		OracleSet: put("oracles"), Fixture: fixture, FixtureReset: reset, EvidencePolicy: put("evidence"), StopPolicy: put("stop"),
 		WorkerRuntime: put("pi-runtime"), Environment: put("environment"),
-	})
+	}
+	prepared, err := experiment.RecordPreparedRun(store, experiment.PreparedRun{Contract: experiment.PreparedRunContract, RunID: runID, Inputs: inputs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = operation.BindPreparedRun(runID, experiment.NewFreshOrigin(), prepared)
 	if err != nil {
 		t.Fatal(err)
 	}

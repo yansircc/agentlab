@@ -116,7 +116,11 @@ func TestExperimentReviewAndHandoffCLI(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		request := writeJSONFile(t, files, runID+".json", map[string]any{"experiment_id": "review-exp", "run_id": runID, "origin": experiment.NewFreshOrigin(), "inputs": inputs})
+		prepared, err := experiment.RecordPreparedRun(store, experiment.PreparedRun{Contract: experiment.PreparedRunContract, RunID: runID, Inputs: inputs})
+		if err != nil {
+			t.Fatal(err)
+		}
+		request := writeJSONFile(t, files, runID+".json", map[string]any{"experiment_id": "review-exp", "run_id": runID, "origin": experiment.NewFreshOrigin(), "prepared": prepared})
 		if _, err := dispatch([]string{"experiment", "bind-run", "-root", root, "-request", request}); err != nil {
 			t.Fatal(err)
 		}

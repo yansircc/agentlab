@@ -40,10 +40,6 @@ type runBinding struct {
 	Manifest artifact.Ref `json:"manifest"`
 }
 
-func (o *Operation) BindRun(runID string, origin RunOrigin, inputs RunInputs) (artifact.Ref, error) {
-	return o.bindRun(runID, origin, inputs, nil)
-}
-
 func (o *Operation) bindRun(runID string, origin RunOrigin, inputs RunInputs, decision *SupervisorDecision) (artifact.Ref, error) {
 	if !idPattern.MatchString(runID) {
 		return artifact.Ref{}, errors.New("invalid run id")

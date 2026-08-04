@@ -54,7 +54,11 @@ func renderOwnedHandoff(t *testing.T, binding Binding) artifact.Ref {
 		t.Fatal(err)
 	}
 	inputs := experiment.RunInputs{Harness: put("harness"), Trial: put("trial"), Candidate: candidate, Adapter: put("adapter"), OracleSet: put("oracles"), Fixture: fixture, FixtureReset: reset, EvidencePolicy: put("evidence"), StopPolicy: put("stop"), WorkerRuntime: put("runtime"), Environment: put("environment")}
-	if _, err := op.BindRun("worker", experiment.NewFreshOrigin(), inputs); err != nil {
+	prepared, err := experiment.RecordPreparedRun(store, experiment.PreparedRun{Contract: experiment.PreparedRunContract, RunID: "worker", Inputs: inputs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := op.BindPreparedRun("worker", experiment.NewFreshOrigin(), prepared); err != nil {
 		t.Fatal(err)
 	}
 	worker, _ := run.Open(binding.Root, binding.ExperimentID, "worker")

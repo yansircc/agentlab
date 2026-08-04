@@ -89,7 +89,11 @@ func auditFixture(t *testing.T) (string, *run.Operation, run.EvidenceRef) {
 		t.Fatal(err)
 	}
 	inputs := experiment.RunInputs{Harness: put("harness"), Trial: put("trial"), Candidate: candidate, Adapter: put("adapter"), OracleSet: put("oracles"), Fixture: fixture, FixtureReset: reset, EvidencePolicy: put("evidence"), StopPolicy: put("policy"), WorkerRuntime: put("runtime"), Environment: put("environment")}
-	if _, err := experimentOp.BindRun("worker", experiment.NewFreshOrigin(), inputs); err != nil {
+	preparedRef, err := experiment.RecordPreparedRun(store, experiment.PreparedRun{Contract: experiment.PreparedRunContract, RunID: "worker", Inputs: inputs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := experimentOp.BindPreparedRun("worker", experiment.NewFreshOrigin(), preparedRef); err != nil {
 		t.Fatal(err)
 	}
 	runOp, _ := run.Open(root, "experiment", "worker")

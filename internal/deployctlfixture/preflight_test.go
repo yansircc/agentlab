@@ -210,7 +210,11 @@ func terminalCoderCompletion(t *testing.T, value Preflight) (artifact.Ref, artif
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := op.BindRun(coderRunID, experiment.NewFreshOrigin(), inputs); err != nil {
+	prepared, err := experiment.RecordPreparedRun(store, experiment.PreparedRun{Contract: experiment.PreparedRunContract, RunID: coderRunID, Inputs: inputs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := op.BindPreparedRun(coderRunID, experiment.NewFreshOrigin(), prepared); err != nil {
 		t.Fatal(err)
 	}
 	host, err := tool.LoadPiRuntimeHost(value.runtimePlanPath)

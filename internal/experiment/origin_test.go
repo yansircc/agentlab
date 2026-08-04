@@ -17,9 +17,7 @@ func TestSpliceOriginDerivesVerifiedLineage(t *testing.T) {
 	_, evidence, checkpoint, prefix := spliceParent(t, op, root, "parent")
 	intervention := putTestArtifact(t, op, "reobserve public contract")
 	origin := testSpliceOrigin(t, "parent", evidence, checkpoint, prefix, &intervention)
-	if _, err := op.BindRun("child", origin, testRunInputs(t, op, "child", "child")); err != nil {
-		t.Fatal(err)
-	}
+	bindPreparedTestRun(t, op, "child", origin, testRunInputs(t, op, "child", "child"))
 	manifest, _, err := op.RunManifest("child")
 	if err != nil {
 		t.Fatal(err)
@@ -74,7 +72,11 @@ func TestSpliceOriginRejectsUnownedFacts(t *testing.T) {
 		{"missing intervention", "missing-intervention", testSpliceOrigin(t, "parent", evidence, checkpoint, prefix, &intervention)},
 	}
 	for _, test := range cases {
-		if _, err := op.BindRun(test.runID, test.origin, testRunInputs(t, op, test.runID, test.name)); err == nil {
+		prepared, err := RecordPreparedRun(op.artifacts, PreparedRun{Contract: PreparedRunContract, RunID: test.runID, Inputs: testRunInputs(t, op, test.runID, test.name)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := op.BindPreparedRun(test.runID, test.origin, prepared); err == nil {
 			t.Fatalf("%s was accepted", test.name)
 		}
 	}

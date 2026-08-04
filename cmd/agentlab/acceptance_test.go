@@ -82,6 +82,15 @@ func TestAttachedCLIStopIsDurableWithoutClaimingProcessDeath(t *testing.T) {
 	}
 }
 
+func TestCLIExperimentBindRunRejectsRawInputs(t *testing.T) {
+	request := writeJSONFile(t, t.TempDir(), "raw-inputs.json", map[string]any{
+		"experiment_id": "cli-experiment", "run_id": "worker", "origin": experiment.NewFreshOrigin(), "inputs": map[string]any{},
+	})
+	if _, err := dispatch([]string{"experiment", "bind-run", "-root", t.TempDir(), "-request", request}); err == nil {
+		t.Fatal("CLI accepted raw manifest inputs")
+	}
+}
+
 func bindCLIRunManifest(t *testing.T, root, experimentID, runID string) {
 	t.Helper()
 	prepID := experimentID + "-prep"
@@ -138,11 +147,16 @@ func bindExistingExperimentRun(t *testing.T, root string, operation *experiment.
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = operation.BindRun(runID, experiment.NewFreshOrigin(), experiment.RunInputs{
+	inputs := experiment.RunInputs{
 		Harness: put("harness"), Trial: put("trial"), Candidate: candidate, Adapter: put("adapter"),
 		OracleSet: put("oracles"), Fixture: fixture, FixtureReset: reset, EvidencePolicy: put("evidence"),
 		StopPolicy: put("stop"), WorkerRuntime: put("runtime"), Environment: put("environment"),
-	})
+	}
+	prepared, err := experiment.RecordPreparedRun(store, experiment.PreparedRun{Contract: experiment.PreparedRunContract, RunID: runID, Inputs: inputs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = operation.BindPreparedRun(runID, experiment.NewFreshOrigin(), prepared)
 	if err != nil {
 		t.Fatal(err)
 	}

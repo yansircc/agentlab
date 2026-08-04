@@ -1,12 +1,15 @@
 package main
 
-import "github.com/yansircc/agentlab/internal/experiment"
+import (
+	"github.com/yansircc/agentlab/internal/artifact"
+	"github.com/yansircc/agentlab/internal/experiment"
+)
 
 type bindRunRequest struct {
 	ExperimentID string               `json:"experiment_id"`
 	RunID        string               `json:"run_id"`
 	Origin       experiment.RunOrigin `json:"origin"`
-	Inputs       experiment.RunInputs `json:"inputs"`
+	Prepared     artifact.Ref         `json:"prepared"`
 }
 
 func experimentBindRun(args []string) (any, error) {
@@ -22,5 +25,5 @@ func experimentBindRun(args []string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return op.BindRun(request.RunID, request.Origin, request.Inputs)
+	return op.BindPreparedRun(request.RunID, request.Origin, request.Prepared)
 }
