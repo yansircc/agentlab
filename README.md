@@ -53,7 +53,7 @@ agentlab compare record|show
 agentlab gate record|show
 agentlab inspect
 agentlab tool schemas|invoke
-agentlab acceptance provision|preflight|prepare-baseline|prepare-run|verify-heldout
+agentlab acceptance provision|preflight|prepare-baseline|prepare-run|verify-heldout|audit-status|audit-review|audit-finding|audit-seal|recursive-gate
 ```
 
 Mutation commands accept strict JSON requests. Secrets are referenced by environment-variable handles, never accepted as CLI values, and resolved values are redacted before evidence persistence.
@@ -113,6 +113,12 @@ candidate bytes or individual manifest inputs. Each isolated run receives its
 own Host profile and executable receipt. `acceptance verify-heldout` creates a
 post-seal target and records objective oracle evidence only; it is not a
 Worker trial or autonomous-acceptance claim.
+
+`acceptance audit-*` and `acceptance recursive-gate` are Host/Codex-only
+commands. They reopen the Host-private locator to read the disjoint audit root,
+record a coverage review or adverse finding, seal the audit, and evaluate the
+final recursive gate. They are not provider tools and cannot be addressed by
+the Supervisor, Worker, or Coder.
 
 ## Contributing and security
 

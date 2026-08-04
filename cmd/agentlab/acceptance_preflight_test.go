@@ -46,3 +46,15 @@ func TestCLIAcceptanceHeldoutRejectsRawCandidateInput(t *testing.T) {
 		t.Fatal("held-out Host check accepted a raw candidate input")
 	}
 }
+
+func TestCLIAcceptanceAuditCommandsRejectProviderFields(t *testing.T) {
+	request := writeJSONFile(t, t.TempDir(), "audit-review.json", map[string]any{
+		"review": map[string]any{}, "root": "/provider-selected", "candidate": map[string]any{},
+	})
+	if _, err := dispatch([]string{"acceptance", "audit-review", "-host-root", t.TempDir(), "-request", request}); err == nil {
+		t.Fatal("Host/Codex audit command accepted provider-selected fields")
+	}
+	if _, err := dispatch([]string{"acceptance", "audit-seal", "-host-root", t.TempDir(), "-request", request}); err == nil {
+		t.Fatal("audit seal accepted an unexpected request path")
+	}
+}

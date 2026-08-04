@@ -7,6 +7,7 @@ import (
 
 	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/deployctlfixture"
+	"github.com/yansircc/agentlab/internal/metaaudit"
 )
 
 // acceptanceCommand is Host-only orchestration. It is intentionally absent
@@ -14,7 +15,7 @@ import (
 // effects after this preflight has bound their Host inputs.
 func acceptanceCommand(args []string) (any, error) {
 	if len(args) == 0 {
-		return nil, errors.New("usage: agentlab acceptance <provision|preflight|prepare-baseline|prepare-run|verify-heldout>")
+		return nil, errors.New("usage: agentlab acceptance <provision|preflight|prepare-baseline|prepare-run|verify-heldout|audit-status|audit-review|audit-finding|audit-seal|recursive-gate>")
 	}
 	switch args[0] {
 	case "provision":
@@ -27,6 +28,16 @@ func acceptanceCommand(args []string) (any, error) {
 		return acceptancePrepareBaseline(args[1:])
 	case "verify-heldout":
 		return acceptanceVerifyHeldout(args[1:])
+	case "audit-status":
+		return acceptanceAuditStatus(args[1:])
+	case "audit-review":
+		return acceptanceAuditReview(args[1:])
+	case "audit-finding":
+		return acceptanceAuditFinding(args[1:])
+	case "audit-seal":
+		return acceptanceAuditSeal(args[1:])
+	case "recursive-gate":
+		return acceptanceRecursiveGate(args[1:])
 	default:
 		return nil, errors.New("unknown acceptance command")
 	}
@@ -34,6 +45,113 @@ func acceptanceCommand(args []string) (any, error) {
 
 type acceptanceVerifyHeldoutRequest struct {
 	Prepared artifact.Ref `json:"prepared"`
+}
+
+type acceptanceAuditReviewRequest struct {
+	Review metaaudit.Review `json:"review"`
+}
+
+type acceptanceAuditFindingRequest struct {
+	Finding metaaudit.Finding `json:"finding"`
+}
+
+type acceptanceRecursiveGateRequest struct {
+	CandidateID string `json:"candidate_id"`
+	GateID      string `json:"gate_id"`
+}
+
+// The audit commands are Host/Codex-only. Unlike provider tools, they reopen
+// the private preflight locator to reach the disjoint audit root and therefore
+// are intentionally unavailable from the bundled extension.
+func acceptanceAuditStatus(args []string) (any, error) {
+	preflight, err := acceptanceAuditPreflight("acceptance audit-status", args, false, nil)
+	if err != nil {
+		return nil, err
+	}
+	audit, err := metaaudit.Open(preflight.AuditRoot, preflight.AuditID)
+	if err != nil {
+		return nil, err
+	}
+	return audit.Status()
+}
+
+func acceptanceAuditReview(args []string) (any, error) {
+	var request acceptanceAuditReviewRequest
+	preflight, err := acceptanceAuditPreflight("acceptance audit-review", args, true, &request)
+	if err != nil {
+		return nil, err
+	}
+	audit, err := metaaudit.Open(preflight.AuditRoot, preflight.AuditID)
+	if err != nil {
+		return nil, err
+	}
+	if err := audit.RecordReview(preflight.EvaluatedRoot, request.Review); err != nil {
+		return nil, err
+	}
+	return audit.Status()
+}
+
+func acceptanceAuditFinding(args []string) (any, error) {
+	var request acceptanceAuditFindingRequest
+	preflight, err := acceptanceAuditPreflight("acceptance audit-finding", args, true, &request)
+	if err != nil {
+		return nil, err
+	}
+	audit, err := metaaudit.Open(preflight.AuditRoot, preflight.AuditID)
+	if err != nil {
+		return nil, err
+	}
+	if err := audit.Record(preflight.EvaluatedRoot, request.Finding); err != nil {
+		return nil, err
+	}
+	return audit.Status()
+}
+
+func acceptanceAuditSeal(args []string) (any, error) {
+	preflight, err := acceptanceAuditPreflight("acceptance audit-seal", args, false, nil)
+	if err != nil {
+		return nil, err
+	}
+	audit, err := metaaudit.Open(preflight.AuditRoot, preflight.AuditID)
+	if err != nil {
+		return nil, err
+	}
+	if err := audit.Seal(); err != nil {
+		return nil, err
+	}
+	return audit.Status()
+}
+
+func acceptanceRecursiveGate(args []string) (any, error) {
+	var request acceptanceRecursiveGateRequest
+	preflight, err := acceptanceAuditPreflight("acceptance recursive-gate", args, true, &request)
+	if err != nil {
+		return nil, err
+	}
+	return metaaudit.Evaluate(preflight.EvaluatedRoot, preflight.AuditRoot, metaaudit.RecursiveSpec{
+		AuditID: preflight.AuditID, ExperimentID: preflight.ExperimentID, CandidateID: request.CandidateID, GateID: request.GateID,
+	})
+}
+
+func acceptanceAuditPreflight(name string, args []string, requestRequired bool, request any) (deployctlfixture.Preflight, error) {
+	set := flag.NewFlagSet(name, flag.ContinueOnError)
+	set.SetOutput(os.Stderr)
+	hostRoot := set.String("host-root", "", "existing Host-private runtime root")
+	requestPath := set.String("request", "-", "Host JSON request path or - for stdin")
+	if err := set.Parse(args); err != nil {
+		return deployctlfixture.Preflight{}, err
+	}
+	if *hostRoot == "" || set.NArg() != 0 {
+		return deployctlfixture.Preflight{}, errors.New(name + " requires Host root")
+	}
+	if requestRequired {
+		if err := readRequest(*requestPath, request); err != nil {
+			return deployctlfixture.Preflight{}, err
+		}
+	} else if *requestPath != "-" {
+		return deployctlfixture.Preflight{}, errors.New(name + " accepts no request")
+	}
+	return deployctlfixture.LoadRuntimePreflight(*hostRoot)
 }
 
 func acceptanceVerifyHeldout(args []string) (any, error) {
