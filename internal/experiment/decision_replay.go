@@ -1,6 +1,9 @@
 package experiment
 
-import "github.com/yansircc/agentlab/internal/ledger"
+import (
+	"github.com/yansircc/agentlab/internal/effect"
+	"github.com/yansircc/agentlab/internal/ledger"
+)
 
 func (s *state) decisionEffect(record ledger.Record) error {
 	var value DecisionBoundEffect
@@ -10,11 +13,23 @@ func (s *state) decisionEffect(record ledger.Record) error {
 	if _, exists := s.effects[value.Intent.ID]; exists {
 		return invalid(record, "duplicate decision-bound effect")
 	}
+	if value.Decision.isBootstrapWorkerStart() && s.hasWorkerStart(value.Intent.RunID) {
+		return invalid(record, "duplicate bootstrap Worker start")
+	}
 	s.effects[value.Intent.ID] = value
 	s.effectOrder = append(s.effectOrder, value.Intent.ID)
 	s.decisions[value.Decision.ID] = value.Decision
 	s.decisionOrder = append(s.decisionOrder, value.Decision.ID)
 	return nil
+}
+
+func (s *state) hasWorkerStart(runID string) bool {
+	for _, value := range s.effects {
+		if value.Intent.RunID == runID && value.Intent.Kind == effect.WorkerStart {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *state) decisionFinding(record ledger.Record) error {

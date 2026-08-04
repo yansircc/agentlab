@@ -2,6 +2,7 @@ package experiment
 
 import (
 	"testing"
+	"time"
 
 	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/effect"
@@ -28,6 +29,77 @@ func TestDecisionBoundEffectIsAtomicAndSettlesOnlyItsIntent(t *testing.T) {
 	reopened, _ := Open(root, "decision-exp")
 	if settlement, err := reopened.EffectSettlement(); err != nil || len(settlement.Pending) != 0 || len(settlement.Orphan) != 0 || len(settlement.Mismatched) != 0 {
 		t.Fatalf("settlement = %#v, %v", settlement, err)
+	}
+}
+
+func TestBootstrapWorkerStartRequiresOneUnstartedFreshRun(t *testing.T) {
+	root := t.TempDir()
+	sealPreparation(t, root, "bootstrap-prep")
+	operation, err := Open(root, "bootstrap-exp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := operation.Begin("bootstrap-prep"); err != nil {
+		t.Fatal(err)
+	}
+	bindTestRun(t, operation, "fresh-worker")
+	payload := putTestArtifact(t, operation, "Host-bound fresh Worker profile")
+	bootstrap := DecisionBoundEffect{
+		Decision: SupervisorDecision{ID: "fresh-start", WorkerRun: "fresh-worker", Claim: "launch the sealed fresh Worker", Action: DecisionWorkerStart, Falsifier: "run has pre-start public evidence"},
+		Intent:   effect.Intent{ID: "fresh-start", RunID: "fresh-worker", Kind: effect.WorkerStart, Payload: payload},
+	}
+	if err := operation.CommitDecisionBoundEffect(bootstrap); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := operation.Status(); err != nil {
+		t.Fatalf("bootstrap decision did not replay: %v", err)
+	}
+	worker, err := run.Open(root, "bootstrap-exp", "fresh-worker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := run.StopPolicy{FirstEventTimeout: time.Second, SoftIdleTimeout: 2 * time.Second, HardIdleTimeout: 3 * time.Second}
+	if _, err := worker.BeginAttached(run.AttachedSpec{Adapter: "test", StreamID: "fresh-stream", InitialCursor: []byte("cursor"), Policy: policy, Capabilities: run.RequiredAdapterCapabilities()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := operation.Status(); err != nil {
+		t.Fatalf("bootstrap decision became invalid after Worker start: %v", err)
+	}
+	second := bootstrap
+	second.Decision.ID, second.Intent.ID = "fresh-start-again", "fresh-start-again"
+	if err := operation.CommitDecisionBoundEffect(second); err == nil {
+		t.Fatal("second bootstrap start for one fresh run was accepted")
+	}
+	second = bootstrap
+	second.Decision.ID, second.Intent.ID, second.Intent.RunID = "fresh-start-other", "fresh-start-other", "other"
+	if err := operation.CommitDecisionBoundEffect(second); err == nil {
+		t.Fatal("bootstrap start cited a different Worker run")
+	}
+	invalid := bootstrap.Decision
+	invalid.ID, invalid.Action = "evidence-free-stop", DecisionStop
+	if invalid.Validate() == nil {
+		t.Fatal("non-start decision accepted without evidence")
+	}
+	bindTestRun(t, operation, "already-started")
+	started, err := run.Open(root, "bootstrap-exp", "already-started")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := started.BeginAttached(run.AttachedSpec{Adapter: "test", StreamID: "late-stream", InitialCursor: []byte("cursor"), Policy: policy, Capabilities: run.RequiredAdapterCapabilities()}); err != nil {
+		t.Fatal(err)
+	}
+	late := bootstrap
+	late.Decision.ID, late.Decision.WorkerRun, late.Intent.ID, late.Intent.RunID = "late-start", "already-started", "late-start", "already-started"
+	if err := operation.CommitDecisionBoundEffect(late); err == nil {
+		t.Fatal("bootstrap start was accepted after Worker evidence began")
+	}
+	_, parentEvidence, checkpoint, prefix := spliceParent(t, operation, root, "guided-parent")
+	guidedOrigin := testSpliceOrigin(t, "guided-parent", parentEvidence, checkpoint, prefix, nil)
+	bindPreparedTestRun(t, operation, "guided-child", guidedOrigin, testRunInputs(t, operation, "guided-child", "guided"))
+	guided := bootstrap
+	guided.Decision.ID, guided.Decision.WorkerRun, guided.Intent.ID, guided.Intent.RunID = "guided-start", "guided-child", "guided-start", "guided-child"
+	if err := operation.CommitDecisionBoundEffect(guided); err == nil {
+		t.Fatal("bootstrap start was accepted for a guided child")
 	}
 }
 

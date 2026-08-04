@@ -63,7 +63,13 @@ type DecisionBoundContinue struct {
 }
 
 func (value SupervisorDecision) Validate() error {
-	if !decisionIDPattern.MatchString(value.ID) || !idPattern.MatchString(value.WorkerRun) || value.EvidenceThrough == 0 || value.Claim == "" || len(value.Claim) > 4096 || value.Falsifier == "" || len(value.Falsifier) > 4096 || len(value.Evidence) == 0 || len(value.Evidence) > 100 || !value.Action.valid() {
+	if !decisionIDPattern.MatchString(value.ID) || !idPattern.MatchString(value.WorkerRun) || value.Claim == "" || len(value.Claim) > 4096 || value.Falsifier == "" || len(value.Falsifier) > 4096 || len(value.Evidence) > 100 || !value.Action.valid() {
+		return errors.New("supervisor decision is invalid")
+	}
+	if value.isBootstrapWorkerStart() {
+		return nil
+	}
+	if value.EvidenceThrough == 0 || len(value.Evidence) == 0 {
 		return errors.New("supervisor decision is invalid")
 	}
 	seen := map[run.EvidenceRef]bool{}
@@ -74,6 +80,13 @@ func (value SupervisorDecision) Validate() error {
 		seen[ref] = true
 	}
 	return nil
+}
+
+// isBootstrapWorkerStart is the one evidence-free decision: it can launch an
+// unstarted FreshOrigin run that is already bound to sealed preparation. Once
+// the Worker has public evidence, every decision uses the normal prefix rule.
+func (value SupervisorDecision) isBootstrapWorkerStart() bool {
+	return value.Action == DecisionWorkerStart && value.EvidenceThrough == 0 && len(value.Evidence) == 0
 }
 
 func (value DecisionBoundFinding) Validate() error {
@@ -102,7 +115,7 @@ func (value DecisionAction) valid() bool {
 }
 
 func (value DecisionBoundEffect) Validate() error {
-	if value.Decision.Validate() != nil || value.Intent.Validate() != nil || value.Decision.ID != value.Intent.ID || value.Decision.Action.effectKind() != value.Intent.Kind {
+	if value.Decision.Validate() != nil || value.Intent.Validate() != nil || value.Decision.ID != value.Intent.ID || value.Decision.Action.effectKind() != value.Intent.Kind || (value.Decision.isBootstrapWorkerStart() && value.Decision.WorkerRun != value.Intent.RunID) {
 		return errors.New("decision-bound effect is invalid")
 	}
 	return nil

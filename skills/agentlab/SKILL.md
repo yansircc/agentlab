@@ -14,6 +14,11 @@ public task material only. Keep source diagnosis, repair hypotheses, oracle
 implementation, private ground truth, and previous-run private reasoning out
 of WorkerInput.
 
+For the first start of an unstarted FreshOrigin run, record only the closed
+bootstrap decision to launch that sealed input: it has no Worker evidence.
+Do not use bootstrap for a guided child or any later decision; those must cite
+their admissible public evidence prefix.
+
 Use only the active AgentLab tools and their bounded public projections. The
 Host owns runtime location, task binding, and role capabilities; never infer or
 request a filesystem, shell, session, or executable locator.

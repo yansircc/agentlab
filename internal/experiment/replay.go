@@ -27,6 +27,18 @@ func initialState() state {
 }
 
 func (o *Operation) current() (state, error) {
+	current, err := o.replayUnvalidated()
+	if err == nil {
+		for _, id := range current.decisionOrder {
+			if err = o.validateDecisionEvidence(current.decisions[id]); err != nil {
+				break
+			}
+		}
+	}
+	return current, err
+}
+
+func (o *Operation) replayUnvalidated() (state, error) {
 	current := initialState()
 	err := o.ledger.Visit(func(record ledger.Record) error {
 		if err := current.apply(record); err != nil {
@@ -40,13 +52,6 @@ func (o *Operation) current() (state, error) {
 	}
 	if err == nil {
 		err = o.validateCandidateSnapshots(current)
-	}
-	if err == nil {
-		for _, id := range current.decisionOrder {
-			if err = o.validateDecisionEvidence(current.decisions[id]); err != nil {
-				break
-			}
-		}
 	}
 	return current, err
 }
