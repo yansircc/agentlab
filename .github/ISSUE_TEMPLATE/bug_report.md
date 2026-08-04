@@ -11,7 +11,7 @@ artifacts. Report security-sensitive defects through the
 
 ## AgentLab version or commit
 
-<!-- Output of `agentlab --version`, or the Git commit. -->
+<!-- Git commit, for example `git rev-parse HEAD`. -->
 
 ## Environment
 
