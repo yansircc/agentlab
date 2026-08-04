@@ -31,6 +31,33 @@ func TestAttachedWorkerStartEffectSettlesOneIntent(t *testing.T) {
 	if err != nil || second.Receipt != first.Receipt || second.State.Adapter != first.State.Adapter || second.State.StreamID != first.State.StreamID {
 		t.Fatalf("reconciled start = %#v, %v", second, err)
 	}
+	if err := op.VerifyStartEffect(intent); err != nil {
+		t.Fatalf("start effect verification = %v", err)
+	}
+}
+
+func TestVerifyStartEffectRejectsReceiptWithoutStartObservation(t *testing.T) {
+	op, _ := Open(t.TempDir(), "effect-experiment", "effect-run")
+	bindTestManifest(t, op)
+	payload, err := EncodeStartPayload(effect.WorkerStart, StartPayload{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref, err := op.artifacts.Put(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	intent := effect.Intent{ID: "retroactive-worker-start", RunID: "effect-run", Kind: effect.WorkerStart, Payload: ref}
+	policy := StopPolicy{FirstEventTimeout: time.Second, SoftIdleTimeout: 2 * time.Second, HardIdleTimeout: 3 * time.Second}
+	if _, err := op.BeginAttached(AttachedSpec{Adapter: "test", StreamID: "stream", InitialCursor: []byte("cursor"), Policy: policy, Capabilities: RequiredAdapterCapabilities()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := op.SettleEffect(intent, []byte("fabricated start receipt")); err != nil {
+		t.Fatal(err)
+	}
+	if err := op.VerifyStartEffect(intent); err == nil {
+		t.Fatal("start receipt without a matching start observation was accepted")
+	}
 }
 
 func TestCoderStartRequiresBoundedHandoff(t *testing.T) {

@@ -194,6 +194,9 @@ func completeCandidateWithStart(t *testing.T, operation *Operation, runID string
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := coder.VerifyStartEffect(intent); err != nil {
+		t.Fatalf("verify Coder start effect: %v", err)
+	}
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
 		receipt, _, err := coder.CoderCompletionReceipt()

@@ -29,9 +29,12 @@ func TestContinuousWorkerProjectsActiveBeforeTerminal(t *testing.T) {
 
 	deadline := time.Now().Add(2 * time.Second)
 	observed := false
+	var last Status
+	var lastErr error
 	for time.Now().Before(deadline) {
 		reopened, _ := Open(root, "test-experiment", "continuous")
-		status, err := reopened.Status(processidentity.SystemProber{})
+		status, err := reopened.Status(fixedProber(processidentity.Matches))
+		last, lastErr = status, err
 		if err == nil && status.Health == HealthAliveActive && status.StreamActivity == RecentEvent {
 			observed = true
 			break
@@ -39,7 +42,7 @@ func TestContinuousWorkerProjectsActiveBeforeTerminal(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	if !observed {
-		t.Fatal("continuous public events never projected an active live worker")
+		t.Fatalf("continuous public events never projected an active live worker: status=%#v err=%v", last, lastErr)
 	}
 	if err := <-done; err != nil {
 		t.Fatal(err)

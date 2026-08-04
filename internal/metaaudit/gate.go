@@ -53,6 +53,9 @@ func Evaluate(evaluatedRoot, auditRoot string, spec RecursiveSpec) (RecursiveRes
 	if err != nil || len(settlement.Pending) != 0 || len(settlement.Orphan) != 0 || len(settlement.Mismatched) != 0 {
 		return RecursiveResult{Verdict: gate.Block}, nil
 	}
+	if err := experimentOp.RequireSettledStartEffects(); err != nil {
+		return RecursiveResult{Verdict: gate.Block}, nil
+	}
 	result, err := experimentOp.Gate(spec.GateID)
 	if err != nil || result.Verdict != gate.Pass || result.Receipt.CandidateID != spec.CandidateID {
 		return RecursiveResult{Verdict: gate.Block}, nil
