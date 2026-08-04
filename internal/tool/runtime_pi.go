@@ -9,7 +9,6 @@ import (
 	"github.com/yansircc/agentlab/internal/coder"
 	"github.com/yansircc/agentlab/internal/effect"
 	"github.com/yansircc/agentlab/internal/run"
-	"github.com/yansircc/agentlab/internal/strictjson"
 )
 
 const piRuntimePlanContract = "agentlab.pi-runtime-plan.v1"
@@ -76,14 +75,11 @@ func NewPiRuntimeHost(profiles []PiRuntimeProfile) (*PiRuntimeHost, error) {
 }
 
 func DecodePiRuntimeHost(data []byte) (*PiRuntimeHost, error) {
-	var plan struct {
-		Contract string             `json:"contract"`
-		Profiles []PiRuntimeProfile `json:"profiles"`
+	profiles, err := decodePiRuntimeProfiles(data)
+	if err != nil {
+		return nil, err
 	}
-	if strictjson.Decode(data, &plan) != nil || plan.Contract != piRuntimePlanContract || len(plan.Profiles) == 0 || len(plan.Profiles) > 1000 {
-		return nil, errors.New("Pi runtime plan is invalid")
-	}
-	return NewPiRuntimeHost(plan.Profiles)
+	return NewPiRuntimeHost(profiles)
 }
 
 func (value PiRuntimeProfile) Validate() error {

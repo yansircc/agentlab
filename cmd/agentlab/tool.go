@@ -61,11 +61,7 @@ func toolInvoke(args []string) (any, error) {
 	}
 	binding := tool.Binding{Root: *root, PreparationID: *preparationID, ExperimentID: *experimentID, Authority: *authority}
 	if *piRuntimePlan != "" {
-		plan, err := os.ReadFile(*piRuntimePlan)
-		if err != nil {
-			return nil, err
-		}
-		host, err := tool.DecodePiRuntimeHost(plan)
+		host, err := tool.LoadPiRuntimeHost(*piRuntimePlan)
 		if err != nil {
 			return nil, err
 		}

@@ -1,6 +1,11 @@
 package tool
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"errors"
+
+	"github.com/yansircc/agentlab/internal/strictjson"
+)
 
 // EncodePiRuntimePlan is the sole Host-owned wire encoder for the runtime
 // plan consumed by the bundled extension. The provider never receives its
@@ -13,4 +18,15 @@ func EncodePiRuntimePlan(profiles []PiRuntimeProfile) ([]byte, error) {
 		Contract string             `json:"contract"`
 		Profiles []PiRuntimeProfile `json:"profiles"`
 	}{Contract: piRuntimePlanContract, Profiles: profiles})
+}
+
+func decodePiRuntimeProfiles(data []byte) ([]PiRuntimeProfile, error) {
+	var plan struct {
+		Contract string             `json:"contract"`
+		Profiles []PiRuntimeProfile `json:"profiles"`
+	}
+	if strictjson.Decode(data, &plan) != nil || plan.Contract != piRuntimePlanContract || len(plan.Profiles) == 0 || len(plan.Profiles) > 1000 {
+		return nil, errors.New("Pi runtime plan is invalid")
+	}
+	return plan.Profiles, nil
 }
