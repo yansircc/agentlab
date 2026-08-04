@@ -13,6 +13,15 @@ type inspectOperation struct {
 	Limit int     `json:"limit"`
 }
 
+var inspectScopes = map[string]bool{
+	"preparation":  true,
+	"experiment":   true,
+	"run":          true,
+	"runtime_tree": true,
+}
+
+func inspectScopeNames() []string { return actionNames(inspectScopes) }
+
 func decodeInspect(data []byte) (Operation, error) {
 	var value inspectOperation
 	if err := strictDecode(data, &value); err != nil {
@@ -20,6 +29,9 @@ func decodeInspect(data []byte) (Operation, error) {
 	}
 	if value.After == nil || value.Limit < 1 || value.Limit > 1000 {
 		return nil, errors.New("inspect page is invalid")
+	}
+	if !inspectScopes[value.Scope] {
+		return nil, errors.New("inspect scope is invalid")
 	}
 	switch value.Scope {
 	case "preparation", "experiment":
@@ -30,8 +42,6 @@ func decodeInspect(data []byte) (Operation, error) {
 		if value.RunID == "" {
 			return nil, errors.New("run inspect requires a run id")
 		}
-	default:
-		return nil, errors.New("inspect scope is invalid")
 	}
 	return value, nil
 }

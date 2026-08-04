@@ -52,6 +52,14 @@ func TestActionSchemasProjectClosedDecoderSets(t *testing.T) {
 	}
 }
 
+func TestInspectScopeSchemaProjectsClosedDecoderSet(t *testing.T) {
+	properties := inspectSchema()["properties"].(map[string]any)
+	scope := properties["scope"].(map[string]any)
+	if got := scope["enum"].([]string); !reflect.DeepEqual(got, inspectScopeNames()) {
+		t.Fatalf("inspect scope schema = %#v, want %#v", got, inspectScopeNames())
+	}
+}
+
 func assertNoLocator(t *testing.T, value any) {
 	t.Helper()
 	data, err := json.Marshal(value)
