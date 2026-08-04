@@ -119,6 +119,13 @@ func (value Preflight) terminalCoderCompletion(receipt artifact.Ref) (run.CoderC
 	if err != nil || actual != receipt {
 		return run.CoderCompletion{}, errors.New("deployctl Coder completion is not terminal")
 	}
+	experimentOp, err := experiment.Open(value.EvaluatedRoot, value.ExperimentID)
+	if err != nil {
+		return run.CoderCompletion{}, err
+	}
+	if _, err := experimentOp.CoderStartForCompletion(coderRunID, completion); err != nil {
+		return run.CoderCompletion{}, errors.New("deployctl Coder completion is not decision-bound")
+	}
 	host, err := tool.LoadPiRuntimeHost(value.runtimePlanPath)
 	if err != nil {
 		return run.CoderCompletion{}, errors.New("deployctl runtime plan is invalid")

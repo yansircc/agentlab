@@ -58,6 +58,9 @@ func (o *Operation) replayUnvalidated() (state, error) {
 	if err == nil {
 		err = o.validateCandidateSnapshots(current)
 	}
+	if err == nil {
+		err = o.validateDecisionEffects(current)
+	}
 	return current, err
 }
 

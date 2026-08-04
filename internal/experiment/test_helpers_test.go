@@ -126,6 +126,14 @@ func rebindTestFixtureReset(t *testing.T, operation *Operation, runID string, in
 }
 
 func completeCandidate(t *testing.T, operation *Operation, runID string, handoff, candidate artifact.Ref) artifact.Ref {
+	return completeCandidateWithStart(t, operation, runID, handoff, candidate, true)
+}
+
+func completeCandidateWithoutDecision(t *testing.T, operation *Operation, runID string, handoff, candidate artifact.Ref) artifact.Ref {
+	return completeCandidateWithStart(t, operation, runID, handoff, candidate, false)
+}
+
+func completeCandidateWithStart(t *testing.T, operation *Operation, runID string, handoff, candidate artifact.Ref, decisionBound bool) artifact.Ref {
 	t.Helper()
 	bindTestRun(t, operation, runID)
 	current, err := operation.current()
@@ -159,11 +167,13 @@ func completeCandidate(t *testing.T, operation *Operation, runID string, handoff
 		t.Fatal("test Coder requires public finding evidence")
 	}
 	intent := effect.Intent{ID: "coder-start-" + runID, RunID: runID, Kind: effect.CoderStart, Payload: payloadRef}
-	if err := operation.CommitDecisionBoundEffect(DecisionBoundEffect{Decision: SupervisorDecision{
-		ID: intent.ID, WorkerRun: evidence.RunID, EvidenceThrough: evidence.Sequence, Claim: "Coder receives the bounded handoff", Action: DecisionCoderStart,
-		Evidence: []run.EvidenceRef{evidence}, Falsifier: "Coder start omits the experiment-owned handoff",
-	}, Intent: intent}); err != nil {
-		t.Fatal(err)
+	if decisionBound {
+		if err := operation.CommitDecisionBoundEffect(DecisionBoundEffect{Decision: SupervisorDecision{
+			ID: intent.ID, WorkerRun: evidence.RunID, EvidenceThrough: evidence.Sequence, Claim: "Coder receives the bounded handoff", Action: DecisionCoderStart,
+			Evidence: []run.EvidenceRef{evidence}, Falsifier: "Coder start omits the experiment-owned handoff",
+		}, Intent: intent}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	coder, err := run.Open(operation.root, operation.id, runID)
 	if err != nil {

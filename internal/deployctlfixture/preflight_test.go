@@ -15,6 +15,7 @@ import (
 	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/effect"
 	"github.com/yansircc/agentlab/internal/experiment"
+	"github.com/yansircc/agentlab/internal/finding"
 	"github.com/yansircc/agentlab/internal/metaaudit"
 	"github.com/yansircc/agentlab/internal/preparation"
 	"github.com/yansircc/agentlab/internal/run"
@@ -290,7 +291,34 @@ func terminalCoderCompletion(t *testing.T, value Preflight) (artifact.Ref, artif
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := op.BindPreparedRun(coderRunID, experiment.NewFreshOrigin(), value.CoderPrepared); err != nil {
+	baseline, err := run.Open(value.EvaluatedRoot, value.ExperimentID, baselineRunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := run.StopPolicy{FirstEventTimeout: time.Second, SoftIdleTimeout: 2 * time.Second, HardIdleTimeout: 3 * time.Second}
+	if _, err := baseline.BeginAttached(run.AttachedSpec{Adapter: "test", StreamID: "baseline-session", InitialCursor: []byte("cursor-0"), Policy: policy, Capabilities: run.RequiredAdapterCapabilities()}); err != nil {
+		t.Fatal(err)
+	}
+	writer, _, err := baseline.AcquireAdapterWriter("test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Commit([]byte("cursor-1"), run.AdapterBatch{Events: []run.AdapterEvent{{Kind: run.EvidenceToolResult, Label: "target_mismatch", Raw: []byte("receipt differs from target")}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	evidence := run.EvidenceRef{ExperimentID: value.ExperimentID, RunID: baselineRunID, Sequence: 2, Item: 0}
+	fact := finding.Finding{ID: "terminal-coder-finding", Class: "target_mismatch", Severity: finding.SeverityHigh, Symptom: "receipt differs from target", Impact: "repair is required", Evidence: []run.EvidenceRef{evidence}, Confidence: finding.ConfidenceHigh, Falsifier: "receipt agrees with target"}
+	if err := op.RecordFindingWithDecision(experiment.DecisionBoundFinding{Decision: experiment.SupervisorDecision{ID: "terminal-coder-finding", WorkerRun: baselineRunID, EvidenceThrough: evidence.Sequence, Claim: "the target mismatch is material", Action: experiment.DecisionFinding, Evidence: []run.EvidenceRef{evidence}, Falsifier: "receipt agrees with target"}, Finding: fact}); err != nil {
+		t.Fatal(err)
+	}
+	handoff, err := op.RenderHandoffWithDecision(experiment.SupervisorDecision{ID: "terminal-coder-handoff", WorkerRun: baselineRunID, EvidenceThrough: evidence.Sequence, Claim: "a bounded Coder handoff is required", Action: experiment.DecisionHandoff, Evidence: []run.EvidenceRef{evidence}, Falsifier: "no repair is required"}, []string{fact.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := op.BindPreparedRunWithDecision(experiment.DecisionBoundRunBinding{RunID: coderRunID, Decision: experiment.SupervisorDecision{ID: "terminal-coder-binding", WorkerRun: baselineRunID, EvidenceThrough: evidence.Sequence, Claim: "the Coder run inputs are Host-prepared", Action: experiment.DecisionRunBinding, Evidence: []run.EvidenceRef{evidence}, Falsifier: "Coder manifest differs from prepared input"}}, experiment.NewFreshOrigin(), value.CoderPrepared); err != nil {
 		t.Fatal(err)
 	}
 	host, err := tool.LoadPiRuntimeHost(value.runtimePlanPath)
@@ -301,11 +329,7 @@ func terminalCoderCompletion(t *testing.T, value Preflight) (artifact.Ref, artif
 	if err != nil {
 		t.Fatal(err)
 	}
-	handoff, err := store.Put([]byte("terminal Coder handoff"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	coderProfile := run.CoderProfile{Handoff: handoff, SourceSnapshot: profile.CoderSourceSnapshot, CandidateWorkspace: profile.CoderWorkspaceReceipt, CapabilityProfile: profile.CoderCapabilityProfile}
+	coderProfile := run.CoderProfile{Handoff: handoff.Artifact, SourceSnapshot: profile.CoderSourceSnapshot, CandidateWorkspace: profile.CoderWorkspaceReceipt, CapabilityProfile: profile.CoderCapabilityProfile}
 	payload, err := run.EncodeStartPayload(effect.CoderStart, run.StartPayload{Coder: &coderProfile})
 	if err != nil {
 		t.Fatal(err)
@@ -315,11 +339,14 @@ func terminalCoderCompletion(t *testing.T, value Preflight) (artifact.Ref, artif
 		t.Fatal(err)
 	}
 	intent := effect.Intent{ID: "terminal-coder", RunID: coderRunID, Kind: effect.CoderStart, Payload: payloadRef}
+	if err := op.CommitDecisionBoundEffect(experiment.DecisionBoundEffect{Decision: experiment.SupervisorDecision{ID: intent.ID, WorkerRun: baselineRunID, EvidenceThrough: evidence.Sequence, Claim: "the bounded Coder starts from the handoff", Action: experiment.DecisionCoderStart, Evidence: []run.EvidenceRef{evidence}, Falsifier: "Coder start differs from its handoff"}, Intent: intent}); err != nil {
+		t.Fatal(err)
+	}
 	coder, err := run.Open(value.EvaluatedRoot, value.ExperimentID, coderRunID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	policy := run.StopPolicy{FirstEventTimeout: time.Second, SoftIdleTimeout: 2 * time.Second, HardIdleTimeout: 3 * time.Second, OwnsWorkerProcess: true}
+	policy = run.StopPolicy{FirstEventTimeout: time.Second, SoftIdleTimeout: 2 * time.Second, HardIdleTimeout: 3 * time.Second, OwnsWorkerProcess: true}
 	if _, err := coder.BeginManagedAttachedEffect(intent, run.ManagedAttachedSpec{
 		Adapter: "test", Policy: policy, Capabilities: run.RequiredAdapterCapabilities(), Command: []string{"/bin/sh", "-c", "exit 0"}, Environment: []string{"PATH=/usr/bin:/bin"}, WorkingDirectory: value.EvaluatedRoot,
 		Ready: func() (string, []byte, error) { return "terminal-coder-session", []byte("cursor"), nil },

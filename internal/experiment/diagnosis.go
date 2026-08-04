@@ -117,6 +117,9 @@ func (o *Operation) coderCompletion(runID string, receipt artifact.Ref) (run.Cod
 	if err != nil || actual != receipt {
 		return run.CoderCompletion{}, errors.New("candidate completion is not owned by Coder run")
 	}
+	if _, err := o.CoderStartForCompletion(runID, completion); err != nil {
+		return run.CoderCompletion{}, errors.New("candidate completion is not decision-bound")
+	}
 	return completion, nil
 }
 
@@ -126,6 +129,9 @@ func (o *Operation) validateCandidateCompletion(current state, candidate diagnos
 	}
 	completion, err := o.coderCompletion(candidate.CoderRun, candidate.Completion)
 	if err != nil || completion.Candidate != candidate.Artifact || completion.Profile.SourceSnapshot != current.begun.Source || current.handoffs[completion.Profile.Handoff].Artifact != completion.Profile.Handoff {
+		return errors.New("candidate completion differs from experiment authority")
+	}
+	if _, err := o.coderStartForCompletion(current, candidate.CoderRun, completion); err != nil {
 		return errors.New("candidate completion differs from experiment authority")
 	}
 	return nil
