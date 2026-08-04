@@ -5,8 +5,10 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 
+	piadapter "github.com/yansircc/agentlab/internal/adapter/pi"
 	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/experiment"
 	"github.com/yansircc/agentlab/internal/metaaudit"
@@ -23,15 +25,28 @@ func (value Preflight) Verify() error {
 		return err
 	}
 	if value.FixtureReset != (artifact.Ref{}) || value.Inputs != (experiment.RunInputs{}) {
-		if !value.FixtureReset.Valid() || value.runtimePlanPath == "" {
+		if !value.FixtureReset.Valid() || !value.LiveCanary.Valid() || value.Inputs.Adapter != value.LiveCanary || value.runtimePlanPath == "" {
 			return errors.New("deployctl runtime preflight is incomplete")
 		}
 		plan, err := os.ReadFile(value.runtimePlanPath)
 		if err != nil {
 			return err
 		}
-		if _, err := tool.DecodePiRuntimeHost(plan); err != nil {
+		host, err := tool.DecodePiRuntimeHost(plan)
+		if err != nil {
 			return errors.New("deployctl runtime plan is invalid")
+		}
+		identity, err := verifyLiveCanary(artifact.NewStore(filepath.Join(value.EvaluatedRoot, "artifacts")), value.LiveCanary)
+		if err != nil {
+			return err
+		}
+		profile, err := host.Profile("baseline-worker")
+		if err != nil {
+			return errors.New("deployctl Worker runtime profile is absent")
+		}
+		discovered, err := piadapter.VerifyRuntimeIdentity(profile.Identity)
+		if err != nil || !reflect.DeepEqual(discovered, identity) {
+			return errors.New("deployctl runtime identity differs from live canary")
 		}
 		return value.verifyManifest()
 	}

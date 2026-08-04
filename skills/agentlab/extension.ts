@@ -8,9 +8,10 @@ type Output = { ok: boolean; data?: unknown };
 type Binding = { args: string[]; hidden: string[] };
 
 export default async function (pi: ExtensionAPI) {
+	pi.on("context", (event) => ({ messages: event.messages.flatMap(publicMessage) }));
+	if (process.env.AGENTLAB_CONTEXT_FILTER_ONLY === "1") return;
 	const binary = fileURLToPath(new URL("./bin/agentlab", import.meta.url));
 	const active = definitions(binary);
-	pi.on("context", (event) => ({ messages: event.messages.flatMap(publicMessage) }));
 	for (const definition of active) {
 		pi.registerTool({
 			name: definition.name,

@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"testing"
 
+	piadapter "github.com/yansircc/agentlab/internal/adapter/pi"
 	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/experiment"
 	"github.com/yansircc/agentlab/internal/metaaudit"
@@ -87,7 +88,13 @@ func TestBindRuntimeBuildsAHostPrivateExactProfilePlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	value, err = value.BindRuntime(RuntimeSpec{HostRoot: filepath.Join(parent, "host"), SkillRoot: testSkillArtifact(t), SDKRoot: filepath.Dir(filepath.Dir(resolved)), NodePath: node, Provider: "structural-test", Model: "structural-test", ThinkingPolicy: "off", CompactionPolicy: "off"})
+	spec := RuntimeSpec{HostRoot: filepath.Join(parent, "host"), SkillRoot: testSkillArtifact(t), SDKRoot: filepath.Dir(filepath.Dir(resolved)), NodePath: node, Provider: "structural-test", Model: "structural-test", ThinkingPolicy: "off", CompactionPolicy: "off"}
+	value, err = value.bindRuntime(spec, func(canary piadapter.LiveCanarySpec) (piadapter.LiveCanaryReceipt, error) {
+		if canary.NodePath != spec.NodePath || canary.SDKRoot != spec.SDKRoot || canary.Identity.Provider != spec.Provider || canary.Identity.Model != spec.Model {
+			t.Fatalf("canary binding = %#v", canary)
+		}
+		return piadapter.LiveCanaryReceipt{Contract: piadapter.LiveCanaryContract, PublicSuffixExcluded: true, PrivateThinkingExcluded: true}, nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

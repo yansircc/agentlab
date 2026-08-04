@@ -125,8 +125,8 @@ func TestPiWorkerProfileHasNoAttachedOrGenericCommandFallback(t *testing.T) {
 	if _, err := NewPiRuntimeHost([]PiRuntimeProfile{profile}); err == nil {
 		t.Fatal("attached-only Worker profile was accepted")
 	}
-	command := strings.Join(piWorkerCommand(testIdentity(t), "/node", "/runtime/session.jsonl", "/runtime", "/runtime/tools.ts", "task"), "\x00")
-	if !strings.Contains(command, "--no-builtin-tools") || !strings.Contains(command, "deployctl_help,deployctl_deploy,deployctl_status,deployctl_receipt") || strings.Contains(command, ",bash") {
+	command := strings.Join(piWorkerCommand(testIdentity(t), "/node", "/runtime/session.jsonl", "/runtime", "/skill/extension.ts", "/runtime/tools.ts", "task"), "\x00")
+	if !strings.Contains(command, "/skill/extension.ts") || strings.Count(command, "--extension") != 2 || !strings.Contains(command, "--no-builtin-tools") || !strings.Contains(command, "deployctl_help,deployctl_deploy,deployctl_status,deployctl_receipt") || strings.Contains(command, ",bash") {
 		t.Fatalf("Worker command widened authority: %q", command)
 	}
 }

@@ -134,7 +134,7 @@ func (h *PiRuntimeHost) Start(binding Binding, intent effect.Intent, ref string)
 	if err != nil || intent.Kind != profile.Role {
 		return nil, errors.New("Pi start profile differs from intent")
 	}
-	if _, err := piadapter.DiscoverIdentity(profile.Identity); err != nil {
+	if _, err := piadapter.VerifyRuntimeIdentity(profile.Identity); err != nil {
 		return nil, errors.New("Pi runtime identity differs from Host binding")
 	}
 	op, err := run.Open(binding.Root, binding.ExperimentID, intent.RunID)

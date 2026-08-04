@@ -95,9 +95,15 @@ AgentLab does not coach Workers, capture private thinking, modify source automat
 `agentlab acceptance provision` is Host-only: it creates new evaluated and
 audit roots for the controlled `deployctl` task, seals the baseline input and
 candidate, and returns only evaluated-root opaque refs. `acceptance preflight`
-additionally requires the exact bundled artifact and Pi provider/model policy;
-it binds the runtime profiles before it creates the Fresh manifest. Neither
-command runs the live Pi context canary or claims any Stage 0–7 result.
+additionally requires the exact bundled artifact and Pi provider/model policy.
+Before it creates a Host runtime plan or Fresh manifest, it forks a disposable
+Pi session and calls that exact final provider through the bundled extension.
+The canary must recover the selected public prefix while excluding its private
+thinking and parent suffix. It persists only pass booleans plus an opaque
+AdapterIdentity ref; tokens, session paths, and model output are deleted.
+Pi 0.83.0's CLI cannot bind a non-off compaction policy, so preflight rejects
+one rather than claiming it tested a different configuration. This establishes
+only the Stage 0 context-semantic gate, not a Stage 1–7 acceptance result.
 
 ## Contributing and security
 

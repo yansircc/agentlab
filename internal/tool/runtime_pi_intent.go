@@ -44,7 +44,7 @@ func (h *PiRuntimeHost) CheckpointIntent(binding Binding, request CheckpointRequ
 	if err != nil || request.ID == "" || request.EntryLocator == "" {
 		return effect.Intent{}, errors.New("Pi checkpoint request is invalid")
 	}
-	identity, err := piadapter.DiscoverIdentity(profile.Identity)
+	identity, err := piadapter.VerifyRuntimeIdentity(profile.Identity)
 	if err != nil {
 		return effect.Intent{}, err
 	}
@@ -67,7 +67,7 @@ func (h *PiRuntimeHost) ForkIntent(binding Binding, request ForkRequest) (effect
 	if _, err := binding.store().Read(request.Checkpoint); err != nil {
 		return effect.Intent{}, err
 	}
-	identity, err := piadapter.DiscoverIdentity(profile.Identity)
+	identity, err := piadapter.VerifyRuntimeIdentity(profile.Identity)
 	if err != nil {
 		return effect.Intent{}, err
 	}

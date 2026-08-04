@@ -27,10 +27,13 @@ if (resourceLoader.getExtensions().errors.length !== 0 || resourceLoader.getExte
   throw new Error("Pi context filter extension did not load");
 }
 const faux = ai.fauxProvider();
-let recalled = false;
+let privateRecalled = false;
+let suffixRecalled = false;
 faux.setResponses([(context) => {
-  recalled = JSON.stringify(context).includes(request.private_token);
-  return ai.fauxAssistantMessage(recalled ? "RECALLED" : "CLEAR");
+  const visible = JSON.stringify(context);
+  privateRecalled = visible.includes(request.private_token);
+  suffixRecalled = visible.includes(request.suffix_token);
+  return ai.fauxAssistantMessage(privateRecalled || suffixRecalled ? "RECALLED" : "CLEAR");
 }]);
 const modelRuntime = await sdk.ModelRuntime.create();
 modelRuntime.registerNativeProvider(faux.provider);
@@ -43,11 +46,11 @@ try {
 } finally {
   session.dispose();
 }
-if (recalled) throw new Error("Pi context replayed private thinking");
-process.stdout.write(`${JSON.stringify({ contract: "agentlab.pi-sdk-context.v1", private_recalled: false })}\n`);
+if (privateRecalled || suffixRecalled) throw new Error("Pi context replayed excluded parent data");
+process.stdout.write(`${JSON.stringify({ contract: "agentlab.pi-sdk-context.v1", public_suffix_excluded: true, private_thinking_excluded: true })}\n`);
 
 function validate(value) {
-  const required = ["package_root", "package_name", "package_version", "parent_session", "child_session_dir", "agent_dir", "extension_path", "entry_id", "private_token"];
+  const required = ["package_root", "package_name", "package_version", "parent_session", "child_session_dir", "agent_dir", "extension_path", "entry_id", "private_token", "suffix_token"];
   if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).length !== required.length || required.some((key) => typeof value[key] !== "string" || value[key] === "")) {
     throw new Error("Pi context request is invalid");
   }

@@ -51,6 +51,7 @@ type Preflight struct {
 	Candidate           artifact.Ref
 	CandidateExecutable artifact.Ref
 	FixtureReset        artifact.Ref
+	LiveCanary          artifact.Ref
 	Inputs              experiment.RunInputs
 	GroundTruth         artifact.Ref
 	reset               ResetReceipt

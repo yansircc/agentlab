@@ -36,11 +36,12 @@ type RuntimeSpec struct {
 // exact bundled binary and Pi identity into the baseline manifest and writes
 // the private runtime plan used later by the bundled extension.
 func (value Preflight) BindRuntime(spec RuntimeSpec) (Preflight, error) {
+	return value.bindRuntime(spec, piadapter.RunLiveCanary)
+}
+
+func (value Preflight) bindRuntime(spec RuntimeSpec, canary liveCanaryRunner) (Preflight, error) {
 	if err := value.verifyProvision(); err != nil || !newHostRoot(spec.HostRoot, value.EvaluatedRoot, value.AuditRoot, spec.SkillRoot, spec.SDKRoot) {
 		return Preflight{}, errors.New("deployctl runtime preflight is invalid")
-	}
-	if err := os.Mkdir(spec.HostRoot, 0o700); err != nil {
-		return Preflight{}, err
 	}
 	binary, extension, err := bundledPaths(spec.SkillRoot)
 	if err != nil {
@@ -62,6 +63,13 @@ func (value Preflight) BindRuntime(spec RuntimeSpec) (Preflight, error) {
 	if err != nil {
 		return Preflight{}, err
 	}
+	canaryRef, err := bindLiveCanary(store, piadapter.LiveCanarySpec{NodePath: spec.NodePath, SDKRoot: spec.SDKRoot, ExtensionPath: extension, BinaryPath: binary, Identity: identity}, adapter, canary)
+	if err != nil {
+		return Preflight{}, err
+	}
+	if err := os.Mkdir(spec.HostRoot, 0o700); err != nil {
+		return Preflight{}, err
+	}
 	workspace := filepath.Join(spec.HostRoot, "coder-workspace")
 	workspaceReceipt, err := coder.Prepare(store, value.SourceSnapshot, workspace)
 	if err != nil {
@@ -79,11 +87,11 @@ func (value Preflight) BindRuntime(spec RuntimeSpec) (Preflight, error) {
 	if err != nil {
 		return Preflight{}, err
 	}
-	runtime, err := putCanonical(store, map[string]any{"contract": "agentlab.deployctl-worker-runtime.v1", "adapter": adapter, "candidate_executable": value.CandidateExecutable, "worker_profile": "baseline-worker", "coder_profile": "coder-repair"})
+	runtime, err := putCanonical(store, map[string]any{"contract": "agentlab.deployctl-worker-runtime.v1", "adapter": canaryRef, "candidate_executable": value.CandidateExecutable, "worker_profile": "baseline-worker", "coder_profile": "coder-repair"})
 	if err != nil {
 		return Preflight{}, err
 	}
-	inputs, reset, err := preflightInputs(store, value.reset, value.Candidate, adapter, runtime)
+	inputs, reset, err := preflightInputs(store, value.reset, value.Candidate, canaryRef, runtime)
 	if err != nil {
 		return Preflight{}, err
 	}
@@ -101,7 +109,7 @@ func (value Preflight) BindRuntime(spec RuntimeSpec) (Preflight, error) {
 	if err := os.WriteFile(planPath, plan, 0o600); err != nil {
 		return Preflight{}, err
 	}
-	value.FixtureReset, value.Inputs, value.hostRoot, value.runtimePlanPath = reset, inputs, spec.HostRoot, planPath
+	value.FixtureReset, value.LiveCanary, value.Inputs, value.hostRoot, value.runtimePlanPath = reset, canaryRef, inputs, spec.HostRoot, planPath
 	return value, value.Verify()
 }
 

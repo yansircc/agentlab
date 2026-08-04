@@ -35,7 +35,7 @@ func (value PiLaunch) Validate() error {
 			return errors.New("Pi launch path is invalid")
 		}
 	}
-	reserved := map[string]bool{"HOME": true, "PI_CODING_AGENT_DIR": true, "PI_CODING_AGENT_SESSION_DIR": true, "AGENTLAB_WORKER_FIXTURE": true, "AGENTLAB_WORKER_DEPLOYCTL": true}
+	reserved := map[string]bool{"HOME": true, "PI_CODING_AGENT_DIR": true, "PI_CODING_AGENT_SESSION_DIR": true, "AGENTLAB_CONTEXT_FILTER_ONLY": true, "AGENTLAB_WORKER_FIXTURE": true, "AGENTLAB_WORKER_DEPLOYCTL": true}
 	for key, value := range value.PublicEnvironment {
 		if !environmentName(key) || reserved[key] || value == "" || len(value) > 65536 {
 			return errors.New("Pi public environment is invalid")

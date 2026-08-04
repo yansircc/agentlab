@@ -52,7 +52,7 @@ func startPiWorker(binding Binding, operation *run.Operation, intent effect.Inte
 	}
 	sandbox, err := coder.NewSandbox(coder.SandboxSpec{
 		Workspace: launch.FixtureRoot, RuntimeRoot: launch.Launch.RuntimeRoot,
-		ReadOnlyRoots: uniquePaths(append(launch.Launch.ReadOnlyRoots, profile.Identity.SDKRoot)),
+		ReadOnlyRoots: uniquePaths(append(launch.Launch.ReadOnlyRoots, profile.Identity.SDKRoot, filepath.Dir(profile.Identity.ContextFilterPath))),
 		Executables:   uniquePaths([]string{launch.Launch.NodePath, launch.DeployctlExecutable}), AllowNetwork: launch.Launch.AllowNetwork,
 	})
 	if err != nil {
@@ -66,8 +66,8 @@ func startPiWorker(binding Binding, operation *run.Operation, intent effect.Inte
 	if err != nil {
 		return nil, err
 	}
-	environment = append(environment, "AGENTLAB_WORKER_FIXTURE="+sandbox.Workspace(), "AGENTLAB_WORKER_DEPLOYCTL="+launch.DeployctlExecutable)
-	command, err := sandbox.Wrap(piWorkerCommand(profile.Identity, launch.Launch.NodePath, session, sandbox.RuntimeRoot(), extension, prompt))
+	environment = append(environment, "AGENTLAB_CONTEXT_FILTER_ONLY=1", "AGENTLAB_WORKER_FIXTURE="+sandbox.Workspace(), "AGENTLAB_WORKER_DEPLOYCTL="+launch.DeployctlExecutable)
+	command, err := sandbox.Wrap(piWorkerCommand(profile.Identity, launch.Launch.NodePath, session, sandbox.RuntimeRoot(), profile.Identity.ContextFilterPath, extension, prompt))
 	if err != nil {
 		return nil, err
 	}
@@ -101,6 +101,6 @@ func writeWorkerExtension(root string) (string, error) {
 	return path, nil
 }
 
-func piWorkerCommand(identity piadapter.IdentityConfig, node, session, runtimeRoot, extension, prompt string) []string {
-	return []string{node, filepath.Join(identity.SDKRoot, "dist", "cli.js"), "--session", session, "--session-dir", runtimeRoot, "--provider", identity.Provider, "--model", identity.Model, "--thinking", identity.ThinkingPolicy, "--no-extensions", "--extension", extension, "--no-builtin-tools", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files", "--no-approve", "--tools", "deployctl_help,deployctl_deploy,deployctl_status,deployctl_receipt", "--print", prompt}
+func piWorkerCommand(identity piadapter.IdentityConfig, node, session, runtimeRoot, contextExtension, workerExtension, prompt string) []string {
+	return []string{node, filepath.Join(identity.SDKRoot, "dist", "cli.js"), "--session", session, "--session-dir", runtimeRoot, "--provider", identity.Provider, "--model", identity.Model, "--thinking", identity.ThinkingPolicy, "--no-extensions", "--extension", contextExtension, "--extension", workerExtension, "--no-builtin-tools", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files", "--no-approve", "--tools", "deployctl_help,deployctl_deploy,deployctl_status,deployctl_receipt", "--print", prompt}
 }

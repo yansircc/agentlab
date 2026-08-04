@@ -39,10 +39,16 @@ truth without starting a Worker or mutating the fixture.
 
 `agentlab acceptance preflight` additionally requires the exact `dist/skill`
 artifact plus pinned Pi SDK, provider/model, and thinking/compaction identity.
-It derives the AdapterIdentity from the bundled binary, writes the Host-private
-Worker/Coder runtime plan, and binds those identities into the Fresh baseline
-manifest. Its result remains only deterministic host assembly: it does not run
-the final-provider public-suffix/private-thinking canary or any Stage 1–7 run.
+It derives the AdapterIdentity from the bundled binary, then runs a disposable
+SDK fork through that exact extension against the specified final provider and
+model. The child must recover a public marker while both the parent suffix and
+private-thinking marker remain absent. Only the two pass booleans and an
+opaque AdapterIdentity ref persist; the temporary session, markers, and model
+output are removed. Any canary failure prevents Host runtime-plan creation and
+Fresh baseline-manifest binding. Pi 0.83.0's CLI has no Host-bound non-off
+compaction control, so preflight rejects that policy rather than mislabeling
+the configuration. This establishes only the Stage 0 context-semantic gate,
+not any Stage 1–7 result.
 
 ## Authoritative Verification
 
