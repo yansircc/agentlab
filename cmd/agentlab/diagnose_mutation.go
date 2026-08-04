@@ -17,7 +17,8 @@ type candidateRequest struct {
 	ExperimentID string       `json:"experiment_id"`
 	CandidateID  string       `json:"candidate_id"`
 	DiagnosisID  string       `json:"diagnosis_id"`
-	Candidate    artifact.Ref `json:"candidate"`
+	CoderRunID   string       `json:"coder_run_id"`
+	Completion   artifact.Ref `json:"completion"`
 }
 
 func diagnoseRecord(args []string) (any, error) {
@@ -48,12 +49,12 @@ func diagnoseBindCandidate(args []string) (any, error) {
 	if err := readRequest(flags.request, &request); err != nil {
 		return nil, err
 	}
-	if !request.Candidate.Valid() {
-		return nil, errors.New("candidate source snapshot is required")
+	if request.CoderRunID == "" || !request.Completion.Valid() {
+		return nil, errors.New("Host-owned Coder completion is required")
 	}
 	op, err := experiment.Open(flags.root, request.ExperimentID)
 	if err != nil {
 		return nil, err
 	}
-	return op.BindCandidate(request.CandidateID, request.DiagnosisID, request.Candidate)
+	return op.BindCandidate(request.CandidateID, request.DiagnosisID, request.CoderRunID, request.Completion)
 }

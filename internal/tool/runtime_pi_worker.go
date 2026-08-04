@@ -71,7 +71,10 @@ func startPiWorker(binding Binding, operation *run.Operation, intent effect.Inte
 	if err != nil {
 		return nil, err
 	}
-	return piadapter.BeginManagedEffect(operation, intent, session, profile.Policy, command, environment, sandbox.Workspace())
+	return piadapter.BeginManagedEffect(operation, intent, session, profile.Policy, command, environment, sandbox.Workspace(), nil, func(int) error {
+		_, err := piadapter.Poll(operation, session)
+		return err
+	})
 }
 
 func workerPrompt(binding Binding, runID string, launch PiWorkerLaunch) (string, error) {

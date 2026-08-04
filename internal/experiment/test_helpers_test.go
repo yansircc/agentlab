@@ -1,11 +1,13 @@
 package experiment
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/yansircc/agentlab/internal/artifact"
+	"github.com/yansircc/agentlab/internal/effect"
 	"github.com/yansircc/agentlab/internal/preparation"
 	"github.com/yansircc/agentlab/internal/run"
 	"github.com/yansircc/agentlab/internal/source"
@@ -111,4 +113,75 @@ func rebindTestFixtureReset(t *testing.T, operation *Operation, runID string, in
 	}
 	inputs.FixtureReset = recordTestFixtureReset(t, operation, runID, inputs.Fixture, previous.Baseline)
 	return inputs
+}
+
+func completeCandidate(t *testing.T, operation *Operation, runID string, handoff, candidate artifact.Ref) artifact.Ref {
+	t.Helper()
+	bindTestRun(t, operation, runID)
+	current, err := operation.current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	put := func(value string) artifact.Ref {
+		ref, err := operation.artifacts.Put([]byte(value + ":" + runID))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ref
+	}
+	profile := run.CoderProfile{Handoff: handoff, SourceSnapshot: current.begun.Source, CandidateWorkspace: put("workspace"), CapabilityProfile: put("capability")}
+	payload, err := run.EncodeStartPayload(effect.CoderStart, run.StartPayload{Coder: &profile})
+	if err != nil {
+		t.Fatal(err)
+	}
+	payloadRef, err := operation.artifacts.Put(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var evidence run.EvidenceRef
+	for _, finding := range current.findings {
+		if len(finding.Evidence) > 0 {
+			evidence = finding.Evidence[0]
+			break
+		}
+	}
+	if evidence.Sequence == 0 {
+		t.Fatal("test Coder requires public finding evidence")
+	}
+	intent := effect.Intent{ID: "coder-start-" + runID, RunID: runID, Kind: effect.CoderStart, Payload: payloadRef}
+	if err := operation.CommitDecisionBoundEffect(DecisionBoundEffect{Decision: SupervisorDecision{
+		ID: intent.ID, WorkerRun: evidence.RunID, EvidenceThrough: evidence.Sequence, Claim: "Coder receives the bounded handoff", Action: DecisionCoderStart,
+		Evidence: []run.EvidenceRef{evidence}, Falsifier: "Coder start omits the experiment-owned handoff",
+	}, Intent: intent}); err != nil {
+		t.Fatal(err)
+	}
+	coder, err := run.Open(operation.root, operation.id, runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := run.StopPolicy{FirstEventTimeout: time.Second, SoftIdleTimeout: 2 * time.Second, HardIdleTimeout: 3 * time.Second, OwnsWorkerProcess: true}
+	_, err = coder.BeginManagedAttachedEffect(intent, run.ManagedAttachedSpec{
+		Adapter: "test", Policy: policy, Capabilities: run.RequiredAdapterCapabilities(), Command: []string{"/bin/sh", "-c", "sleep 0.05"}, Environment: []string{"PATH=/usr/bin:/bin"}, WorkingDirectory: operation.root,
+		Ready: func() (string, []byte, error) { return "coder-session-" + runID, []byte("cursor"), nil }, Coder: &profile,
+		Finalize: func(code int) error {
+			if code != 0 {
+				return errors.New("test Coder exited unsuccessfully")
+			}
+			_, err := coder.RecordCoderCompletion(candidate)
+			return err
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		receipt, _, err := coder.CoderCompletionReceipt()
+		if err == nil {
+			return receipt
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("Coder completion receipt was not admitted")
+	return artifact.Ref{}
 }

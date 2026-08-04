@@ -28,6 +28,7 @@ type replayState struct {
 	runtimeCheckpoints map[artifact.Ref]runtimeCheckpointRecorded
 	effectReceipts     map[string]effect.Receipt
 	sessionForks       map[artifact.Ref]SessionForked
+	coderCompletion    *coderCompletionRecorded
 }
 
 func replayRun(records []ledger.Record) (replayState, error) {
@@ -75,6 +76,8 @@ func (s *replayState) apply(record ledger.Record) error {
 		return s.stream(record)
 	case eventProcessExited:
 		return s.exited(record)
+	case eventCoderCompleted:
+		return s.coderCompleted(record)
 	case eventTerminalAccepted, eventTerminalRejected:
 		return s.terminal(record)
 	case eventStopRequested:
@@ -128,11 +131,11 @@ func validProcessStarted(value processStarted) bool {
 	identityValid := value.Process.Identity == nil || (value.Process.Identity.PID > 0 && value.Process.Identity.StartToken != "" && value.Process.Identity.CommandHash != "")
 	switch value.Process.Kind {
 	case processOwned:
-		return value.AttemptID != "" && identityValid && value.Process.Identity != nil && value.Policy.OwnsWorkerProcess && value.Adapter == nil
+		return value.AttemptID != "" && identityValid && value.Process.Identity != nil && value.Policy.OwnsWorkerProcess && value.Adapter == nil && value.Coder == nil
 	case processAttached:
-		return value.AttemptID == "" && identityValid && !value.Policy.OwnsWorkerProcess && !value.Policy.KillOnHardIdle && value.Adapter != nil && value.Adapter.Adapter != "" && value.Adapter.StreamID != "" && validRef(value.Adapter.Cursor) && value.Adapter.Capabilities == RequiredAdapterCapabilities()
+		return value.AttemptID == "" && identityValid && !value.Policy.OwnsWorkerProcess && !value.Policy.KillOnHardIdle && value.Adapter != nil && value.Adapter.Adapter != "" && value.Adapter.StreamID != "" && validRef(value.Adapter.Cursor) && value.Adapter.Capabilities == RequiredAdapterCapabilities() && value.Coder == nil
 	case processManaged:
-		return value.AttemptID != "" && identityValid && value.Process.Identity != nil && value.Policy.OwnsWorkerProcess && value.Adapter != nil && value.Adapter.Adapter != "" && value.Adapter.StreamID != "" && validRef(value.Adapter.Cursor) && value.Adapter.Capabilities == RequiredAdapterCapabilities()
+		return value.AttemptID != "" && identityValid && value.Process.Identity != nil && value.Policy.OwnsWorkerProcess && value.Adapter != nil && value.Adapter.Adapter != "" && value.Adapter.StreamID != "" && validRef(value.Adapter.Cursor) && value.Adapter.Capabilities == RequiredAdapterCapabilities() && (value.Coder == nil || value.Coder.Validate() == nil)
 	default:
 		return false
 	}

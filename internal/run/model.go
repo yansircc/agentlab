@@ -20,6 +20,7 @@ const (
 	eventHardIdle         = "hard_idle"
 	eventStopRequested    = "stop_requested"
 	eventProcessExited    = "process_exited"
+	eventCoderCompleted   = "coder_completed"
 	eventTerminalAccepted = "terminal_accepted"
 	eventTerminalRejected = "terminal_rejected"
 	eventAdapterBatch     = "adapter_batch"
@@ -138,6 +139,7 @@ type processStarted struct {
 	Process   processHandle   `json:"process"`
 	Policy    StopPolicy      `json:"policy"`
 	Adapter   *adapterBinding `json:"adapter,omitempty"`
+	Coder     *CoderProfile   `json:"coder,omitempty"`
 }
 
 type evidence struct {

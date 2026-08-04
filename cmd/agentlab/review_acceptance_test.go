@@ -75,12 +75,23 @@ func TestExperimentReviewAndHandoffCLI(t *testing.T) {
 	if _, err := dispatch([]string{"diagnose", "record", "-root", root, "-request", diagnosisRequest}); err != nil {
 		t.Fatal(err)
 	}
+	handoff, err := experimentOperation.RenderHandoffWithDecision(experiment.SupervisorDecision{
+		ID: "cli-coder-handoff", WorkerRun: "review-run", EvidenceThrough: 2, Claim: "retry evidence is bounded", Action: experiment.DecisionHandoff,
+		Evidence: []run.EvidenceRef{{ExperimentID: "review-exp", RunID: "review-run", Sequence: 2, Item: 0}}, Falsifier: "handoff cites future evidence",
+	}, []string{value.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
 	candidateRef, err := source.Build(store, []source.InputFile{{Path: "owner.go", Content: []byte("package owner\nfunc transition() {}\n")}})
 	if err != nil {
 		t.Fatal(err)
 	}
+	completion := completeExistingCandidate(t, root, experimentOperation, "cli-coder", handoff.Artifact, prepStatus.Source, candidateRef, experiment.SupervisorDecision{
+		ID: "cli-coder-start", WorkerRun: "review-run", EvidenceThrough: 2, Claim: "Coder receives evidence-only handoff", Action: experiment.DecisionCoderStart,
+		Evidence: []run.EvidenceRef{{ExperimentID: "review-exp", RunID: "review-run", Sequence: 2, Item: 0}}, Falsifier: "Coder start lacks exact handoff",
+	})
 	candidateRequest := writeJSONFile(t, files, "candidate.json", map[string]any{
-		"experiment_id": "review-exp", "candidate_id": "cli-candidate", "diagnosis_id": diagnosisValue.ID, "candidate": candidateRef,
+		"experiment_id": "review-exp", "candidate_id": "cli-candidate", "diagnosis_id": diagnosisValue.ID, "coder_run_id": "cli-coder", "completion": completion,
 	})
 	candidateResult, err := dispatch([]string{"diagnose", "bind-candidate", "-root", root, "-request", candidateRequest})
 	if err != nil {
@@ -143,9 +154,9 @@ func TestExperimentReviewAndHandoffCLI(t *testing.T) {
 		t.Fatalf("gate show = %#v, %v", shown, err)
 	}
 	handoffRequest := writeJSONFile(t, files, "handoff.json", map[string]any{"experiment_id": "review-exp", "finding_ids": []string{value.ID}})
-	handoff, err := dispatch([]string{"review", "handoff", "-root", root, "-request", handoffRequest})
-	if err != nil || handoff.(experiment.HandoffResult).EvidenceCount != 2 {
-		t.Fatalf("handoff = %#v, %v", handoff, err)
+	handoffResult, err := dispatch([]string{"review", "handoff", "-root", root, "-request", handoffRequest})
+	if err != nil || handoffResult.(experiment.HandoffResult).EvidenceCount != 2 {
+		t.Fatalf("handoff = %#v, %v", handoffResult, err)
 	}
 	page, err := dispatch([]string{"inspect", "-root", root, "-experiment", "review-exp", "-after", "0", "-limit", "20"})
 	records, ok := page.([]ledger.Record)

@@ -42,6 +42,13 @@ func TestExperimentValidatesDurableFindingEvidenceAndDisposition(t *testing.T) {
 	if err := experiment.RecordFinding(*value); err != nil {
 		t.Fatal(err)
 	}
+	handoff, err := experiment.RenderHandoffWithDecision(SupervisorDecision{
+		ID: "handoff-1", WorkerRun: "run-1", EvidenceThrough: 2, Claim: "retry is bounded by public evidence", Action: DecisionHandoff,
+		Evidence: []run.EvidenceRef{refs[0]}, Falsifier: "handoff cites evidence after the decision prefix",
+	}, []string{value.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
 	sourceFile, _ := experiment.artifacts.Put([]byte("package owner\n\nfunc transition() {}\n"))
 	current, _ := experiment.current()
 	diagnosed := diagnosis.Diagnosis{
@@ -63,10 +70,12 @@ func TestExperimentValidatesDurableFindingEvidenceAndDisposition(t *testing.T) {
 		t.Fatal("diagnosis accepted source evidence outside exact snapshot")
 	}
 	rawCandidate := putTestArtifact(t, experiment, "exact candidate bytes")
-	if _, err := experiment.BindCandidate("raw-candidate", diagnosed.ID, rawCandidate); err == nil {
-		t.Fatal("candidate accepted raw bytes instead of a source snapshot")
+	if _, err := experiment.BindCandidate("raw-candidate", diagnosed.ID, "missing-coder", rawCandidate); err == nil {
+		t.Fatal("candidate accepted bytes without a Host-owned Coder completion")
 	}
-	candidate, err := experiment.BindCandidate("candidate-1", diagnosed.ID, testCandidate(t, experiment, "candidate-1"))
+	candidateSource := testCandidate(t, experiment, "candidate-1")
+	candidateCompletion := completeCandidate(t, experiment, "coder-1", handoff.Artifact, candidateSource)
+	candidate, err := experiment.BindCandidate("candidate-1", diagnosed.ID, "coder-1", candidateCompletion)
 	if err != nil || candidate.Artifact.Digest == "" {
 		t.Fatalf("candidate = %#v, %v", candidate, err)
 	}
@@ -76,7 +85,7 @@ func TestExperimentValidatesDurableFindingEvidenceAndDisposition(t *testing.T) {
 	if err := experiment.RecordDiagnosis(hypothesis); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := experiment.BindCandidate("candidate-hypothesis", hypothesis.ID, testCandidate(t, experiment, "hypothesis")); err == nil {
+	if _, err := experiment.BindCandidate("candidate-hypothesis", hypothesis.ID, "coder-1", candidateCompletion); err == nil {
 		t.Fatal("hypothetical diagnosis authorized candidate")
 	}
 	baselineManifest, _, err := experiment.RunManifest("run-1")
@@ -123,7 +132,9 @@ func TestExperimentValidatesDurableFindingEvidenceAndDisposition(t *testing.T) {
 	if err != nil || passed.Verdict != gate.Pass || passed.Receipt.Candidate != candidate.Artifact {
 		t.Fatalf("passing gate = %#v, %v", passed, err)
 	}
-	changed, err := experiment.BindCandidate("candidate-2", diagnosed.ID, testCandidate(t, experiment, "candidate-2"))
+	changedSource := testCandidate(t, experiment, "candidate-2")
+	changedCompletion := completeCandidate(t, experiment, "coder-2", handoff.Artifact, changedSource)
+	changed, err := experiment.BindCandidate("candidate-2", diagnosed.ID, "coder-2", changedCompletion)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,10 +149,6 @@ func TestExperimentValidatesDurableFindingEvidenceAndDisposition(t *testing.T) {
 	if blocker, _, err := experiment.Finding("gate-blocked.verification"); err != nil || blocker.Class != "gate_blocker" {
 		t.Fatalf("gate blocker finding = %#v, %v", blocker, err)
 	}
-	handoff, err := experiment.RenderHandoff([]string{value.ID})
-	if err != nil {
-		t.Fatal(err)
-	}
 	document, _ := experiment.artifacts.Read(handoff.Artifact)
 	if handoff.EvidenceCount != 2 || strings.Contains(string(document), "first") || strings.Contains(string(document), "second") || strings.Contains(string(document), "RootCause") || !strings.Contains(string(document), "sha256:") {
 		t.Fatalf("handoff leaked or omitted evidence boundary: %s", document)
@@ -151,7 +158,7 @@ func TestExperimentValidatesDurableFindingEvidenceAndDisposition(t *testing.T) {
 		t.Fatal(err)
 	}
 	status, err := experiment.Status()
-	if err != nil || len(status.FindingIDs) != 2 || len(status.DiagnosisIDs) != 2 || len(status.CandidateIDs) != 2 || len(status.RunIDs) != 4 || len(status.ComparisonIDs) != 2 || len(status.GateIDs) != 2 || status.DispositionCount != 1 {
+	if err != nil || len(status.FindingIDs) != 2 || len(status.DiagnosisIDs) != 2 || len(status.CandidateIDs) != 2 || len(status.RunIDs) != 6 || len(status.ComparisonIDs) != 2 || len(status.GateIDs) != 2 || status.DispositionCount != 1 {
 		t.Fatalf("status = %#v, %v", status, err)
 	}
 	reopened, _ := Open(root, "exp")

@@ -61,7 +61,7 @@ func (o *Operation) reconcileStopEffect(intent effect.Intent, payload StopPayloa
 }
 
 func (o *Operation) requestAndSettleStop(intent effect.Intent, payload StopPayload) (StopEffectResult, error) {
-	result, err := o.RequestStop(payload.Reason)
+	result, identity, err := o.admitStop(payload.Reason)
 	if err != nil || result.Reason != payload.Reason || !result.Admitted {
 		return StopEffectResult{}, errors.New("stop effect is not durably admitted")
 	}
@@ -72,7 +72,13 @@ func (o *Operation) requestAndSettleStop(intent effect.Intent, payload StopPaylo
 	if err := o.RecordEffectObservation(intent, evidence); err != nil {
 		return StopEffectResult{}, err
 	}
-	return o.settleObservedStop(intent, evidence)
+	settled, err := o.settleObservedStop(intent, evidence)
+	if identity != nil {
+		if stopErr := o.stopManagedProcess(*identity); stopErr != nil && err == nil {
+			err = stopErr
+		}
+	}
+	return settled, err
 }
 
 func (o *Operation) settleObservedStop(intent effect.Intent, evidence []byte) (StopEffectResult, error) {

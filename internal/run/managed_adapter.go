@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os/exec"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/effect"
 	"github.com/yansircc/agentlab/internal/processidentity"
+	"github.com/yansircc/agentlab/internal/transaction"
 )
 
 const managedAttachedAttemptContract = "agentlab.managed-adapter-start.v1"
@@ -27,6 +29,8 @@ type ManagedAttachedSpec struct {
 	Environment      []string
 	WorkingDirectory string
 	Ready            func() (string, []byte, error)
+	Coder            *CoderProfile
+	Finalize         func(exitCode int) error
 }
 
 type managedAttachedAttempt struct {
@@ -38,7 +42,7 @@ type managedAttachedAttempt struct {
 }
 
 func (o *Operation) BeginManagedAttachedEffect(intent effect.Intent, spec ManagedAttachedSpec) (AttachedStartResult, error) {
-	if intent.RunID != o.runID || (intent.Kind != effect.WorkerStart && intent.Kind != effect.CoderStart) || intent.Validate() != nil || validateManagedAttached(spec) != nil {
+	if intent.RunID != o.runID || (intent.Kind != effect.WorkerStart && intent.Kind != effect.CoderStart) || intent.Validate() != nil || validateManagedAttached(spec) != nil || o.validateManagedRole(intent, spec) != nil {
 		return AttachedStartResult{}, errors.New("managed adapter start effect is invalid")
 	}
 	payload, err := o.startPayload(intent)
@@ -107,19 +111,21 @@ func (o *Operation) startManagedAttached(intent effect.Intent, payload StartPayl
 		_ = attempt.terminate("cursor_persist_failed", "process_group_killed_and_waited")
 		return AttachedStartResult{}, err
 	}
-	started := processStarted{AttemptID: attempt.id, Manifest: manifest, Process: processHandle{Kind: processManaged, Identity: &identity}, Policy: spec.Policy, Adapter: &adapterBinding{Adapter: spec.Adapter, StreamID: streamID, Cursor: cursorRef, Capabilities: spec.Capabilities}}
+	started := processStarted{AttemptID: attempt.id, Manifest: manifest, Process: processHandle{Kind: processManaged, Identity: &identity}, Policy: spec.Policy, Adapter: &adapterBinding{Adapter: spec.Adapter, StreamID: streamID, Cursor: cursorRef, Capabilities: spec.Capabilities}, Coder: spec.Coder}
 	if _, err := o.appendEvent(time.Now().UTC(), eventProcessStarted, started); err != nil {
 		terminateUnrecorded(command, pgid)
 		_ = attempt.terminate("start_event_failed", "process_group_killed_and_waited")
 		return AttachedStartResult{}, err
 	}
-	go func() { _ = command.Wait() }()
 	state := AdapterState{Adapter: spec.Adapter, StreamID: streamID, Cursor: cursor}
 	evidence, err := encodeStartObservation(state, payload)
 	if err != nil || o.RecordEffectObservation(intent, evidence) != nil {
+		go o.awaitManaged(command, spec.Finalize)
 		return AttachedStartResult{}, errors.New("managed adapter start observation failed")
 	}
-	return o.settleAttachedStart(intent, evidence)
+	result, err := o.settleAttachedStart(intent, evidence)
+	go o.awaitManaged(command, spec.Finalize)
+	return result, err
 }
 
 func (o *Operation) reconcileManagedAttachedStart(intent effect.Intent) (AttachedStartResult, error) {
@@ -137,7 +143,7 @@ func (o *Operation) reconcileManagedAttachedStart(intent effect.Intent) (Attache
 }
 
 func validateManagedAttached(spec ManagedAttachedSpec) error {
-	if spec.Adapter == "" || spec.Ready == nil || !filepath.IsAbs(spec.WorkingDirectory) || len(spec.Command) == 0 || !filepath.IsAbs(spec.Command[0]) || !spec.Policy.OwnsWorkerProcess || spec.Policy.Validate() != nil || spec.Capabilities != RequiredAdapterCapabilities() {
+	if spec.Adapter == "" || spec.Ready == nil || spec.Finalize == nil || !filepath.IsAbs(spec.WorkingDirectory) || len(spec.Command) == 0 || !filepath.IsAbs(spec.Command[0]) || !spec.Policy.OwnsWorkerProcess || spec.Policy.Validate() != nil || spec.Capabilities != RequiredAdapterCapabilities() {
 		return errors.New("managed adapter specification is invalid")
 	}
 	seen := map[string]bool{}
@@ -149,6 +155,72 @@ func validateManagedAttached(spec ManagedAttachedSpec) error {
 		seen[key] = true
 	}
 	return nil
+}
+
+func (o *Operation) validateManagedRole(intent effect.Intent, spec ManagedAttachedSpec) error {
+	if intent.Kind == effect.WorkerStart && spec.Coder == nil {
+		return nil
+	}
+	if intent.Kind != effect.CoderStart || spec.Coder == nil {
+		return errors.New("managed Pi role is invalid")
+	}
+	profile, err := o.CoderProfile(intent)
+	if err != nil || profile != *spec.Coder {
+		return errors.New("managed Coder profile differs from start intent")
+	}
+	return nil
+}
+
+func (o *Operation) awaitManaged(command *exec.Cmd, finalize func(int) error) {
+	code, err := managedExitCode(command.Wait())
+	if err == nil {
+		err = finalize(code)
+	}
+	_ = o.finishManaged(code, err)
+}
+
+func managedExitCode(waitErr error) (int, error) {
+	if waitErr == nil {
+		return 0, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(waitErr, &exitErr) {
+		return exitErr.ExitCode(), nil
+	}
+	return -1, waitErr
+}
+
+func (o *Operation) finishManaged(code int, completionErr error) error {
+	lease, err := transaction.Acquire(filepath.Join(o.dir, "producer.lock"))
+	if err != nil {
+		return err
+	}
+	defer lease.Release()
+	state, err := o.currentState()
+	if err != nil || state.started == nil || state.started.Process.Kind != processManaged || state.exit != nil || state.terminalSeen {
+		return errors.New("managed completion is not admissible")
+	}
+	if _, err := o.appendEvent(time.Now().UTC(), eventProcessExited, processExited{Code: code}); err != nil {
+		return err
+	}
+	if completionErr != nil {
+		_, err = o.appendEvent(time.Now().UTC(), eventTerminalRejected, terminalRejected{Reason: completionErr.Error()})
+		return err
+	}
+	if code != 0 {
+		_, err = o.appendEvent(time.Now().UTC(), eventTerminalRejected, terminalRejected{Reason: fmt.Sprintf("managed process exited with code %d", code)})
+		return err
+	}
+	contract := managedResultContract
+	if state.started.Coder != nil {
+		if state.coderCompletion == nil {
+			_, err = o.appendEvent(time.Now().UTC(), eventTerminalRejected, terminalRejected{Reason: "coder completion is absent"})
+			return err
+		}
+		contract = coderResultContract
+	}
+	_, err = o.appendEvent(time.Now().UTC(), eventTerminalAccepted, terminalResult{Contract: contract, Outcome: "success"})
+	return err
 }
 
 func managedDigest(spec ManagedAttachedSpec) string {

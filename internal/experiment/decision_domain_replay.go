@@ -17,8 +17,8 @@ func (s *state) decisionDiagnosis(record ledger.Record) error {
 }
 
 func (s *state) decisionCandidate(record ledger.Record) error {
-	var value DecisionBoundCandidate
-	if decode(record.Data, &value) != nil || value.Validate() != nil || s.runs[value.Decision.WorkerRun].RunID == "" || s.decisions[value.Decision.ID].ID != "" || s.candidates[value.Candidate.ID].ID != "" {
+	var value decisionBoundCandidateRecorded
+	if decode(record.Data, &value) != nil || value.Decision.Validate() != nil || value.Decision.Action != DecisionCandidate || value.Candidate.Validate() != nil || s.runs[value.Decision.WorkerRun].RunID == "" || s.decisions[value.Decision.ID].ID != "" || s.candidates[value.Candidate.ID].ID != "" {
 		return invalid(record, "invalid decision-bound candidate")
 	}
 	diagnosed := s.diagnoses[value.Candidate.DiagnosisID]

@@ -56,6 +56,9 @@ func (o *Operation) validateCandidateSnapshots(current state) error {
 		if _, err := source.Load(o.artifacts, candidate.Artifact); err != nil {
 			return fmt.Errorf("repair candidate source snapshot is invalid: %w", err)
 		}
+		if err := o.validateCandidateCompletion(current, candidate); err != nil {
+			return err
+		}
 	}
 	return nil
 }

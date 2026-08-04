@@ -34,13 +34,17 @@ func TestDecisionBoundDomainMutationsShareOneDecisionLedger(t *testing.T) {
 	if err := op.RecordDiagnosisWithDecision(DecisionBoundDiagnosis{Decision: diagnosisDecision, Diagnosis: diagnosed}); err != nil {
 		t.Fatal(err)
 	}
-	candidateRef, err := source.Build(op.artifacts, []source.InputFile{{Path: "owner.go", Content: []byte("package owner\nfunc transition() {}\n")}})
+	handoffDecision := effect.Decision
+	handoffDecision.ID, handoffDecision.Action = "handoff-domain", DecisionHandoff
+	handoff, err := op.RenderHandoffWithDecision(handoffDecision, []string{findingValue.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
+	candidateRef := testCandidate(t, op, "candidate-domain")
+	completion := completeCandidate(t, op, "coder-domain", handoff.Artifact, candidateRef)
 	candidateDecision := effect.Decision
 	candidateDecision.ID, candidateDecision.Action = "candidate-domain", DecisionCandidate
-	if _, err := op.BindCandidateWithDecision(DecisionBoundCandidate{Decision: candidateDecision, Candidate: diagnosis.RepairCandidate{ID: "candidate-domain", DiagnosisID: diagnosed.ID, Artifact: candidateRef}}); err != nil {
+	if _, err := op.BindCandidateWithDecision(DecisionBoundCandidate{Decision: candidateDecision, ID: "candidate-domain", DiagnosisID: diagnosed.ID, CoderRun: "coder-domain", CompletionRef: completion}); err != nil {
 		t.Fatal(err)
 	}
 	continueDecision := effect.Decision
@@ -56,7 +60,7 @@ func TestDecisionBoundDomainMutationsShareOneDecisionLedger(t *testing.T) {
 		t.Fatal(err)
 	}
 	status, err := reopened.Status()
-	if err != nil || len(status.DecisionIDs) != 4 || len(status.DiagnosisIDs) != 1 || len(status.CandidateIDs) != 1 {
+	if err != nil || len(status.DecisionIDs) != 6 || len(status.DiagnosisIDs) != 1 || len(status.CandidateIDs) != 1 {
 		t.Fatalf("status = %#v, %v", status, err)
 	}
 }

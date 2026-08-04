@@ -24,28 +24,44 @@ type StopResult struct {
 }
 
 func (o *Operation) RequestStop(reason string) (StopResult, error) {
+	result, identity, err := o.admitStop(reason)
+	if err != nil {
+		return StopResult{}, err
+	}
+	if identity != nil {
+		if err := o.stopManagedProcess(*identity); err != nil {
+			return StopResult{}, err
+		}
+	}
+	return result, nil
+}
+
+// admitStop writes the sole durable stop transition but never terminates the
+// process. Effect callers settle its receipt before performing that external
+// termination, so a concurrent Wait cannot terminalize the run first.
+func (o *Operation) admitStop(reason string) (StopResult, *processidentity.Identity, error) {
 	if reason == "" {
-		return StopResult{}, errors.New("stop reason is required")
+		return StopResult{}, nil, errors.New("stop reason is required")
 	}
 	state, err := o.currentState()
 	if err != nil {
-		return StopResult{}, err
+		return StopResult{}, nil, err
 	}
 	if state.started == nil || state.terminalSeen {
-		return StopResult{}, errors.New("run is not stoppable")
+		return StopResult{}, nil, errors.New("run is not stoppable")
 	}
 	request, err := o.readStopRequest()
 	if err != nil {
-		return StopResult{}, err
+		return StopResult{}, nil, err
 	}
 	if request == nil {
 		created, err := newStopEvent(reason)
 		if err != nil {
-			return StopResult{}, err
+			return StopResult{}, nil, err
 		}
 		data, _ := json.Marshal(created)
 		if err := transaction.WriteOnce(filepath.Join(o.dir, "stop.request"), data, 0o600); err != nil {
-			return StopResult{}, err
+			return StopResult{}, nil, err
 		}
 		request = &created
 	}
@@ -54,41 +70,39 @@ func (o *Operation) RequestStop(reason string) (StopResult, error) {
 		if !state.stopRequested {
 			lease, err := transaction.Acquire(filepath.Join(o.dir, "producer.lock"))
 			if errors.Is(err, transaction.ErrLeaseHeld) {
-				return result, nil
+				return result, nil, nil
 			}
 			if err != nil {
-				return StopResult{}, err
+				return StopResult{}, nil, err
 			}
 			defer lease.Release()
 			if err := o.admitPendingStop(); err != nil {
-				return StopResult{}, err
+				return StopResult{}, nil, err
 			}
 			result.Admitted = true
 		}
 		if state.started.Process.Identity == nil {
-			return StopResult{}, errors.New("managed process identity is absent")
+			return StopResult{}, nil, errors.New("managed process identity is absent")
 		}
-		if err := o.stopManagedProcess(*state.started.Process.Identity); err != nil {
-			return StopResult{}, err
-		}
-		return result, nil
+		identity := *state.started.Process.Identity
+		return result, &identity, nil
 	}
 	if state.started.Process.Kind != processAttached || state.stopRequested {
-		return result, nil
+		return result, nil, nil
 	}
 	lease, err := transaction.Acquire(filepath.Join(o.dir, "producer.lock"))
 	if errors.Is(err, transaction.ErrLeaseHeld) {
-		return result, nil
+		return result, nil, nil
 	}
 	if err != nil {
-		return StopResult{}, err
+		return StopResult{}, nil, err
 	}
 	defer lease.Release()
 	if err := o.admitPendingStop(); err != nil {
-		return StopResult{}, err
+		return StopResult{}, nil, err
 	}
 	result.Admitted = true
-	return result, nil
+	return result, nil, nil
 }
 
 func (o *Operation) stopManagedProcess(identity processidentity.Identity) error {

@@ -27,11 +27,18 @@ func (s *replayState) stream(record ledger.Record) error {
 
 func (s *replayState) exited(record ledger.Record) error {
 	var value processExited
-	if json.Unmarshal(record.Data, &value) != nil || s.exit != nil || !s.closedStreams["stdout"] || !s.closedStreams["stderr"] || s.started.Process.Kind != processOwned {
+	if json.Unmarshal(record.Data, &value) != nil || s.exit != nil || !validExit(s, value) {
 		return invalid(record, "invalid process_exited")
 	}
 	s.exit = &value
 	return nil
+}
+
+func validExit(state *replayState, value processExited) bool {
+	if state.started.Process.Kind == processOwned {
+		return state.closedStreams["stdout"] && state.closedStreams["stderr"]
+	}
+	return state.started.Process.Kind == processManaged
 }
 
 func (s *replayState) terminal(record ledger.Record) error {
@@ -40,7 +47,7 @@ func (s *replayState) terminal(record ledger.Record) error {
 	}
 	if record.Kind == eventTerminalAccepted {
 		var value terminalResult
-		if json.Unmarshal(record.Data, &value) != nil || value.Contract != "agentlab.worker-result.v1" || value.Outcome != "success" {
+		if json.Unmarshal(record.Data, &value) != nil || value.Outcome != "success" || !validManagedTerminal(s, value) {
 			return invalid(record, "invalid terminal_accepted")
 		}
 		s.terminalAccepted = true
@@ -53,4 +60,18 @@ func (s *replayState) terminal(record ledger.Record) error {
 	}
 	s.terminalSeen = true
 	return nil
+}
+
+func validManagedTerminal(state *replayState, value terminalResult) bool {
+	switch state.started.Process.Kind {
+	case processOwned:
+		return value.Contract == "agentlab.worker-result.v1"
+	case processManaged:
+		if state.started.Coder != nil {
+			return value.Contract == coderResultContract && state.coderCompletion != nil
+		}
+		return value.Contract == managedResultContract
+	default:
+		return false
+	}
 }

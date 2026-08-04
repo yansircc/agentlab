@@ -2,6 +2,7 @@ package tool
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -77,6 +78,10 @@ func startPiCoder(binding Binding, operation *run.Operation, intent effect.Inten
 	if err != nil {
 		return nil, err
 	}
+	workspace, err := coder.Open(binding.store(), receipt.CandidateWorkspace, receipt.SourceSnapshot, sandbox.Workspace())
+	if err != nil {
+		return nil, errors.New("coder workspace differs from Host capability")
+	}
 	handoff, err := binding.store().Read(receipt.Handoff)
 	if err != nil || len(handoff) == 0 || len(handoff) > 32768 || !utf8.Valid(handoff) {
 		return nil, errors.New("coder handoff is invalid")
@@ -89,7 +94,22 @@ func startPiCoder(binding Binding, operation *run.Operation, intent effect.Inten
 	if err != nil {
 		return nil, err
 	}
-	return piadapter.BeginManagedEffect(operation, intent, session, profile.Policy, command, environment, sandbox.Workspace())
+	return piadapter.BeginManagedEffect(operation, intent, session, profile.Policy, command, environment, sandbox.Workspace(), &receipt, func(code int) error {
+		if _, err := piadapter.Poll(operation, session); err != nil {
+			return fmt.Errorf("final Pi session drain: %w", err)
+		}
+		if code != 0 {
+			return fmt.Errorf("coder process exited with code %d", code)
+		}
+		candidate, err := workspace.Seal(binding.store())
+		if err != nil {
+			return fmt.Errorf("seal coder workspace: %w", err)
+		}
+		if _, err := operation.RecordCoderCompletion(candidate); err != nil {
+			return fmt.Errorf("record coder completion: %w", err)
+		}
+		return nil
+	})
 }
 
 func preparePiRuntime(root, session string) error {

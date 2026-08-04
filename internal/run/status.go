@@ -30,7 +30,7 @@ func (o *Operation) StatusAt(prober processidentity.Prober, now time.Time) (Stat
 			status.Health = HealthAbandoned
 		case state.exit.Code != 0:
 			status.Health = HealthExitedError
-		case state.terminalAccepted && !state.terminalRejected && status.StreamActivity == StreamClosed:
+		case state.terminalAccepted && !state.terminalRejected && (state.started.Process.Kind == processManaged || status.StreamActivity == StreamClosed):
 			status.Health = HealthExitedClean
 		default:
 			status.Health = HealthTerminalCorrupt

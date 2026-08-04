@@ -35,6 +35,13 @@ type PiRuntimeProfile struct {
 
 type PiRuntimeHost struct{ profiles map[string]PiRuntimeProfile }
 
+// PiPollResult exposes only the Host-authored Coder completion receipt after
+// its terminal ledger fact exists. It never exposes session bytes or paths.
+type PiPollResult struct {
+	piadapter.PollResult
+	CoderCompletion *artifact.Ref `json:"coder_completion,omitempty"`
+}
+
 func NewPiRuntimeHost(profiles []PiRuntimeProfile) (*PiRuntimeHost, error) {
 	result := &PiRuntimeHost{profiles: make(map[string]PiRuntimeProfile, len(profiles))}
 	sessions := map[string]bool{}
@@ -156,7 +163,16 @@ func (h *PiRuntimeHost) Poll(binding Binding, runID, ref string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return piadapter.Poll(op, profile.SessionPath)
+	if profile.Role == effect.CoderStart {
+		if receipt, _, err := op.CoderCompletionReceipt(); err == nil {
+			return PiPollResult{CoderCompletion: &receipt}, nil
+		}
+	}
+	polled, err := piadapter.Poll(op, profile.SessionPath)
+	if err != nil {
+		return nil, err
+	}
+	return PiPollResult{PollResult: polled}, nil
 }
 
 func (h *PiRuntimeHost) Checkpoint(binding Binding, intent effect.Intent, ref string) (any, error) {

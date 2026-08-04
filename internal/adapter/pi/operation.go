@@ -72,13 +72,13 @@ func BeginEffect(operation *run.Operation, intent effect.Intent, sessionPath str
 // BeginManagedEffect launches one Host-selected Pi command and attaches only
 // its public session projection. The command itself never crosses a model
 // boundary; run owns its durable identity and stop lifecycle.
-func BeginManagedEffect(operation *run.Operation, intent effect.Intent, sessionPath string, policy run.StopPolicy, command, environment []string, workingDirectory string) (run.AttachedStartResult, error) {
+func BeginManagedEffect(operation *run.Operation, intent effect.Intent, sessionPath string, policy run.StopPolicy, command, environment []string, workingDirectory string, coderProfile *run.CoderProfile, finalize func(int) error) (run.AttachedStartResult, error) {
 	if !filepath.IsAbs(sessionPath) {
 		return run.AttachedStartResult{}, errors.New("managed Pi session path is invalid")
 	}
 	return operation.BeginManagedAttachedEffect(intent, run.ManagedAttachedSpec{
 		Adapter: adapterName, Policy: policy, Capabilities: run.RequiredAdapterCapabilities(), Command: command,
-		Environment: environment, WorkingDirectory: workingDirectory,
+		Environment: environment, WorkingDirectory: workingDirectory, Coder: coderProfile, Finalize: finalize,
 		Ready: func() (string, []byte, error) {
 			return waitForSession(sessionPath, policy.FirstEventTimeout)
 		},
