@@ -97,6 +97,18 @@ func TestPiRuntimeHostRejectsSharedSessionsAndUnboundCoderWorkspace(t *testing.T
 	}
 }
 
+func TestPiRuntimePlanRoundTripsOnlyValidProfiles(t *testing.T) {
+	launch := testWorkerLaunch(t)
+	profile := PiRuntimeProfile{Ref: "worker", ExperimentID: "exp", RunID: "worker", Role: effect.WorkerStart, SessionPath: filepath.Join(launch.Launch.RuntimeRoot, "worker.jsonl"), Identity: testIdentity(t), Policy: run.StopPolicy{FirstEventTimeout: time.Second, SoftIdleTimeout: 2 * time.Second, HardIdleTimeout: 3 * time.Second, OwnsWorkerProcess: true}, WorkerLaunch: launch}
+	data, err := EncodePiRuntimePlan([]PiRuntimeProfile{profile})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := DecodePiRuntimeHost(data); err != nil {
+		t.Fatalf("runtime plan = %s, %v", data, err)
+	}
+}
+
 func TestPiWorkerProfileHasNoAttachedOrGenericCommandFallback(t *testing.T) {
 	launch := testWorkerLaunch(t)
 	policy := run.StopPolicy{FirstEventTimeout: time.Second, SoftIdleTimeout: 2 * time.Second, HardIdleTimeout: 3 * time.Second, OwnsWorkerProcess: true}

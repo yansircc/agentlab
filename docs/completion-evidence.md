@@ -30,6 +30,20 @@ Public Worker input, observable run evidence, source-backed diagnosis, and exact
 - Secret redaction is deterministic and longest-first, closing prefix-overlap leakage in owned workers and command/HTTP oracles.
 - Every Go file is below 200 lines; lifecycle, adapter writing, helper processes, and test fixtures have separate modules.
 
+## Controlled Recursive Preflight (Not Final Acceptance)
+
+`agentlab acceptance provision` creates fresh, disjoint evaluated and audit
+roots for the controlled `deployctl` task. It seals the public WorkerInput,
+baseline source candidate and executable, fixture reset, and audit ground
+truth without starting a Worker or mutating the fixture.
+
+`agentlab acceptance preflight` additionally requires the exact `dist/skill`
+artifact plus pinned Pi SDK, provider/model, and thinking/compaction identity.
+It derives the AdapterIdentity from the bundled binary, writes the Host-private
+Worker/Coder runtime plan, and binds those identities into the Fresh baseline
+manifest. Its result remains only deterministic host assembly: it does not run
+the final-provider public-suffix/private-thinking canary or any Stage 1–7 run.
+
 ## Authoritative Verification
 
 ```text

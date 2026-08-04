@@ -59,6 +59,9 @@ func dispatch(args []string) (any, error) {
 	if args[0] == "gate" {
 		return gateCommand(args[1:])
 	}
+	if args[0] == "acceptance" {
+		return acceptanceCommand(args[1:])
+	}
 	if args[0] != "run" || len(args) < 2 {
 		return nil, fmt.Errorf("unknown command %q", args[0])
 	}

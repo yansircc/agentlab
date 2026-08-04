@@ -53,6 +53,7 @@ agentlab compare record|show
 agentlab gate record|show
 agentlab inspect
 agentlab tool schemas|invoke
+agentlab acceptance provision|preflight
 ```
 
 Mutation commands accept strict JSON requests. Secrets are referenced by environment-variable handles, never accepted as CLI values, and resolved values are redacted before evidence persistence.
@@ -90,6 +91,13 @@ model tool parameter. This build does not install or register the artifact.
 The current MVP evidence and Phase 0 spike reports are in [docs/completion-evidence.md](docs/completion-evidence.md) and [docs/spikes](docs/spikes).
 
 AgentLab does not coach Workers, capture private thinking, modify source automatically, create commits, perform releases, or claim causal improvement from a single baseline/candidate pair.
+
+`agentlab acceptance provision` is Host-only: it creates new evaluated and
+audit roots for the controlled `deployctl` task, seals the baseline input and
+candidate, and returns only evaluated-root opaque refs. `acceptance preflight`
+additionally requires the exact bundled artifact and Pi provider/model policy;
+it binds the runtime profiles before it creates the Fresh manifest. Neither
+command runs the live Pi context canary or claims any Stage 0–7 result.
 
 ## Contributing and security
 

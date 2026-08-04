@@ -1,0 +1,183 @@
+package deployctlfixture
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"time"
+
+	piadapter "github.com/yansircc/agentlab/internal/adapter/pi"
+	"github.com/yansircc/agentlab/internal/artifact"
+	"github.com/yansircc/agentlab/internal/coder"
+	"github.com/yansircc/agentlab/internal/effect"
+	"github.com/yansircc/agentlab/internal/experiment"
+	"github.com/yansircc/agentlab/internal/run"
+	"github.com/yansircc/agentlab/internal/tool"
+)
+
+// RuntimeSpec is supplied by the Host after it has built dist/skill. It is
+// never decoded from a Supervisor tool request or persisted in an evaluated
+// artifact, because it contains process and filesystem authority.
+type RuntimeSpec struct {
+	HostRoot         string
+	SkillRoot        string
+	SDKRoot          string
+	NodePath         string
+	Provider         string
+	Model            string
+	ThinkingPolicy   string
+	CompactionPolicy string
+}
+
+// BindRuntime completes Stage 0's deterministic Host assembly. It binds the
+// exact bundled binary and Pi identity into the baseline manifest and writes
+// the private runtime plan used later by the bundled extension.
+func (value Preflight) BindRuntime(spec RuntimeSpec) (Preflight, error) {
+	if err := value.verifyProvision(); err != nil || !newHostRoot(spec.HostRoot, value.EvaluatedRoot, value.AuditRoot, spec.SkillRoot, spec.SDKRoot) {
+		return Preflight{}, errors.New("deployctl runtime preflight is invalid")
+	}
+	if err := os.Mkdir(spec.HostRoot, 0o700); err != nil {
+		return Preflight{}, err
+	}
+	binary, extension, err := bundledPaths(spec.SkillRoot)
+	if err != nil {
+		return Preflight{}, err
+	}
+	digest, err := fileDigest(binary)
+	if err != nil {
+		return Preflight{}, err
+	}
+	identity, err := piadapter.DiscoverIdentity(piadapter.IdentityConfig{
+		SDKRoot: spec.SDKRoot, ContextFilterPath: extension, AdapterDigest: digest,
+		Provider: spec.Provider, Model: spec.Model, ThinkingPolicy: spec.ThinkingPolicy, CompactionPolicy: spec.CompactionPolicy,
+	})
+	if err != nil {
+		return Preflight{}, err
+	}
+	store := artifact.NewStore(filepath.Join(value.EvaluatedRoot, "artifacts"))
+	adapter, err := putCanonical(store, identity)
+	if err != nil {
+		return Preflight{}, err
+	}
+	workspace := filepath.Join(spec.HostRoot, "coder-workspace")
+	workspaceReceipt, err := coder.Prepare(store, value.SourceSnapshot, workspace)
+	if err != nil {
+		return Preflight{}, err
+	}
+	capability, err := putCanonical(store, map[string]any{"contract": "agentlab.deployctl-coder-capability.v1", "source_snapshot": value.SourceSnapshot, "workspace": "host-bound"})
+	if err != nil {
+		return Preflight{}, err
+	}
+	profiles, err := runtimeProfiles(value, spec, identity, workspace, workspaceReceipt, capability)
+	if err != nil {
+		return Preflight{}, err
+	}
+	plan, err := tool.EncodePiRuntimePlan(profiles)
+	if err != nil {
+		return Preflight{}, err
+	}
+	runtime, err := putCanonical(store, map[string]any{"contract": "agentlab.deployctl-worker-runtime.v1", "adapter": adapter, "candidate_executable": value.CandidateExecutable, "worker_profile": "baseline-worker", "coder_profile": "coder-repair"})
+	if err != nil {
+		return Preflight{}, err
+	}
+	inputs, reset, err := preflightInputs(store, value.reset, value.Candidate, adapter, runtime)
+	if err != nil {
+		return Preflight{}, err
+	}
+	op, err := experiment.Open(value.EvaluatedRoot, value.ExperimentID)
+	if err != nil {
+		return Preflight{}, err
+	}
+	if _, err := op.Begin(value.PreparationID); err != nil {
+		return Preflight{}, err
+	}
+	if _, err := op.BindRun(value.BaselineRunID, experiment.NewFreshOrigin(), inputs); err != nil {
+		return Preflight{}, err
+	}
+	planPath := filepath.Join(spec.HostRoot, "pi-runtime-plan.json")
+	if err := os.WriteFile(planPath, plan, 0o600); err != nil {
+		return Preflight{}, err
+	}
+	value.FixtureReset, value.Inputs, value.hostRoot, value.runtimePlanPath = reset, inputs, spec.HostRoot, planPath
+	return value, value.Verify()
+}
+
+func runtimeProfiles(value Preflight, spec RuntimeSpec, identity piadapter.AdapterIdentity, workspace string, workspaceReceipt, capability artifact.Ref) ([]tool.PiRuntimeProfile, error) {
+	if !filepath.IsAbs(spec.NodePath) || !workspaceReceipt.Valid() || !capability.Valid() {
+		return nil, errors.New("deployctl runtime profile is invalid")
+	}
+	tools, err := executablePaths("go", "sh", "grep", "find", "ls")
+	if err != nil {
+		return nil, err
+	}
+	policy := run.StopPolicy{FirstEventTimeout: 2 * time.Second, SoftIdleTimeout: 2 * time.Minute, HardIdleTimeout: 5 * time.Minute, OwnsWorkerProcess: true}
+	workerRuntime := filepath.Join(spec.HostRoot, "worker-runtime")
+	coderRuntime := filepath.Join(spec.HostRoot, "coder-runtime")
+	worker := tool.PiRuntimeProfile{
+		Ref: "baseline-worker", ExperimentID: value.ExperimentID, RunID: value.BaselineRunID, Role: effect.WorkerStart, SessionPath: filepath.Join(workerRuntime, "session.jsonl"),
+		Identity: piadapter.IdentityConfig{SDKRoot: spec.SDKRoot, ContextFilterPath: filepath.Join(spec.SkillRoot, "extension.ts"), AdapterDigest: identity.AdapterDigest, Provider: spec.Provider, Model: spec.Model, ThinkingPolicy: spec.ThinkingPolicy, CompactionPolicy: spec.CompactionPolicy},
+		Policy:   policy, WorkerLaunch: &tool.PiWorkerLaunch{Launch: tool.PiLaunch{NodePath: spec.NodePath, RuntimeRoot: workerRuntime, ReadOnlyRoots: []string{spec.SDKRoot}, AllowNetwork: true}, FixtureRoot: value.Fixture.Root(), DeployctlExecutable: filepath.Join(value.EvaluatedRoot, "baseline-candidate", "bin", "deployctl"), CandidateExecutable: value.CandidateExecutable, WorkerInput: value.WorkerInput},
+	}
+	coder := tool.PiRuntimeProfile{
+		Ref: "coder-repair", ExperimentID: value.ExperimentID, RunID: coderRunID, Role: effect.CoderStart, SessionPath: filepath.Join(coderRuntime, "session.jsonl"),
+		Identity: worker.Identity, Policy: policy, CoderSourceSnapshot: value.SourceSnapshot, CoderWorkspaceReceipt: workspaceReceipt, CoderCapabilityProfile: capability, CoderWorkspace: workspace,
+		CoderLaunch: &tool.PiLaunch{NodePath: spec.NodePath, RuntimeRoot: coderRuntime, ReadOnlyRoots: []string{spec.SDKRoot}, AllowedExecutables: tools, AllowNetwork: true},
+	}
+	if _, err := tool.NewPiRuntimeHost([]tool.PiRuntimeProfile{worker, coder}); err != nil {
+		return nil, err
+	}
+	return []tool.PiRuntimeProfile{worker, coder}, nil
+}
+
+func bundledPaths(root string) (string, string, error) {
+	if !filepath.IsAbs(root) {
+		return "", "", errors.New("bundled skill root is invalid")
+	}
+	binary, extension := filepath.Join(root, "bin", "agentlab"), filepath.Join(root, "extension.ts")
+	for _, path := range []string{filepath.Join(root, "SKILL.md"), extension, binary} {
+		info, err := os.Lstat(path)
+		if err != nil || !info.Mode().IsRegular() {
+			return "", "", errors.New("bundled skill artifact is incomplete")
+		}
+	}
+	return binary, extension, nil
+}
+
+func executablePaths(names ...string) ([]string, error) {
+	result := make([]string, 0, len(names))
+	for _, name := range names {
+		path, err := exec.LookPath(name)
+		if err != nil || !filepath.IsAbs(path) {
+			return nil, errors.New("required Coder executable is unavailable")
+		}
+		result = append(result, path)
+	}
+	return result, nil
+}
+
+func newHostRoot(root string, disjoint ...string) bool {
+	if !filepath.IsAbs(root) {
+		return false
+	}
+	if _, err := os.Lstat(root); !errors.Is(err, os.ErrNotExist) {
+		return false
+	}
+	for _, path := range disjoint {
+		if !disjointRoots(root, path) {
+			return false
+		}
+	}
+	return true
+}
+
+func fileDigest(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil || len(data) == 0 || len(data) > 64<<20 {
+		return "", errors.New("bundled binary is invalid")
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:]), nil
+}
