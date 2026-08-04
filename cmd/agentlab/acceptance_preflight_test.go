@@ -57,6 +57,9 @@ func TestCLIAcceptanceAuditCommandsRejectProviderFields(t *testing.T) {
 	if _, err := dispatch([]string{"acceptance", "audit-seal", "-host-root", t.TempDir(), "-request", request}); err == nil {
 		t.Fatal("audit seal accepted an unexpected request path")
 	}
+	if _, err := dispatch([]string{"acceptance", "audit-intervened", "-host-root", t.TempDir(), "-request", request}); err == nil {
+		t.Fatal("audit intervention accepted an evaluated request")
+	}
 }
 
 func TestCLIAcceptanceSupervisorCommandsRejectProviderFields(t *testing.T) {

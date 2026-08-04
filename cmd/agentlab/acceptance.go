@@ -15,7 +15,7 @@ import (
 // effects after this preflight has bound their Host inputs.
 func acceptanceCommand(args []string) (any, error) {
 	if len(args) == 0 {
-		return nil, errors.New("usage: agentlab acceptance <provision|preflight|supervisor-start|supervisor-status|prepare-baseline|prepare-run|verify-heldout|audit-status|audit-review|audit-finding|audit-seal|recursive-gate>")
+		return nil, errors.New("usage: agentlab acceptance <provision|preflight|supervisor-start|supervisor-status|prepare-baseline|prepare-run|verify-heldout|audit-status|audit-review|audit-finding|audit-intervened|audit-seal|recursive-gate>")
 	}
 	switch args[0] {
 	case "provision":
@@ -38,6 +38,8 @@ func acceptanceCommand(args []string) (any, error) {
 		return acceptanceAuditReview(args[1:])
 	case "audit-finding":
 		return acceptanceAuditFinding(args[1:])
+	case "audit-intervened":
+		return acceptanceAuditIntervened(args[1:])
 	case "audit-seal":
 		return acceptanceAuditSeal(args[1:])
 	case "recursive-gate":
@@ -107,6 +109,24 @@ func acceptanceAuditFinding(args []string) (any, error) {
 		return nil, err
 	}
 	if err := audit.Record(preflight.EvaluatedRoot, request.Finding); err != nil {
+		return nil, err
+	}
+	return audit.Status()
+}
+
+// acceptanceAuditIntervened is the only Host/Codex path that can record a
+// safety intervention. It intentionally accepts no request because evaluated
+// roles cannot select a trial, root, or meta-audit state transition.
+func acceptanceAuditIntervened(args []string) (any, error) {
+	preflight, err := acceptanceHostPreflight("acceptance audit-intervened", args, false, nil)
+	if err != nil {
+		return nil, err
+	}
+	audit, err := metaaudit.Open(preflight.AuditRoot, preflight.AuditID)
+	if err != nil {
+		return nil, err
+	}
+	if err := audit.MarkIntervened(); err != nil {
 		return nil, err
 	}
 	return audit.Status()
