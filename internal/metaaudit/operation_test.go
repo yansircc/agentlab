@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/yansircc/agentlab/internal/artifact"
+	"github.com/yansircc/agentlab/internal/comparison"
 	"github.com/yansircc/agentlab/internal/effect"
 	"github.com/yansircc/agentlab/internal/experiment"
 	"github.com/yansircc/agentlab/internal/preparation"
@@ -47,7 +48,7 @@ func TestMetaAuditRejectsFutureEvidenceAndSealsFindings(t *testing.T) {
 
 func TestMetaAuditRejectsFutureObjectiveOracleEvidence(t *testing.T) {
 	evaluated, runOp, workerEvidence, oracleEvidence := auditFixture(t)
-	if err := appendEvidence(runOp, workerEvidence.Sequence+1); err != nil {
+	if err := appendEvidence(t, evaluated, runOp, workerEvidence.Sequence+1, nil); err != nil {
 		t.Fatal(err)
 	}
 	auditRoot := t.TempDir()
@@ -138,6 +139,39 @@ func TestMetaAuditFindingRequiresIndependentObjectiveOracleEvidence(t *testing.T
 	}
 }
 
+func TestMetaAuditRejectsUnboundObjectiveOracleArtifacts(t *testing.T) {
+	for name, build := range map[string]func(experiment.RunManifest) ([]byte, error){
+		"arbitrary text": func(experiment.RunManifest) ([]byte, error) { return []byte("objective oracle: target mismatch"), nil },
+		"manifest mismatch": func(manifest experiment.RunManifest) ([]byte, error) {
+			return comparison.EncodeOracleEvidence(comparison.OracleEvidence{
+				Contract: comparison.OracleEvidenceContract, RunID: "worker", Candidate: manifest.Trial, Trial: manifest.Trial, OracleSet: manifest.OracleSet,
+				Claims: []comparison.OracleClaim{{ID: "target-owner", Passed: false, HeldOut: true}},
+			})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			evaluated, _, workerEvidence, oracleEvidence := auditFixtureWithOracle(t, build)
+			auditRoot := t.TempDir()
+			audit, err := Open(auditRoot, "trial")
+			if err != nil {
+				t.Fatal(err)
+			}
+			groundTruth, err := audit.artifacts.Put([]byte("target mismatch is material"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			trial := Trial{Contract: Contract, ExperimentID: "experiment", EvaluatedScope: artifact.NewStore(evaluated + "/artifacts").Scope(), GroundTruth: groundTruth}
+			if err := audit.Begin(trial); err != nil {
+				t.Fatal(err)
+			}
+			finding := Finding{ID: "unbound-oracle", DecisionID: "stop", WorkerRun: "worker", EvidenceThrough: workerEvidence.Sequence, WorkerEvidence: []run.EvidenceRef{workerEvidence}, OracleEvidence: []run.EvidenceRef{oracleEvidence}, Claim: "a material failure was missed", Falsifier: "the oracle does not bind the Worker manifest", GroundTruth: groundTruth}
+			if err := audit.Record(evaluated, finding); err == nil {
+				t.Fatal("meta-audit accepted an unbound objective oracle artifact")
+			}
+		})
+	}
+}
+
 func TestMetaAuditCoverageRequiresEveryDecision(t *testing.T) {
 	auditState := state{
 		findings: map[string]Finding{"finding": {ID: "finding", DecisionID: "stop"}},
@@ -159,6 +193,10 @@ func TestMetaAuditCoverageRequiresEveryDecision(t *testing.T) {
 }
 
 func auditFixture(t *testing.T) (string, *run.Operation, run.EvidenceRef, run.EvidenceRef) {
+	return auditFixtureWithOracle(t, nil)
+}
+
+func auditFixtureWithOracle(t *testing.T, buildOracle func(experiment.RunManifest) ([]byte, error)) (string, *run.Operation, run.EvidenceRef, run.EvidenceRef) {
 	t.Helper()
 	root := t.TempDir()
 	store := artifact.NewStore(root + "/artifacts")
@@ -211,7 +249,7 @@ func auditFixture(t *testing.T) (string, *run.Operation, run.EvidenceRef, run.Ev
 	if _, err := runOp.BeginAttached(run.AttachedSpec{Adapter: "test", StreamID: "worker", InitialCursor: []byte("0"), Policy: policy, Capabilities: run.RequiredAdapterCapabilities()}); err != nil {
 		t.Fatal(err)
 	}
-	if err := appendEvidence(runOp, 2); err != nil {
+	if err := appendEvidence(t, root, runOp, 2, buildOracle); err != nil {
 		t.Fatal(err)
 	}
 	stop, _ := run.EncodeStopPayload(run.StopPayload{Reason: "material failure"})
@@ -224,7 +262,20 @@ func auditFixture(t *testing.T) (string, *run.Operation, run.EvidenceRef, run.Ev
 	return root, runOp, ref, run.EvidenceRef{ExperimentID: "experiment", RunID: "worker", Sequence: 2, Item: 1}
 }
 
-func appendEvidence(operation *run.Operation, sequence uint64) (resultErr error) {
+func appendEvidence(t *testing.T, root string, operation *run.Operation, sequence uint64, buildOracle func(experiment.RunManifest) ([]byte, error)) (resultErr error) {
+	t.Helper()
+	experimentOp, err := experiment.Open(root, "experiment")
+	if err != nil {
+		return err
+	}
+	manifest, _, err := experimentOp.RunManifest("worker")
+	if err != nil {
+		return err
+	}
+	oracle, err := objectiveOracle(manifest, buildOracle)
+	if err != nil {
+		return err
+	}
 	writer, _, err := operation.AcquireAdapterWriter("test")
 	if err != nil {
 		return err
@@ -236,7 +287,17 @@ func appendEvidence(operation *run.Operation, sequence uint64) (resultErr error)
 	}()
 	return writer.Commit([]byte(strconv.FormatUint(sequence, 10)), run.AdapterBatch{Events: []run.AdapterEvent{
 		{Kind: run.EvidenceToolResult, Raw: []byte("Worker observed target mismatch"), Label: "target_mismatch"},
-		{Kind: run.EvidenceOracle, Raw: []byte("objective oracle: target mismatch"), Label: "objective_oracle"},
+		{Kind: run.EvidenceOracle, Raw: oracle, Label: "objective_oracle"},
 		{Kind: run.EvidenceToolResult, Raw: []byte("other public evidence"), Label: "worker_observation"},
 	}})
+}
+
+func objectiveOracle(manifest experiment.RunManifest, build func(experiment.RunManifest) ([]byte, error)) ([]byte, error) {
+	if build != nil {
+		return build(manifest)
+	}
+	return comparison.EncodeOracleEvidence(comparison.OracleEvidence{
+		Contract: comparison.OracleEvidenceContract, RunID: "worker", Candidate: manifest.Candidate, Trial: manifest.Trial, OracleSet: manifest.OracleSet,
+		Claims: []comparison.OracleClaim{{ID: "target-owner", Passed: false, HeldOut: true}},
+	})
 }

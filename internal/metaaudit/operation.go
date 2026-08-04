@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/yansircc/agentlab/internal/artifact"
+	"github.com/yansircc/agentlab/internal/comparison"
 	"github.com/yansircc/agentlab/internal/experiment"
 	"github.com/yansircc/agentlab/internal/ledger"
 	"github.com/yansircc/agentlab/internal/run"
@@ -157,10 +158,19 @@ func verifyOracleEvidence(root string, trial Trial, workerRun string, evidenceTh
 	if len(evidence) == 0 {
 		return errors.New("meta-audit objective oracle evidence is absent")
 	}
+	experimentOp, err := experiment.Open(root, trial.ExperimentID)
+	if err != nil {
+		return err
+	}
+	manifest, _, err := experimentOp.RunManifest(workerRun)
+	if err != nil {
+		return errors.New("meta-audit oracle Worker manifest is absent")
+	}
 	runOp, err := run.Open(root, trial.ExperimentID, workerRun)
 	if err != nil {
 		return err
 	}
+	store := artifact.NewStore(filepath.Join(root, "artifacts"))
 	for _, ref := range evidence {
 		if ref.ExperimentID != trial.ExperimentID || ref.RunID != workerRun || ref.Sequence > evidenceThrough {
 			return errors.New("meta-audit oracle evidence uses another run or future evidence")
@@ -168,6 +178,10 @@ func verifyOracleEvidence(root string, trial Trial, workerRun string, evidenceTh
 		item, err := runOp.EvidenceAt(ref)
 		if err != nil || item.Kind != run.EvidenceOracle {
 			return errors.New("meta-audit objective oracle evidence is invalid")
+		}
+		value, err := comparison.LoadOracleEvidence(store, item.Raw)
+		if err != nil || value.RunID != workerRun || value.Candidate != manifest.Candidate || value.Trial != manifest.Trial || value.OracleSet != manifest.OracleSet {
+			return errors.New("meta-audit objective oracle evidence differs from Worker manifest")
 		}
 	}
 	return nil
