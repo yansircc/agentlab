@@ -115,10 +115,14 @@ func (value DecisionAction) valid() bool {
 }
 
 func (value DecisionBoundEffect) Validate() error {
-	if value.Decision.Validate() != nil || value.Intent.Validate() != nil || value.Decision.ID != value.Intent.ID || value.Decision.Action.effectKind() != value.Intent.Kind || (value.Decision.isBootstrapWorkerStart() && value.Decision.WorkerRun != value.Intent.RunID) {
+	if value.Decision.Validate() != nil || value.Intent.Validate() != nil || value.Decision.ID != value.Intent.ID || value.Decision.Action.effectKind() != value.Intent.Kind || (value.Decision.isBootstrapWorkerStart() && value.Decision.WorkerRun != value.Intent.RunID) || value.Decision.Action.requiresSameWorkerRun() && value.Decision.WorkerRun != value.Intent.RunID {
 		return errors.New("decision-bound effect is invalid")
 	}
 	return nil
+}
+
+func (value DecisionAction) requiresSameWorkerRun() bool {
+	return value == DecisionStop || value == DecisionCheckpoint || value == DecisionFork
 }
 
 func (value DecisionAction) effectKind() effect.Kind {
