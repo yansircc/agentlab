@@ -36,3 +36,19 @@ func (o *Operation) ForkReceipt(intentID string) (SessionForked, []byte, effect.
 	}
 	return forked, child, receipt, nil
 }
+
+// VerifyForkEffect proves that the settled fork intent owns the durable child
+// session receipt and that its receipt is the exact observed fork outcome.
+func (o *Operation) VerifyForkEffect(intent effect.Intent) (SessionForked, error) {
+	if intent.RunID != o.runID || intent.Kind != effect.Fork || intent.Validate() != nil {
+		return SessionForked{}, errors.New("fork effect intent is invalid")
+	}
+	if _, _, err := o.verifyObservedReceipt(intent); err != nil {
+		return SessionForked{}, err
+	}
+	forked, _, receipt, err := o.ForkReceipt(intent.ID)
+	if err != nil || receipt.Kind != intent.Kind || forked.Intent != intent {
+		return SessionForked{}, errors.New("fork effect differs from receipt")
+	}
+	return forked, nil
+}

@@ -71,3 +71,84 @@ func TestRequireSettledStartEffectsRejectsUnboundAndRetroactiveStart(t *testing.
 		t.Fatal("retroactive start decision satisfied the recursive start chain")
 	}
 }
+
+func TestRequireVerifiedRuntimeEffectsAcceptsObservedStop(t *testing.T) {
+	operation, worker, stop := verifiedRuntimeEffectFixture(t)
+	if _, err := worker.RequestStopEffect(stop); err != nil {
+		t.Fatal(err)
+	}
+	if err := operation.RequireVerifiedRuntimeEffects(); err != nil {
+		t.Fatalf("verified runtime effects were rejected: %v", err)
+	}
+}
+
+func TestRequireVerifiedRuntimeEffectsRejectsSyntheticStopReceipt(t *testing.T) {
+	operation, worker, stop := verifiedRuntimeEffectFixture(t)
+	if _, err := worker.SettleEffect(stop, []byte("synthetic stop receipt")); err != nil {
+		t.Fatal(err)
+	}
+	if err := operation.RequireVerifiedRuntimeEffects(); err == nil {
+		t.Fatal("synthetic stop receipt satisfied the recursive runtime gate")
+	}
+}
+
+func verifiedRuntimeEffectFixture(t *testing.T) (*Operation, *run.Operation, effect.Intent) {
+	t.Helper()
+	root := t.TempDir()
+	sealPreparation(t, root, "verified-runtime-prep")
+	operation, err := Open(root, "verified-runtime-experiment")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := operation.Begin("verified-runtime-prep"); err != nil {
+		t.Fatal(err)
+	}
+	bindTestRun(t, operation, "worker")
+	startPayload, err := run.EncodeStartPayload(effect.WorkerStart, run.StartPayload{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	startRef, err := operation.artifacts.Put(startPayload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := effect.Intent{ID: "worker-start", RunID: "worker", Kind: effect.WorkerStart, Payload: startRef}
+	startDecision := SupervisorDecision{ID: start.ID, WorkerRun: "worker", Claim: "launch the sealed fresh Worker", Action: DecisionWorkerStart, Falsifier: "run has pre-start public evidence"}
+	if err := operation.CommitDecisionBoundEffect(DecisionBoundEffect{Decision: startDecision, Intent: start}); err != nil {
+		t.Fatal(err)
+	}
+	worker, err := run.Open(root, "verified-runtime-experiment", "worker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := run.StopPolicy{FirstEventTimeout: time.Second, SoftIdleTimeout: 2 * time.Second, HardIdleTimeout: 3 * time.Second}
+	if _, err := worker.BeginAttachedEffect(start, run.AttachedSpec{Adapter: "test", StreamID: "worker-session", InitialCursor: []byte("cursor"), Policy: policy, Capabilities: run.RequiredAdapterCapabilities()}); err != nil {
+		t.Fatal(err)
+	}
+	writer, _, err := worker.AcquireAdapterWriter("test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Commit([]byte("next-cursor"), run.AdapterBatch{Events: []run.AdapterEvent{{Kind: run.EvidenceToolResult, Label: "target_mismatch", Raw: []byte("target differs")}}}); err != nil {
+		_ = writer.Close()
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	stopPayload, err := run.EncodeStopPayload(run.StopPayload{Reason: "material failure"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stopRef, err := operation.artifacts.Put(stopPayload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stop := effect.Intent{ID: "worker-stop", RunID: "worker", Kind: effect.Stop, Payload: stopRef}
+	evidence := run.EvidenceRef{ExperimentID: "verified-runtime-experiment", RunID: "worker", Sequence: 2, Item: 0}
+	stopDecision := SupervisorDecision{ID: stop.ID, WorkerRun: "worker", EvidenceThrough: evidence.Sequence, Claim: "the public target mismatch is material", Action: DecisionStop, Evidence: []run.EvidenceRef{evidence}, Falsifier: "target and receipt agree"}
+	if err := operation.CommitDecisionBoundEffect(DecisionBoundEffect{Decision: stopDecision, Intent: stop}); err != nil {
+		t.Fatal(err)
+	}
+	return operation, worker, stop
+}

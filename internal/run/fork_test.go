@@ -27,6 +27,10 @@ func TestForkReceiptRequiresExactIntentAndPriorObservation(t *testing.T) {
 	if err != nil || stored != forked || string(child) != "child-session" || receipt.IntentID != forkIntent.ID {
 		t.Fatalf("fork receipt = %#v, %q, %#v, %v", stored, child, receipt, err)
 	}
+	verified, err := op.VerifyForkEffect(forkIntent)
+	if err != nil || verified != forked {
+		t.Fatalf("verified fork = %#v, %v", verified, err)
+	}
 	if at, err := op.SessionForkedTime(forked.ChildSession); err != nil || at.IsZero() {
 		t.Fatalf("fork receipt time = %v, %v", at, err)
 	}
@@ -48,6 +52,9 @@ func TestForkReceiptRejectsDifferentReceiptIntent(t *testing.T) {
 	}
 	if _, _, _, err := op.ForkReceipt(forkIntent.ID); err == nil {
 		t.Fatal("fork receipt accepted evidence for a different intent")
+	}
+	if _, err := op.VerifyForkEffect(forkIntent); err == nil {
+		t.Fatal("fork effect accepted evidence for a different intent")
 	}
 }
 

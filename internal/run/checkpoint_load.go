@@ -7,6 +7,7 @@ import (
 	"io"
 
 	"github.com/yansircc/agentlab/internal/artifact"
+	"github.com/yansircc/agentlab/internal/effect"
 )
 
 func (o *Operation) LoadRuntimeCheckpoint(ref artifact.Ref) (RuntimeCheckpoint, artifact.Ref, error) {
@@ -61,4 +62,38 @@ func (o *Operation) RuntimeCheckpointData(ref artifact.Ref) (RuntimeCheckpoint, 
 		return RuntimeCheckpoint{}, nil, nil, nil, err
 	}
 	return value, prefix, session, opaque, nil
+}
+
+// VerifyCheckpointEffect proves that one settled checkpoint intent created
+// exactly one durable checkpoint receipt. Adapter implementations remain
+// responsible for validating their opaque runtime state before recording it.
+func (o *Operation) VerifyCheckpointEffect(intent effect.Intent) (RuntimeCheckpointRecord, error) {
+	if intent.RunID != o.runID || intent.Kind != effect.Checkpoint || intent.Validate() != nil {
+		return RuntimeCheckpointRecord{}, errors.New("checkpoint effect intent is invalid")
+	}
+	if _, _, err := o.verifyObservedReceipt(intent); err != nil {
+		return RuntimeCheckpointRecord{}, err
+	}
+	state, err := o.currentState()
+	if err != nil {
+		return RuntimeCheckpointRecord{}, err
+	}
+	var result RuntimeCheckpointRecord
+	for ref, recorded := range state.runtimeCheckpoints {
+		if recorded.Intent != intent {
+			continue
+		}
+		if result.Checkpoint.Valid() {
+			return RuntimeCheckpointRecord{}, errors.New("checkpoint effect has multiple receipts")
+		}
+		checkpoint, prefix, err := o.LoadRuntimeCheckpoint(ref)
+		if err != nil || checkpoint.Intent != intent || prefix != recorded.PublicPrefix {
+			return RuntimeCheckpointRecord{}, errors.New("checkpoint effect differs from run ledger")
+		}
+		result = RuntimeCheckpointRecord{Checkpoint: ref, PublicPrefix: prefix, Intent: intent}
+	}
+	if !result.Checkpoint.Valid() {
+		return RuntimeCheckpointRecord{}, errors.New("checkpoint effect has no runtime receipt")
+	}
+	return result, nil
 }

@@ -1,6 +1,7 @@
 package run
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -27,4 +28,23 @@ func (o *Operation) EffectObservation(intent effect.Intent) ([]byte, bool, error
 		return nil, false, nil
 	}
 	return data, err == nil, err
+}
+
+// verifyObservedReceipt proves that the durable receipt is the exact
+// post-effect observation. Runtime-specific verifiers add their own state
+// checks; generic settlement alone intentionally does not assert execution.
+func (o *Operation) verifyObservedReceipt(intent effect.Intent) ([]byte, effect.Receipt, error) {
+	observation, observed, err := o.EffectObservation(intent)
+	if err != nil || !observed {
+		return nil, effect.Receipt{}, errors.New("runtime effect observation is absent")
+	}
+	receipt, settled, err := o.EffectReceipt(intent.ID)
+	if err != nil || !settled || receipt.IntentID != intent.ID || receipt.Kind != intent.Kind {
+		return nil, effect.Receipt{}, errors.New("runtime effect receipt is unavailable")
+	}
+	evidence, err := o.artifacts.Read(receipt.Evidence)
+	if err != nil || !bytes.Equal(observation, evidence) {
+		return nil, effect.Receipt{}, errors.New("runtime effect receipt differs from observation")
+	}
+	return observation, receipt, nil
 }

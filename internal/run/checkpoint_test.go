@@ -77,6 +77,31 @@ func TestRuntimeCheckpointReceiptRequiresMatchingPriorObservation(t *testing.T) 
 	}
 }
 
+func TestVerifyCheckpointEffectRequiresOneOwnedRuntimeReceipt(t *testing.T) {
+	op, _ := Open(t.TempDir(), "experiment", "verified-checkpoint")
+	bindTestManifest(t, op)
+	policy := StopPolicy{FirstEventTimeout: time.Second, SoftIdleTimeout: 2 * time.Second, HardIdleTimeout: 3 * time.Second}
+	if _, err := op.BeginAttached(AttachedSpec{Adapter: "test", StreamID: "stream", InitialCursor: []byte("cursor"), Policy: policy, Capabilities: RequiredAdapterCapabilities()}); err != nil {
+		t.Fatal(err)
+	}
+	intent := checkpointIntent(t, op, "checkpoint")
+	checkpoint, err := op.RecordRuntimeCheckpoint(intent, RuntimeCheckpointSpec{Adapter: "test", Session: []byte("session"), OpaqueState: []byte("opaque"), PublicPrefix: []byte("public-prefix")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	evidence := []byte("checkpoint receipt")
+	if err := op.RecordEffectObservation(intent, evidence); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := op.SettleEffect(intent, evidence); err != nil {
+		t.Fatal(err)
+	}
+	verified, err := op.VerifyCheckpointEffect(intent)
+	if err != nil || verified != checkpoint {
+		t.Fatalf("verified checkpoint = %#v, %v", verified, err)
+	}
+}
+
 func checkpointIntent(t *testing.T, op *Operation, id string) effect.Intent {
 	t.Helper()
 	payload, err := op.artifacts.Put([]byte("checkpoint payload " + id))

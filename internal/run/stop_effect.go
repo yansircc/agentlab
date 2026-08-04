@@ -94,3 +94,39 @@ func (o *Operation) settleObservedStop(intent effect.Intent, evidence []byte) (S
 	receipt, err := o.SettleEffect(intent, evidence)
 	return StopEffectResult{Stop: result, Receipt: receipt}, err
 }
+
+// VerifyStopEffect proves that a settled stop effect admitted the one durable
+// stop transition for its payload. It never claims the attached process died.
+func (o *Operation) VerifyStopEffect(intent effect.Intent) (StopResult, error) {
+	if intent.RunID != o.runID || intent.Kind != effect.Stop || intent.Validate() != nil {
+		return StopResult{}, errors.New("stop effect intent is invalid")
+	}
+	payload, err := o.ReadEffectPayload(intent)
+	if err != nil {
+		return StopResult{}, err
+	}
+	var requested StopPayload
+	if strictjson.Decode(payload, &requested) != nil {
+		return StopResult{}, errors.New("stop effect payload is invalid")
+	}
+	if _, err := EncodeStopPayload(requested); err != nil {
+		return StopResult{}, errors.New("stop effect payload is invalid")
+	}
+	observation, _, err := o.verifyObservedReceipt(intent)
+	if err != nil {
+		return StopResult{}, err
+	}
+	var result StopResult
+	if strictjson.Decode(observation, &result) != nil || result.ID == "" || result.At.IsZero() || !result.Admitted || result.Reason != requested.Reason {
+		return StopResult{}, errors.New("stop effect observation is invalid")
+	}
+	request, err := o.readStopRequest()
+	if err != nil || request == nil || request.ID != result.ID || request.At != result.At || request.Reason != result.Reason {
+		return StopResult{}, errors.New("stop effect differs from durable stop request")
+	}
+	state, err := o.currentState()
+	if err != nil || !state.stopRequested {
+		return StopResult{}, errors.New("stop effect was not durably admitted")
+	}
+	return result, nil
+}

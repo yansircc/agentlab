@@ -131,6 +131,61 @@ func (o *Operation) RequireSettledStartEffects() error {
 	return nil
 }
 
+// RequireVerifiedRuntimeEffects is the recursive-gate proof for every
+// decision-bound runtime effect. A generic receipt only proves that bytes were
+// recorded; this method also proves the corresponding durable runtime fact and
+// rejects a decision appended after that fact occurred.
+func (o *Operation) RequireVerifiedRuntimeEffects() error {
+	current, err := o.current()
+	if err != nil {
+		return err
+	}
+	if err := o.requireSettledEffects(); err != nil {
+		return err
+	}
+	for _, id := range current.effectOrder {
+		bound := current.effects[id]
+		decisionAt, err := o.decisionBoundEffectTime(id)
+		if err != nil {
+			return err
+		}
+		operation, err := run.Open(o.root, o.id, bound.Intent.RunID)
+		if err != nil {
+			return err
+		}
+		switch bound.Intent.Kind {
+		case effect.WorkerStart, effect.CoderStart:
+			records, err := operation.Inspect(0, 1)
+			if err != nil || len(records) != 1 || records[0].Kind != "process_started" || decisionAt.After(records[0].At) {
+				return errors.New("runtime start precedes its decision-bound effect")
+			}
+			if err := operation.VerifyStartEffect(bound.Intent); err != nil {
+				return errors.New("runtime start effect is not verified")
+			}
+		case effect.Stop:
+			result, err := operation.VerifyStopEffect(bound.Intent)
+			if err != nil || decisionAt.After(result.At) {
+				return errors.New("runtime stop effect is not verified")
+			}
+		case effect.Checkpoint:
+			checkpoint, err := operation.VerifyCheckpointEffect(bound.Intent)
+			checkpointAt, checkpointErr := operation.RuntimeCheckpointTime(checkpoint.Checkpoint)
+			if err != nil || checkpointErr != nil || decisionAt.After(checkpointAt) {
+				return errors.New("runtime checkpoint effect is not verified")
+			}
+		case effect.Fork:
+			forked, err := operation.VerifyForkEffect(bound.Intent)
+			forkAt, forkErr := operation.SessionForkedTime(forked.ChildSession)
+			if err != nil || forkErr != nil || decisionAt.After(forkAt) {
+				return errors.New("runtime fork effect is not verified")
+			}
+		default:
+			return errors.New("unknown decision-bound runtime effect")
+		}
+	}
+	return nil
+}
+
 func (o *Operation) startDecisionTimes() (map[string]time.Time, error) {
 	result := map[string]time.Time{}
 	err := o.ledger.Visit(func(record ledger.Record) error {
