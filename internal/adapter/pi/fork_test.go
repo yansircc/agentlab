@@ -34,6 +34,24 @@ func TestForkReconcilesOneUnknownSDKChildWithoutRetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	entrySource, err := parent.Entries[1].EvidenceSource()
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer, _, err := operation.AcquireAdapterWriter(adapterName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Commit([]byte("fork-cursor"), run.AdapterBatch{Events: []run.AdapterEvent{{Kind: run.EvidenceAssistantMessage, SourceLocator: entrySource, Label: "assistant_message", Raw: []byte("ready")}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	evidence, err := operation.EvidenceForSourceLocator(entrySource)
+	if err != nil {
+		t.Fatal(err)
+	}
 	sdkRoot := installedSDKRoot(t)
 	_, source, _, _ := runtime.Caller(0)
 	artifactRoot := buildContextArtifact(t, source)
@@ -46,7 +64,7 @@ func TestForkReconcilesOneUnknownSDKChildWithoutRetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	checkpoint, err := Checkpoint(operation, parentPath, parent.Entries[1].Locator, identity)
+	checkpoint, err := Checkpoint(operation, parentPath, parent.Entries[1].Locator, evidence, parent.Entries[1].PrefixDigest, identity)
 	if err != nil {
 		t.Fatal(err)
 	}

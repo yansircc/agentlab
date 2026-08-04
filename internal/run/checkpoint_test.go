@@ -3,6 +3,8 @@ package run
 import (
 	"testing"
 	"time"
+
+	"github.com/yansircc/agentlab/internal/effect"
 )
 
 func TestRuntimeCheckpointIsOwnedByOneActiveAdapterRun(t *testing.T) {
@@ -23,5 +25,28 @@ func TestRuntimeCheckpointIsOwnedByOneActiveAdapterRun(t *testing.T) {
 	value.Adapter = "other"
 	if _, err := op.RecordRuntimeCheckpoint(value); err == nil {
 		t.Fatal("foreign adapter checkpoint was accepted")
+	}
+}
+
+func TestRuntimeCheckpointRemainsAdmissibleAfterDurableStop(t *testing.T) {
+	op, _ := Open(t.TempDir(), "experiment", "checkpoint-after-stop")
+	bindTestManifest(t, op)
+	policy := StopPolicy{FirstEventTimeout: time.Second, SoftIdleTimeout: 2 * time.Second, HardIdleTimeout: 3 * time.Second}
+	if _, err := op.BeginAttached(AttachedSpec{Adapter: "test", StreamID: "stream", InitialCursor: []byte("cursor"), Policy: policy, Capabilities: RequiredAdapterCapabilities()}); err != nil {
+		t.Fatal(err)
+	}
+	payload, err := EncodeStopPayload(StopPayload{Reason: "preserve the public prefix for repair"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref, err := op.artifacts.Put(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := op.RequestStopEffect(effect.Intent{ID: "stop", RunID: "checkpoint-after-stop", Kind: effect.Stop, Payload: ref}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := op.RecordRuntimeCheckpoint(RuntimeCheckpointSpec{Adapter: "test", Session: []byte("session"), OpaqueState: []byte("opaque"), PublicPrefix: []byte("public-prefix")}); err != nil {
+		t.Fatalf("checkpoint after durable stop: %v", err)
 	}
 }

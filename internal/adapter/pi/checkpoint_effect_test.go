@@ -80,7 +80,25 @@ func checkpointEffectFixture(t *testing.T) (string, *run.Operation, effect.Inten
 	if err != nil {
 		t.Fatal(err)
 	}
-	payload, err := EncodeCheckpointPayload(CheckpointPayload{EntryLocator: tree.Entries[1].Locator, Identity: identity})
+	entrySource, err := tree.Entries[1].EvidenceSource()
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer, _, err := operation.AcquireAdapterWriter(adapterName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Commit([]byte("checkpoint-cursor"), run.AdapterBatch{Events: []run.AdapterEvent{{Kind: run.EvidenceAssistantMessage, SourceLocator: entrySource, Label: "assistant_message", Raw: []byte("public")}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	evidence, err := operation.EvidenceForSourceLocator(entrySource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := EncodeCheckpointPayload(CheckpointPayload{EntryLocator: tree.Entries[1].Locator, Evidence: evidence, PrefixDigest: tree.Entries[1].PrefixDigest, Identity: identity})
 	if err != nil {
 		t.Fatal(err)
 	}

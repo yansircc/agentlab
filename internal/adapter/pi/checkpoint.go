@@ -16,8 +16,12 @@ type CheckpointResult struct {
 	PrefixDigest string                      `json:"prefix_digest"`
 }
 
-func Checkpoint(operation *run.Operation, sessionPath, entryLocator string, identity AdapterIdentity) (CheckpointResult, error) {
-	if err := identity.Validate(); err != nil {
+func Checkpoint(operation *run.Operation, sessionPath, entryLocator string, evidence run.EvidenceRef, expectedPrefix string, identity AdapterIdentity) (CheckpointResult, error) {
+	if err := identity.Validate(); err != nil || expectedPrefix == "" {
+		return CheckpointResult{}, errors.New("Pi checkpoint request is invalid")
+	}
+	evidenceItem, err := operation.EvidenceAt(evidence)
+	if err != nil {
 		return CheckpointResult{}, err
 	}
 	tree, err := ReadPublicTree(sessionPath)
@@ -28,9 +32,23 @@ func Checkpoint(operation *run.Operation, sessionPath, entryLocator string, iden
 	if err != nil || state.StreamID != tree.SessionID() {
 		return CheckpointResult{}, errors.New("Pi checkpoint session does not match attached run")
 	}
+	var selected PublicEntry
+	for _, entry := range tree.Entries {
+		if entry.Locator == entryLocator {
+			selected = entry
+			break
+		}
+	}
+	source, err := selected.EvidenceSource()
+	if err != nil || evidenceItem.SourceLocator != source {
+		return CheckpointResult{}, errors.New("Pi checkpoint evidence differs from selected entry")
+	}
 	prefix, opaque, digest, err := tree.Checkpoint(entryLocator)
 	if err != nil {
 		return CheckpointResult{}, err
+	}
+	if digest != expectedPrefix {
+		return CheckpointResult{}, errors.New("Pi checkpoint prefix differs from durable selection")
 	}
 	session, err := json.Marshal(sessionReceipt{Contract: checkpointSessionContract, RuntimeLocator: tree.RuntimeLocator, Identity: identity})
 	if err != nil {

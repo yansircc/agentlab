@@ -119,6 +119,41 @@ func TestPiRuntimeTreeRejectsUnadmittedPublicEntries(t *testing.T) {
 	}
 }
 
+func TestPiCheckpointEntryRequiresSameRunDurableEvidence(t *testing.T) {
+	root := t.TempDir()
+	launch := testWorkerLaunch(t)
+	if err := os.MkdirAll(launch.Launch.RuntimeRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	session := filepath.Join(launch.Launch.RuntimeRoot, "session.jsonl")
+	writePiTree(t, session, []string{
+		`{"type":"session","version":3,"id":"worker-session"}`,
+		`{"type":"message","id":"user","parentId":null,"message":{"role":"user","content":"public"}}`,
+	})
+	policy := run.StopPolicy{FirstEventTimeout: time.Second, SoftIdleTimeout: 2 * time.Second, HardIdleTimeout: 3 * time.Second, OwnsWorkerProcess: true}
+	host, err := NewPiRuntimeHost([]PiRuntimeProfile{{Ref: "worker-profile", ExperimentID: "exp", RunID: "worker", Role: effect.WorkerStart, SessionPath: session, Identity: testIdentity(t), Policy: policy, WorkerLaunch: launch}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding := Binding{Root: root, ExperimentID: "exp", Runtime: host}
+	tree, err := piadapter.ReadPublicTree(session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile, err := host.profile(binding, "worker", "worker-profile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := host.checkpointEntry(binding, "worker", profile, tree.Entries[0].Locator); err == nil {
+		t.Fatal("checkpoint accepted a public entry without durable evidence")
+	}
+	admitRuntimeTreeEvidence(t, binding, session)
+	entry, evidence, err := host.checkpointEntry(binding, "worker", profile, tree.Entries[0].Locator)
+	if err != nil || entry.PrefixDigest == "" || evidence.ExperimentID != "exp" || evidence.RunID != "worker" {
+		t.Fatalf("checkpoint entry = %#v, %#v, %v", entry, evidence, err)
+	}
+}
+
 func admitRuntimeTreeEvidence(t *testing.T, binding Binding, session string) {
 	t.Helper()
 	_ = renderOwnedHandoff(t, binding)

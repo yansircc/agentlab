@@ -1,6 +1,7 @@
 package pi
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"reflect"
@@ -20,6 +21,8 @@ type CheckpointEffectSpec struct {
 
 type CheckpointPayload struct {
 	EntryLocator string          `json:"entry_locator"`
+	Evidence     run.EvidenceRef `json:"evidence"`
+	PrefixDigest string          `json:"prefix_digest"`
 	Identity     AdapterIdentity `json:"identity"`
 }
 
@@ -35,7 +38,10 @@ type checkpointAttempt struct {
 }
 
 func EncodeCheckpointPayload(value CheckpointPayload) ([]byte, error) {
-	if value.EntryLocator == "" || len(value.EntryLocator) > 256 || value.Identity.Validate() != nil {
+	if value.EntryLocator == "" || len(value.EntryLocator) > 256 || value.Evidence.ExperimentID == "" || value.Evidence.RunID == "" || value.Evidence.Sequence == 0 || value.Evidence.Item < 0 || len(value.PrefixDigest) != 64 || value.Identity.Validate() != nil {
+		return nil, errors.New("Pi checkpoint payload is invalid")
+	}
+	if _, err := hex.DecodeString(value.PrefixDigest); err != nil {
 		return nil, errors.New("Pi checkpoint payload is invalid")
 	}
 	return json.Marshal(value)
@@ -56,6 +62,9 @@ func CheckpointEffect(operation *run.Operation, intent effect.Intent, spec Check
 	if _, err := EncodeCheckpointPayload(payload); err != nil {
 		return CheckpointEffectResult{}, err
 	}
+	if _, err := operation.EvidenceAt(payload.Evidence); err != nil {
+		return CheckpointEffectResult{}, errors.New("Pi checkpoint evidence is invalid")
+	}
 	config := IdentityConfig{SDKRoot: spec.SDKRoot, ContextFilterPath: spec.ContextFilterPath, AdapterDigest: payload.Identity.AdapterDigest, Provider: payload.Identity.Provider, Model: payload.Identity.Model, ThinkingPolicy: payload.Identity.ThinkingPolicy, CompactionPolicy: payload.Identity.CompactionPolicy}
 	discovered, err := VerifyRuntimeIdentity(config)
 	if err != nil || !reflect.DeepEqual(discovered, payload.Identity) {
@@ -72,7 +81,7 @@ func CheckpointEffect(operation *run.Operation, intent effect.Intent, spec Check
 	if !created {
 		return reconcileCheckpointEffect(operation, intent)
 	}
-	checkpoint, err := Checkpoint(operation, spec.SessionPath, payload.EntryLocator, payload.Identity)
+	checkpoint, err := Checkpoint(operation, spec.SessionPath, payload.EntryLocator, payload.Evidence, payload.PrefixDigest, payload.Identity)
 	if err != nil {
 		return CheckpointEffectResult{}, err
 	}
@@ -88,6 +97,20 @@ func CheckpointEffect(operation *run.Operation, intent effect.Intent, spec Check
 }
 
 func reconcileCheckpointEffect(operation *run.Operation, intent effect.Intent) (CheckpointEffectResult, error) {
+	payloadData, err := operation.ReadEffectPayload(intent)
+	if err != nil {
+		return CheckpointEffectResult{}, err
+	}
+	var payload CheckpointPayload
+	if strictjson.Decode(payloadData, &payload) != nil {
+		return CheckpointEffectResult{}, errors.New("Pi checkpoint payload is invalid")
+	}
+	if _, err := EncodeCheckpointPayload(payload); err != nil {
+		return CheckpointEffectResult{}, err
+	}
+	if _, err := operation.EvidenceAt(payload.Evidence); err != nil {
+		return CheckpointEffectResult{}, errors.New("Pi checkpoint evidence is invalid")
+	}
 	evidence, exists, err := operation.EffectObservation(intent)
 	if err != nil || !exists {
 		return CheckpointEffectResult{}, errors.New("Pi checkpoint outcome is unknown; refusing to repeat it")
@@ -97,7 +120,7 @@ func reconcileCheckpointEffect(operation *run.Operation, intent effect.Intent) (
 		return CheckpointEffectResult{}, errors.New("Pi checkpoint observation is invalid")
 	}
 	prefix, err := operation.RuntimeCheckpointPublicPrefix(checkpoint.Checkpoint.Checkpoint)
-	if err != nil || prefix != checkpoint.Checkpoint.PublicPrefix || prefix.Digest != checkpoint.PrefixDigest {
+	if err != nil || checkpoint.EntryLocator != payload.EntryLocator || checkpoint.PrefixDigest != payload.PrefixDigest || prefix != checkpoint.Checkpoint.PublicPrefix || prefix.Digest != checkpoint.PrefixDigest {
 		return CheckpointEffectResult{}, errors.New("Pi checkpoint observation no longer matches run")
 	}
 	if receipt, exists, err := operation.EffectReceipt(intent.ID); err != nil {

@@ -55,11 +55,15 @@ func (h *PiRuntimeHost) CheckpointIntent(binding Binding, request CheckpointRequ
 	if err != nil || request.ID == "" || request.EntryLocator == "" {
 		return effect.Intent{}, errors.New("Pi checkpoint request is invalid")
 	}
+	entry, evidence, err := h.checkpointEntry(binding, request.RunID, profile, request.EntryLocator)
+	if err != nil {
+		return effect.Intent{}, errors.New("Pi checkpoint entry is not durably admitted")
+	}
 	identity, err := piadapter.VerifyRuntimeIdentity(profile.Identity)
 	if err != nil {
 		return effect.Intent{}, err
 	}
-	payload, err := piadapter.EncodeCheckpointPayload(piadapter.CheckpointPayload{EntryLocator: request.EntryLocator, Identity: identity})
+	payload, err := piadapter.EncodeCheckpointPayload(piadapter.CheckpointPayload{EntryLocator: request.EntryLocator, Evidence: evidence, PrefixDigest: entry.PrefixDigest, Identity: identity})
 	if err != nil {
 		return effect.Intent{}, err
 	}
@@ -68,6 +72,27 @@ func (h *PiRuntimeHost) CheckpointIntent(binding Binding, request CheckpointRequ
 		return effect.Intent{}, err
 	}
 	return effect.Intent{ID: request.ID, RunID: request.RunID, Kind: effect.Checkpoint, Payload: ref}, nil
+}
+
+func (h *PiRuntimeHost) checkpointEntry(binding Binding, runID string, profile PiRuntimeProfile, locator string) (piadapter.PublicEntry, run.EvidenceRef, error) {
+	tree, err := piadapter.ReadPublicTree(profile.SessionPath)
+	if err != nil {
+		return piadapter.PublicEntry{}, run.EvidenceRef{}, err
+	}
+	for _, entry := range tree.Entries {
+		if entry.Locator != locator {
+			continue
+		}
+		if !entry.StructurallyForkable {
+			return piadapter.PublicEntry{}, run.EvidenceRef{}, errors.New("Pi checkpoint entry is not forkable")
+		}
+		evidence, err := h.runtimeTreeEvidence(binding, runID, entry)
+		if err != nil || evidence.RunID != runID {
+			return piadapter.PublicEntry{}, run.EvidenceRef{}, errors.New("Pi checkpoint entry is not durably admitted")
+		}
+		return entry, evidence, nil
+	}
+	return piadapter.PublicEntry{}, run.EvidenceRef{}, errors.New("Pi checkpoint entry is absent")
 }
 
 func (h *PiRuntimeHost) ForkIntent(binding Binding, request ForkRequest) (effect.Intent, error) {

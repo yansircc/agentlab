@@ -69,7 +69,7 @@ func (o *Operation) RecordRuntimeCheckpoint(spec RuntimeCheckpointSpec) (result 
 		return RuntimeCheckpointRecord{}, err
 	}
 	state, err := replayRun(records)
-	if err != nil || state.started == nil || state.terminalSeen || state.stopRequested || state.started.Adapter == nil || state.started.Adapter.Adapter != spec.Adapter {
+	if err != nil || state.started == nil || state.terminalSeen || state.started.Adapter == nil || state.started.Adapter.Adapter != spec.Adapter {
 		return RuntimeCheckpointRecord{}, errors.New("runtime checkpoint is not admissible for this run")
 	}
 	prefix, err := o.artifacts.Put(spec.PublicPrefix)

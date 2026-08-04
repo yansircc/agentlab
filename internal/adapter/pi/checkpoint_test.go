@@ -28,7 +28,39 @@ func TestCheckpointBindsPublicPrefixToAttachedPiSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := Checkpoint(op, session, tree.Entries[1].Locator, testAdapterIdentity())
+	userSource, err := tree.Entries[0].EvidenceSource()
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := tree.Entries[1].EvidenceSource()
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer, _, err := op.AcquireAdapterWriter(adapterName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Commit([]byte("checkpoint-cursor"), run.AdapterBatch{Events: []run.AdapterEvent{{Kind: run.EvidenceUserMessage, SourceLocator: userSource, Label: "user_message", Raw: []byte("go")}, {Kind: run.EvidenceAssistantMessage, SourceLocator: source, Label: "assistant_message", Raw: []byte("public")}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	evidence, err := op.EvidenceForSourceLocator(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongEvidence, err := op.EvidenceForSourceLocator(userSource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Checkpoint(op, session, tree.Entries[1].Locator, wrongEvidence, tree.Entries[1].PrefixDigest, testAdapterIdentity()); err == nil {
+		t.Fatal("checkpoint accepted evidence for another public entry")
+	}
+	if _, err := Checkpoint(op, session, tree.Entries[1].Locator, evidence, strings.Repeat("0", 64), testAdapterIdentity()); err == nil {
+		t.Fatal("checkpoint accepted a prefix different from the durable selection")
+	}
+	result, err := Checkpoint(op, session, tree.Entries[1].Locator, evidence, tree.Entries[1].PrefixDigest, testAdapterIdentity())
 	if err != nil {
 		t.Fatal(err)
 	}
