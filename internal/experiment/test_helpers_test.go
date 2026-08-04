@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/yansircc/agentlab/internal/artifact"
+	"github.com/yansircc/agentlab/internal/comparison"
 	"github.com/yansircc/agentlab/internal/effect"
 	"github.com/yansircc/agentlab/internal/preparation"
 	"github.com/yansircc/agentlab/internal/run"
@@ -123,6 +124,92 @@ func rebindTestFixtureReset(t *testing.T, operation *Operation, runID string, in
 	}
 	inputs.FixtureReset = recordTestFixtureReset(t, operation, runID, inputs.Fixture, previous.Baseline)
 	return inputs
+}
+
+// completeComparisonWorker models the Host-owned facts needed for a fresh
+// autonomous comparison: a decision-bound Worker start, an accepted terminal,
+// and one adapter-admitted oracle artifact bound to the exact manifest.
+func completeComparisonWorker(t *testing.T, operation *Operation, runID string, claims []comparison.OracleClaim) *run.Operation {
+	t.Helper()
+	manifest, _, err := operation.RunManifest(runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := run.EncodeStartPayload(effect.WorkerStart, run.StartPayload{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	payloadRef, err := operation.artifacts.Put(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	intent := effect.Intent{ID: "worker-start-" + runID, RunID: runID, Kind: effect.WorkerStart, Payload: payloadRef}
+	if err := operation.CommitDecisionBoundEffect(DecisionBoundEffect{Decision: SupervisorDecision{
+		ID: intent.ID, WorkerRun: runID, Claim: "the sealed fresh Worker run must start", Action: DecisionWorkerStart,
+		Falsifier: "the Worker starts without its decision-bound effect",
+	}, Intent: intent}); err != nil {
+		t.Fatal(err)
+	}
+	worker, err := run.Open(operation.root, operation.id, runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := run.StopPolicy{FirstEventTimeout: time.Second, SoftIdleTimeout: 2 * time.Second, HardIdleTimeout: 3 * time.Second, OwnsWorkerProcess: true}
+	if _, err := worker.BeginManagedAttachedEffect(intent, run.ManagedAttachedSpec{
+		Adapter: "comparison-test", Policy: policy, Capabilities: run.RequiredAdapterCapabilities(), Command: []string{"/bin/sh", "-c", "sleep 0.2"}, Environment: []string{"PATH=/usr/bin:/bin"}, WorkingDirectory: operation.root,
+		Ready: func() (string, []byte, error) { return "worker-session-" + runID, []byte("cursor-0"), nil }, Finalize: func(code int) error {
+			if code != 0 {
+				return errors.New("comparison Worker exited unsuccessfully")
+			}
+			return nil
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if claims != nil {
+		data, err := comparison.EncodeOracleEvidence(comparison.OracleEvidence{
+			Contract: comparison.OracleEvidenceContract, RunID: runID, Candidate: manifest.Candidate, Trial: manifest.Trial, OracleSet: manifest.OracleSet, Claims: claims,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var writer *run.AdapterWriter
+		writerDeadline := time.Now().Add(time.Second)
+		for time.Now().Before(writerDeadline) {
+			writer, _, err = worker.AcquireAdapterWriter("comparison-test")
+			if err == nil {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		if err != nil || writer == nil {
+			t.Fatal(err)
+		}
+		err = writer.Commit([]byte("cursor-1"), run.AdapterBatch{Events: []run.AdapterEvent{
+			{Kind: run.EvidenceToolResult, Label: "validation_failure", Raw: []byte("first")},
+			{Kind: run.EvidenceToolResult, Label: "validation_failure", Raw: []byte("second")},
+			{Kind: run.EvidenceOracle, Label: "objective_oracle", Raw: data},
+		}})
+		if closeErr := writer.Close(); err == nil {
+			err = closeErr
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	terminalDeadline := time.Now().Add(time.Second)
+	for time.Now().Before(terminalDeadline) {
+		accepted, err := worker.TerminalAccepted()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if accepted {
+			return worker
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("comparison Worker did not produce an accepted terminal result")
+	return nil
 }
 
 func completeCandidate(t *testing.T, operation *Operation, runID string, handoff, candidate artifact.Ref) artifact.Ref {

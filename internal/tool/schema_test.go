@@ -60,6 +60,17 @@ func TestInspectScopeSchemaProjectsClosedDecoderSet(t *testing.T) {
 	}
 }
 
+func TestCompareRejectsSupervisorAuthoredClaimAndValidityFields(t *testing.T) {
+	for _, field := range []string{"claim_deltas", "validity_facts", "metric_deltas"} {
+		t.Run(field, func(t *testing.T) {
+			input := []byte(`{"action":"record","value":{"decision":{},"observation":{"` + field + `":[]}}}`)
+			if _, err := Decode(CompareTool, input); err == nil {
+				t.Fatalf("compare decoder accepted removed %s field", field)
+			}
+		})
+	}
+}
+
 func assertNoLocator(t *testing.T, value any) {
 	t.Helper()
 	data, err := json.Marshal(value)

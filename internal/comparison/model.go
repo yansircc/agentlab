@@ -21,53 +21,56 @@ type Policy struct {
 	RequiredClaims     []string `json:"required_claims"`
 }
 
-type ClaimDelta struct {
-	ClaimID           string `json:"claim_id"`
-	BaselineFailures  int    `json:"baseline_failures"`
-	CandidateFailures int    `json:"candidate_failures"`
-	HeldOut           bool   `json:"held_out"`
-}
-
-type MetricDelta struct {
-	Metric    string `json:"metric"`
-	Baseline  string `json:"baseline"`
-	Candidate string `json:"candidate"`
-}
-
-type ValidityFact struct {
-	Kind   string `json:"kind"`
-	Valid  bool   `json:"valid"`
-	Detail string `json:"detail"`
-}
-
 type Observation struct {
-	ID            string         `json:"id"`
-	CandidateID   string         `json:"candidate_id"`
-	BaselineRuns  []string       `json:"baseline_runs"`
-	CandidateRuns []string       `json:"candidate_runs"`
-	Policy        Policy         `json:"policy"`
-	ClaimDeltas   []ClaimDelta   `json:"claim_deltas"`
-	MetricDeltas  []MetricDelta  `json:"metric_deltas,omitempty"`
-	ValidityFacts []ValidityFact `json:"validity_facts"`
+	ID            string   `json:"id"`
+	CandidateID   string   `json:"candidate_id"`
+	BaselineRuns  []string `json:"baseline_runs"`
+	CandidateRuns []string `json:"candidate_runs"`
+	Policy        Policy   `json:"policy"`
+}
+
+// OracleEvidence is Host/adapter-produced objective evidence for one terminal
+// Worker run. It binds every claim result to the exact candidate, trial, and
+// oracle set selected by the Host-owned manifest. It is intentionally not a
+// provider-authored comparison field.
+type OracleEvidence struct {
+	Contract  string        `json:"contract"`
+	RunID     string        `json:"run_id"`
+	Candidate artifact.Ref  `json:"candidate"`
+	Trial     artifact.Ref  `json:"trial"`
+	OracleSet artifact.Ref  `json:"oracle_set"`
+	Claims    []OracleClaim `json:"claims"`
+}
+
+const OracleEvidenceContract = "agentlab.oracle-evidence.v1"
+
+type OracleClaim struct {
+	ID      string `json:"id"`
+	Passed  bool   `json:"passed"`
+	HeldOut bool   `json:"held_out"`
 }
 
 type RunIdentity struct {
-	RunID           string
-	Origin          Origin
-	Intervention    bool
-	WorkerInput     artifact.Ref
-	Harness         artifact.Ref
-	Trial           artifact.Ref
-	Candidate       artifact.Ref
-	Adapter         artifact.Ref
-	OracleSet       artifact.Ref
-	Fixture         artifact.Ref
-	FixtureReset    artifact.Ref
-	FixtureBaseline artifact.Ref
-	EvidencePolicy  artifact.Ref
-	StopPolicy      artifact.Ref
-	WorkerRuntime   artifact.Ref
-	Environment     artifact.Ref
+	RunID            string
+	Origin           Origin
+	Intervention     bool
+	WorkerInput      artifact.Ref
+	Harness          artifact.Ref
+	Trial            artifact.Ref
+	Candidate        artifact.Ref
+	Adapter          artifact.Ref
+	OracleSet        artifact.Ref
+	Fixture          artifact.Ref
+	FixtureReset     artifact.Ref
+	FixtureBaseline  artifact.Ref
+	EvidencePolicy   artifact.Ref
+	StopPolicy       artifact.Ref
+	WorkerRuntime    artifact.Ref
+	Environment      artifact.Ref
+	StartVerified    bool
+	TerminalAccepted bool
+	OracleEvidence   artifact.Ref
+	OracleClaims     []OracleClaim
 }
 
 type Origin string
@@ -84,10 +87,10 @@ type Result struct {
 }
 
 func (o Observation) Validate() error {
-	if o.ID == "" || o.CandidateID == "" || len(o.BaselineRuns) == 0 || len(o.CandidateRuns) == 0 || o.Policy.MinimumRepetitions < 2 || len(o.Policy.RequiredClaims) == 0 || len(o.ValidityFacts) == 0 {
-		return errors.New("comparison identity, runs, repetition policy, claims, and validity facts are required")
+	if o.ID == "" || o.CandidateID == "" || len(o.BaselineRuns) == 0 || len(o.CandidateRuns) == 0 || o.Policy.MinimumRepetitions < 2 || len(o.Policy.RequiredClaims) == 0 {
+		return errors.New("comparison identity, runs, repetition policy, and claims are required")
 	}
-	if len(o.BaselineRuns) > 100 || len(o.CandidateRuns) > 100 || len(o.ClaimDeltas) > 100 || len(o.MetricDeltas) > 100 || len(o.ValidityFacts) > 100 {
+	if len(o.BaselineRuns) > 100 || len(o.CandidateRuns) > 100 {
 		return errors.New("comparison collections exceed bounds")
 	}
 	return validateUnique(o)
@@ -108,15 +111,23 @@ func validateUnique(o Observation) error {
 		}
 		seen[id] = true
 	}
-	for _, delta := range o.ClaimDeltas {
-		if delta.ClaimID == "" || delta.BaselineFailures < 0 || delta.CandidateFailures < 0 {
-			return errors.New("claim delta is invalid")
-		}
+	return nil
+}
+
+func (value OracleEvidence) Validate() error {
+	if value.Contract != OracleEvidenceContract || value.RunID == "" || !value.Candidate.Valid() || !value.Trial.Valid() || !value.OracleSet.Valid() || len(value.Claims) == 0 || len(value.Claims) > 100 {
+		return errors.New("oracle evidence is invalid")
 	}
-	for _, fact := range o.ValidityFacts {
-		if fact.Kind == "" || fact.Detail == "" {
-			return errors.New("validity fact is incomplete")
+	return validateOracleClaims(value.Claims)
+}
+
+func validateOracleClaims(values []OracleClaim) error {
+	seen := map[string]bool{}
+	for _, value := range values {
+		if value.ID == "" || seen[value.ID] {
+			return errors.New("oracle claim is invalid")
 		}
+		seen[value.ID] = true
 	}
 	return nil
 }

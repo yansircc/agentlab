@@ -101,6 +101,32 @@ func (o *Operation) EvidenceAt(ref EvidenceRef) (EvidenceItem, error) {
 	return item, nil
 }
 
+// OracleEvidence returns every Host/adapter-admitted objective oracle item in
+// the immutable run ledger. It does not infer an oracle result from Worker
+// text, tool output, or a Supervisor claim.
+func (o *Operation) OracleEvidence() ([]EvidenceItem, error) {
+	records, err := o.ledger.Replay()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := replayRun(records); err != nil {
+		return nil, err
+	}
+	result := make([]EvidenceItem, 0)
+	for _, record := range records {
+		items, err := projectEvidence(o.experimentID, o.runID, record)
+		if err != nil {
+			return nil, err
+		}
+		for _, item := range items {
+			if item.Kind == EvidenceOracle {
+				result = append(result, item)
+			}
+		}
+	}
+	return result, nil
+}
+
 func projectEvidence(experimentID, runID string, record ledger.Record) ([]EvidenceItem, error) {
 	base := EvidenceItem{Ref: EvidenceRef{ExperimentID: experimentID, RunID: runID, Sequence: record.Sequence}, At: record.At, Kind: EvidenceProcess, Label: record.Kind}
 	switch record.Kind {

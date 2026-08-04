@@ -22,16 +22,16 @@ func TestExperimentValidatesDurableFindingEvidenceAndDisposition(t *testing.T) {
 		t.Fatal(err)
 	}
 	bindTestRun(t, experiment, "run-1")
-	runOperation := attachedRunWithEvidence(t, root, "exp", "run-1")
+	runOperation := completeComparisonWorker(t, experiment, "run-1", []comparison.OracleClaim{{ID: "claim-1", Passed: false, HeldOut: true}})
 	refs := []run.EvidenceRef{
-		{ExperimentID: "exp", RunID: "run-1", Sequence: 2, Item: 0},
-		{ExperimentID: "exp", RunID: "run-1", Sequence: 2, Item: 1},
+		{ExperimentID: "exp", RunID: "run-1", Sequence: 3, Item: 0},
+		{ExperimentID: "exp", RunID: "run-1", Sequence: 3, Item: 1},
 	}
 	items := make([]run.EvidenceItem, 0, len(refs))
 	for _, ref := range refs {
 		item, err := runOperation.EvidenceAt(ref)
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("evidence %#v: %v", ref, err)
 		}
 		items = append(items, item)
 	}
@@ -43,7 +43,7 @@ func TestExperimentValidatesDurableFindingEvidenceAndDisposition(t *testing.T) {
 		t.Fatal(err)
 	}
 	handoff, err := experiment.RenderHandoffWithDecision(SupervisorDecision{
-		ID: "handoff-1", WorkerRun: "run-1", EvidenceThrough: 2, Claim: "retry is bounded by public evidence", Action: DecisionHandoff,
+		ID: "handoff-1", WorkerRun: "run-1", EvidenceThrough: 3, Claim: "retry is bounded by public evidence", Action: DecisionHandoff,
 		Evidence: []run.EvidenceRef{refs[0]}, Falsifier: "handoff cites evidence after the decision prefix",
 	}, []string{value.ID})
 	if err != nil {
@@ -93,17 +93,17 @@ func TestExperimentValidatesDurableFindingEvidenceAndDisposition(t *testing.T) {
 		t.Fatal(err)
 	}
 	bindPreparedTestRun(t, experiment, "run-2", NewFreshOrigin(), rebindTestFixtureReset(t, experiment, "run-2", baselineManifest.RunInputs))
+	completeComparisonWorker(t, experiment, "run-2", []comparison.OracleClaim{{ID: "claim-1", Passed: false, HeldOut: true}})
 	candidateInputs := baselineManifest.RunInputs
 	candidateInputs.Candidate = candidate.Artifact
 	for _, runID := range []string{"candidate-1", "candidate-2"} {
 		bindPreparedTestRun(t, experiment, runID, NewFreshOrigin(), rebindTestFixtureReset(t, experiment, runID, candidateInputs))
+		completeComparisonWorker(t, experiment, runID, []comparison.OracleClaim{{ID: "claim-1", Passed: true, HeldOut: true}})
 	}
 	observation := comparison.Observation{
 		ID: "comparison-1", CandidateID: candidate.ID,
 		BaselineRuns: []string{"run-1", "run-2"}, CandidateRuns: []string{"candidate-1", "candidate-2"},
-		Policy:        comparison.Policy{MinimumRepetitions: 2, RequiredClaims: []string{"claim-1"}},
-		ClaimDeltas:   []comparison.ClaimDelta{{ClaimID: "claim-1", BaselineFailures: 2, CandidateFailures: 0, HeldOut: true}},
-		ValidityFacts: []comparison.ValidityFact{{Kind: "environment", Valid: true, Detail: "same controlled fixture"}},
+		Policy: comparison.Policy{MinimumRepetitions: 2, RequiredClaims: []string{"claim-1"}},
 	}
 	compared, err := experiment.Compare(observation)
 	if err != nil || compared.Verdict != comparison.SupportedImprovement {

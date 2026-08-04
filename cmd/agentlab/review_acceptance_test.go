@@ -10,7 +10,6 @@ import (
 	"github.com/yansircc/agentlab/internal/diagnosis"
 	"github.com/yansircc/agentlab/internal/experiment"
 	"github.com/yansircc/agentlab/internal/finding"
-	"github.com/yansircc/agentlab/internal/gate"
 	"github.com/yansircc/agentlab/internal/ledger"
 	"github.com/yansircc/agentlab/internal/preparation"
 	"github.com/yansircc/agentlab/internal/run"
@@ -133,29 +132,12 @@ func TestExperimentReviewAndHandoffCLI(t *testing.T) {
 	comparisonValue := comparison.Observation{
 		ID: "cli-comparison", CandidateID: candidate.ID,
 		BaselineRuns: []string{"review-run", "baseline-2"}, CandidateRuns: []string{"candidate-1", "candidate-2"},
-		Policy:        comparison.Policy{MinimumRepetitions: 2, RequiredClaims: []string{"cli-claim"}},
-		ClaimDeltas:   []comparison.ClaimDelta{{ClaimID: "cli-claim", BaselineFailures: 2, CandidateFailures: 0}},
-		ValidityFacts: []comparison.ValidityFact{{Kind: "environment", Valid: true, Detail: "equivalent"}},
+		Policy: comparison.Policy{MinimumRepetitions: 2, RequiredClaims: []string{"cli-claim"}},
 	}
 	comparisonRequest := writeJSONFile(t, files, "comparison.json", map[string]any{"experiment_id": "review-exp", "observation": comparisonValue})
-	compared, err := dispatch([]string{"compare", "record", "-root", root, "-request", comparisonRequest})
-	if err != nil || compared.(comparison.Result).Verdict != comparison.SupportedImprovement {
-		t.Fatalf("comparison = %#v, %v", compared, err)
-	}
-	gateRequest := writeJSONFile(t, files, "gate.json", map[string]any{
-		"experiment_id": "review-exp",
-		"gate": gate.Spec{ID: "cli-gate", CandidateID: candidate.ID, ComparisonID: comparisonValue.ID, Items: []gate.Item{{
-			ID: "cli-claim", Status: gate.Passed, Statement: "duplicate is unreachable", Impact: "single accepted transition",
-			Evidence: value.Evidence, Severity: finding.SeverityHigh, Confidence: finding.ConfidenceHigh, Falsifier: "two accepted transitions",
-		}}},
-	})
-	gated, err := dispatch([]string{"gate", "record", "-root", root, "-request", gateRequest})
-	if err != nil || gated.(gate.Result).Verdict != gate.Pass || gated.(gate.Result).Receipt.Candidate != candidate.Artifact {
-		t.Fatalf("gate = %#v, %v", gated, err)
-	}
-	shown, err := dispatch([]string{"gate", "show", "-root", root, "-experiment", "review-exp", "-gate", "cli-gate"})
-	if err != nil || shown.(gate.Result).Receipt.Candidate != candidate.Artifact {
-		t.Fatalf("gate show = %#v, %v", shown, err)
+	_, err = dispatch([]string{"compare", "record", "-root", root, "-request", comparisonRequest})
+	if err == nil {
+		t.Fatalf("comparison without verified terminal oracle runs was accepted")
 	}
 	handoffRequest := writeJSONFile(t, files, "handoff.json", map[string]any{"experiment_id": "review-exp", "finding_ids": []string{value.ID}})
 	handoffResult, err := dispatch([]string{"review", "handoff", "-root", root, "-request", handoffRequest})

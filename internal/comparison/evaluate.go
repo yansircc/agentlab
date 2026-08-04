@@ -21,15 +21,11 @@ func Evaluate(observation Observation, manifests map[string]RunIdentity, candida
 		return Result{}, err
 	}
 	reasons := validateControlledInputs(baseline, candidateRuns, candidate)
-	for _, fact := range observation.ValidityFacts {
-		if !fact.Valid {
-			reasons = append(reasons, "invalid validity fact: "+fact.Kind)
-		}
-	}
+	reasons = append(reasons, validateRunEvidence(append(append([]RunIdentity(nil), baseline...), candidateRuns...))...)
 	if len(reasons) != 0 {
 		return Result{Observation: observation, Verdict: Invalid, Reasons: reasons}, nil
 	}
-	deltas, err := requiredDeltas(observation.Policy.RequiredClaims, observation.ClaimDeltas)
+	deltas, err := derivedDeltas(observation.Policy, baseline, candidateRuns)
 	if err != nil {
 		return Result{}, err
 	}
@@ -37,19 +33,21 @@ func Evaluate(observation Observation, manifests map[string]RunIdentity, candida
 		return Result{Observation: observation, Verdict: Inconclusive, Reasons: []string{"repetition threshold not met"}}, nil
 	}
 	for _, delta := range deltas {
-		if delta.CandidateFailures > delta.BaselineFailures {
-			return Result{Observation: observation, Verdict: SupportedRegression, Reasons: []string{"candidate regressed required claim " + delta.ClaimID}}, nil
-		}
-	}
-	for _, delta := range observation.ClaimDeltas {
-		if delta.HeldOut && delta.CandidateFailures > delta.BaselineFailures {
-			return Result{Observation: observation, Verdict: SupportedRegression, Reasons: []string{"candidate regressed held-out claim " + delta.ClaimID}}, nil
+		if delta.CandidateFailures > delta.BaselineFailures && (delta.Required || delta.HeldOut) {
+			kind := "required"
+			if delta.HeldOut && !delta.Required {
+				kind = "held-out"
+			}
+			return Result{Observation: observation, Verdict: SupportedRegression, Reasons: []string{"candidate regressed " + kind + " claim " + delta.ID}}, nil
 		}
 	}
 	improved := false
 	for _, delta := range deltas {
+		if !delta.Required {
+			continue
+		}
 		if delta.CandidateFailures != 0 {
-			return Result{Observation: observation, Verdict: Inconclusive, Reasons: []string{"candidate still fails required claim " + delta.ClaimID}}, nil
+			return Result{Observation: observation, Verdict: Inconclusive, Reasons: []string{"candidate still fails required claim " + delta.ID}}, nil
 		}
 		improved = improved || delta.BaselineFailures > delta.CandidateFailures
 	}
@@ -81,7 +79,19 @@ func validIdentity(value RunIdentity) bool {
 			return false
 		}
 	}
-	return true
+	return value.OracleEvidence.Valid() && validateOracleClaims(value.OracleClaims) == nil
+}
+
+func validateRunEvidence(values []RunIdentity) []string {
+	for _, value := range values {
+		if !value.StartVerified {
+			return []string{"compared run has no verified decision-bound Worker start: " + value.RunID}
+		}
+		if !value.TerminalAccepted {
+			return []string{"compared run has no accepted terminal result: " + value.RunID}
+		}
+	}
+	return nil
 }
 
 func validateControlledInputs(baseline, candidate []RunIdentity, candidateArtifact artifact.Ref) []string {
@@ -135,21 +145,66 @@ func trialSet(values []RunIdentity) string {
 	return string(data)
 }
 
-func requiredDeltas(required []string, values []ClaimDelta) ([]ClaimDelta, error) {
-	byID := map[string]ClaimDelta{}
-	for _, value := range values {
-		if _, exists := byID[value.ClaimID]; exists {
-			return nil, errors.New("claim delta is duplicated")
-		}
-		byID[value.ClaimID] = value
+type derivedDelta struct {
+	ID                string
+	BaselineFailures  int
+	CandidateFailures int
+	HeldOut           bool
+	Required          bool
+}
+
+func derivedDeltas(policy Policy, baseline, candidate []RunIdentity) ([]derivedDelta, error) {
+	required := map[string]bool{}
+	for _, id := range policy.RequiredClaims {
+		required[id] = true
 	}
-	result := make([]ClaimDelta, 0, len(required))
-	for _, id := range required {
-		value, ok := byID[id]
-		if !ok {
-			return nil, errors.New("required claim delta is absent: " + id)
+	values := append(append([]RunIdentity(nil), baseline...), candidate...)
+	claims := map[string]derivedDelta{}
+	expected := map[string]bool{}
+	for index, value := range values {
+		seen := map[string]bool{}
+		for _, claim := range value.OracleClaims {
+			seen[claim.ID] = true
+			if index == 0 {
+				expected[claim.ID] = claim.HeldOut
+			} else if heldOut, exists := expected[claim.ID]; !exists || heldOut != claim.HeldOut {
+				return nil, errors.New("oracle claim set differs across compared runs")
+			}
+			delta, exists := claims[claim.ID]
+			if !exists {
+				delta = derivedDelta{ID: claim.ID, HeldOut: claim.HeldOut, Required: required[claim.ID]}
+			}
+			if index < len(baseline) {
+				if !claim.Passed {
+					delta.BaselineFailures++
+				}
+			} else if !claim.Passed {
+				delta.CandidateFailures++
+			}
+			claims[claim.ID] = delta
 		}
-		result = append(result, value)
+		if len(seen) != len(expected) {
+			return nil, errors.New("oracle claim set differs across compared runs")
+		}
+		for id := range expected {
+			if !seen[id] {
+				return nil, errors.New("oracle claim set differs across compared runs")
+			}
+		}
+	}
+	for id := range required {
+		if _, exists := claims[id]; !exists {
+			return nil, errors.New("required claim is absent from objective oracle evidence: " + id)
+		}
+	}
+	ids := make([]string, 0, len(claims))
+	for id := range claims {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	result := make([]derivedDelta, 0, len(ids))
+	for _, id := range ids {
+		result = append(result, claims[id])
 	}
 	return result, nil
 }

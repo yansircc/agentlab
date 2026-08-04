@@ -192,16 +192,20 @@ func TestFourToolsReachFullSupervisionWorkflow(t *testing.T) {
 		Decision: workflowDecision("record-comparison", "child", childEvidence, experiment.DecisionComparison),
 		Observation: comparison.Observation{
 			ID: "guided-comparison", CandidateID: "repaired-candidate", BaselineRuns: []string{"baseline"}, CandidateRuns: []string{"child"},
-			Policy:        comparison.Policy{MinimumRepetitions: 2, RequiredClaims: []string{"target-owner"}},
-			ClaimDeltas:   []comparison.ClaimDelta{{ClaimID: "target-owner", BaselineFailures: 1, CandidateFailures: 0}},
-			ValidityFacts: []comparison.ValidityFact{{Kind: "fixture", Valid: true, Detail: "fresh fixture receipts are present"}},
+			Policy: comparison.Policy{MinimumRepetitions: 2, RequiredClaims: []string{"target-owner"}},
 		},
 	}
-	comparisonResult := workflowInvoke(t, binding, CompareTool, recordComparison{Action: "record", Value: comparisonValue})
-	if result, ok := comparisonResult.(comparison.Result); !ok || result.Verdict != comparison.Invalid {
-		t.Fatalf("guided comparison = %#v", comparisonResult)
+	comparisonData, err := json.Marshal(recordComparison{Action: "record", Value: comparisonValue})
+	if err != nil {
+		t.Fatal(err)
 	}
-	workflowInvoke(t, binding, CompareTool, showComparison{Action: "show", ComparisonID: "guided-comparison"})
+	comparisonOperation, err := Decode(CompareTool, comparisonData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Execute(binding, comparisonOperation); err == nil {
+		t.Fatal("guided comparison without terminal oracle evidence was accepted")
+	}
 
 	blockedGate := gate.Spec{ID: "guided-gate", CandidateID: "repaired-candidate", Items: []gate.Item{{
 		ID: "fresh-proof", Status: gate.Blocked, Statement: "guided run is not fresh proof", Impact: "autonomous claim remains blocked",
@@ -216,7 +220,7 @@ func TestFourToolsReachFullSupervisionWorkflow(t *testing.T) {
 	workflowInvoke(t, binding, CompareTool, showGate{Action: "gate_show", GateID: blockedGate.ID})
 
 	status, err := experimentOp.Status()
-	if err != nil || len(status.DecisionIDs) != 16 || len(status.InterventionRefs) != 1 || len(status.RunIDs) != 3 || len(status.CandidateIDs) != 1 || len(status.GateIDs) != 1 {
+	if err != nil || len(status.DecisionIDs) != 15 || len(status.InterventionRefs) != 1 || len(status.RunIDs) != 3 || len(status.CandidateIDs) != 1 || len(status.GateIDs) != 1 {
 		t.Fatalf("workflow status = %#v, %v", status, err)
 	}
 }
