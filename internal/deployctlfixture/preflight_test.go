@@ -13,6 +13,7 @@ import (
 
 	piadapter "github.com/yansircc/agentlab/internal/adapter/pi"
 	"github.com/yansircc/agentlab/internal/artifact"
+	"github.com/yansircc/agentlab/internal/comparison"
 	"github.com/yansircc/agentlab/internal/effect"
 	"github.com/yansircc/agentlab/internal/experiment"
 	"github.com/yansircc/agentlab/internal/finding"
@@ -177,6 +178,25 @@ func TestBindRuntimeBuildsAHostPrivateExactProfilePlan(t *testing.T) {
 		t.Fatalf("reopened runtime preflight = %#v, %v", reopened, err)
 	}
 	completion, candidate := terminalCoderCompletion(t, value)
+	oracleEvidence, err := value.RecordWorkerOracle(baselineRunID)
+	if err != nil {
+		t.Fatalf("Host Worker oracle = %#v, %v", oracleEvidence, err)
+	}
+	baselineRun, err := run.Open(value.EvaluatedRoot, value.ExperimentID, baselineRunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, err := baselineRun.EvidenceAt(oracleEvidence)
+	if err != nil || item.Kind != run.EvidenceOracle {
+		t.Fatalf("Host Worker oracle evidence = %#v, %v", item, err)
+	}
+	oracle, err := comparison.LoadOracleEvidence(store, item.Raw)
+	if err != nil || oracle.RunID != baselineRunID || oracle.Candidate != value.Candidate || oracle.Trial != value.Inputs.Trial || oracle.OracleSet != value.Inputs.OracleSet || len(oracle.Claims) != 5 {
+		t.Fatalf("Host Worker oracle artifact = %#v, %v", oracle, err)
+	}
+	if _, err := value.RecordWorkerOracle(baselineRunID); err == nil {
+		t.Fatal("Host recorded a second Worker oracle artifact")
+	}
 	wrongCompletion, err := store.Put([]byte("not a terminal Coder completion"))
 	if err != nil {
 		t.Fatal(err)

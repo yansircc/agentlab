@@ -1,9 +1,32 @@
 package deployctlfixture
 
 import (
+	"errors"
+
 	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/experiment"
+	"github.com/yansircc/agentlab/internal/strictjson"
 )
+
+const deployctlTrialContract = "agentlab.deployctl-trial.v1"
+
+type deployctlTrial struct {
+	Contract string `json:"contract"`
+	Release  string `json:"release"`
+	Target   string `json:"target"`
+}
+
+func loadDeployctlTrial(store artifact.Store, ref artifact.Ref) (deployctlTrial, error) {
+	data, err := store.Read(ref)
+	if err != nil {
+		return deployctlTrial{}, err
+	}
+	var value deployctlTrial
+	if strictjson.Decode(data, &value) != nil || value.Contract != deployctlTrialContract || !validTarget(value.Target) || !validTarget(value.Release) {
+		return deployctlTrial{}, errors.New("deployctl trial is invalid")
+	}
+	return value, nil
+}
 
 func preflightInputs(store artifact.Store, runID string, reset ResetReceipt, candidate, adapter, runtime artifact.Ref) (experiment.RunInputs, artifact.Ref, error) {
 	fixtureRef, err := putCanonical(store, struct {
@@ -34,7 +57,7 @@ func preflightInputs(store artifact.Store, runID string, reset ResetReceipt, can
 	if err != nil {
 		return experiment.RunInputs{}, artifact.Ref{}, err
 	}
-	trial, err := putCanonical(store, map[string]string{"contract": "agentlab.deployctl-trial.v1", "release": "release-a", "target": "staging"})
+	trial, err := putCanonical(store, deployctlTrial{Contract: deployctlTrialContract, Release: "release-a", Target: "staging"})
 	if err != nil {
 		return experiment.RunInputs{}, artifact.Ref{}, err
 	}
