@@ -92,7 +92,7 @@ func (value Preflight) bindRuntime(spec RuntimeSpec, canary liveCanaryRunner) (P
 	if err != nil {
 		return Preflight{}, err
 	}
-	inputs, reset, err := preflightInputs(store, value.reset, value.Candidate, canaryRef, runtime)
+	inputs, reset, err := preflightInputs(store, baselineRunID, value.reset, value.Candidate, canaryRef, runtime)
 	if err != nil {
 		return Preflight{}, err
 	}

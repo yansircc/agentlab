@@ -5,7 +5,7 @@ import (
 	"github.com/yansircc/agentlab/internal/experiment"
 )
 
-func preflightInputs(store artifact.Store, reset ResetReceipt, candidate, adapter, runtime artifact.Ref) (experiment.RunInputs, artifact.Ref, error) {
+func preflightInputs(store artifact.Store, runID string, reset ResetReceipt, candidate, adapter, runtime artifact.Ref) (experiment.RunInputs, artifact.Ref, error) {
 	fixtureRef, err := putCanonical(store, struct {
 		Contract string `json:"contract"`
 		Catalog  string `json:"catalog_digest"`
@@ -25,7 +25,7 @@ func preflightInputs(store artifact.Store, reset ResetReceipt, candidate, adapte
 		return experiment.RunInputs{}, artifact.Ref{}, err
 	}
 	resetRef, err := experiment.RecordFixtureReset(store, experiment.FixtureResetProof{
-		Contract: experiment.FixtureResetContract, RunID: baselineRunID, Fixture: fixtureRef, Baseline: baseline, Evidence: []artifact.Ref{resetEvidence},
+		Contract: experiment.FixtureResetContract, RunID: runID, Fixture: fixtureRef, Baseline: baseline, Evidence: []artifact.Ref{resetEvidence},
 	})
 	if err != nil {
 		return experiment.RunInputs{}, artifact.Ref{}, err

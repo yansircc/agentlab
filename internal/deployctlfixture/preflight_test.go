@@ -2,17 +2,23 @@ package deployctlfixture
 
 import (
 	"bytes"
+	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	piadapter "github.com/yansircc/agentlab/internal/adapter/pi"
 	"github.com/yansircc/agentlab/internal/artifact"
+	"github.com/yansircc/agentlab/internal/effect"
 	"github.com/yansircc/agentlab/internal/experiment"
 	"github.com/yansircc/agentlab/internal/metaaudit"
 	"github.com/yansircc/agentlab/internal/preparation"
+	"github.com/yansircc/agentlab/internal/run"
+	"github.com/yansircc/agentlab/internal/source"
 	"github.com/yansircc/agentlab/internal/tool"
 )
 
@@ -131,6 +137,49 @@ func TestBindRuntimeBuildsAHostPrivateExactProfilePlan(t *testing.T) {
 	if err != nil || reopened.EvaluatedRoot != value.EvaluatedRoot || reopened.AuditRoot != value.AuditRoot || reopened.Inputs != value.Inputs || reopened.CandidateExecutable != value.CandidateExecutable {
 		t.Fatalf("reopened runtime preflight = %#v, %v", reopened, err)
 	}
+	completion, candidate := terminalCoderCompletion(t, value)
+	store := artifact.NewStore(filepath.Join(value.EvaluatedRoot, "artifacts"))
+	wrongCompletion, err := store.Put([]byte("not a terminal Coder completion"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := value.PrepareRunFromCoderCompletion("candidate-wrong", wrongCompletion); err == nil {
+		t.Fatal("Host producer accepted a non-terminal Coder completion")
+	}
+	preparedRef, err := value.PrepareRunFromCoderCompletion("candidate-worker", completion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := experiment.LoadPreparedRun(store, preparedRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prepared.RunID != "candidate-worker" || prepared.Inputs.Candidate != candidate || prepared.Inputs.Harness != value.Inputs.Harness || prepared.Inputs.Trial != value.Inputs.Trial || prepared.Inputs.Adapter != value.LiveCanary || prepared.Inputs.OracleSet != value.Inputs.OracleSet || prepared.Inputs.Fixture != value.Inputs.Fixture || prepared.Inputs.EvidencePolicy != value.Inputs.EvidencePolicy || prepared.Inputs.StopPolicy != value.Inputs.StopPolicy || prepared.Inputs.Environment != value.Inputs.Environment {
+		t.Fatalf("prepared run changed a stable input: %#v", prepared)
+	}
+	resetData, err := store.Read(prepared.Inputs.FixtureReset)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reset experiment.FixtureResetProof
+	if err := json.Unmarshal(resetData, &reset); err != nil || reset.RunID != prepared.RunID || reset.Fixture != prepared.Inputs.Fixture {
+		t.Fatalf("prepared reset = %#v, %v", reset, err)
+	}
+	runtimeBinding, err := loadRuntimeBinding(store, prepared.Inputs.WorkerRuntime)
+	if err != nil || runtimeBinding.Adapter != value.LiveCanary || runtimeBinding.CandidateExecutable == value.CandidateExecutable || runtimeBinding.WorkerProfile != candidateWorkerProfileRef("candidate-worker") {
+		t.Fatalf("prepared runtime binding = %#v, %v", runtimeBinding, err)
+	}
+	host, err = tool.LoadPiRuntimeHost(filepath.Join(spec.HostRoot, "pi-runtime-plan.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidateProfile, err := host.Profile(runtimeBinding.WorkerProfile)
+	if err != nil || candidateProfile.RunID != prepared.RunID || candidateProfile.WorkerLaunch == nil || candidateProfile.WorkerLaunch.FixtureRoot == value.Fixture.Root() || candidateProfile.WorkerLaunch.CandidateExecutable != runtimeBinding.CandidateExecutable {
+		t.Fatalf("candidate Host profile = %#v, %v", candidateProfile, err)
+	}
+	if err := VerifyBuild(store, runtimeBinding.CandidateExecutable, prepared.Inputs.Candidate, candidateProfile.WorkerLaunch.DeployctlExecutable); err != nil {
+		t.Fatalf("candidate executable differs from prepared snapshot: %v", err)
+	}
 	audit, err := metaaudit.Open(value.AuditRoot, value.AuditID)
 	if err != nil || audit.MarkIntervened() != nil {
 		t.Fatalf("advance audit lifecycle: %v", err)
@@ -138,6 +187,83 @@ func TestBindRuntimeBuildsAHostPrivateExactProfilePlan(t *testing.T) {
 	if _, err := LoadRuntimePreflight(spec.HostRoot); err != nil {
 		t.Fatalf("runtime preflight did not survive later audit state: %v", err)
 	}
+}
+
+func terminalCoderCompletion(t *testing.T, value Preflight) (artifact.Ref, artifact.Ref) {
+	t.Helper()
+	store := artifact.NewStore(filepath.Join(value.EvaluatedRoot, "artifacts"))
+	candidateFiles := BaselineSource()
+	for index := range candidateFiles {
+		if candidateFiles[index].Path == "deploy.go" {
+			candidateFiles[index].Content = bytes.Replace(candidateFiles[index].Content, []byte("actual, err := defaultTarget(root, catalog)\n\tif err != nil { return err }"), []byte("actual := target"), 1)
+		}
+	}
+	candidate, err := source.Build(store, candidateFiles)
+	if err != nil || candidate == value.Candidate {
+		t.Fatalf("candidate snapshot = %#v, %v", candidate, err)
+	}
+	inputs, _, err := preflightInputs(store, coderRunID, value.reset, value.Candidate, value.LiveCanary, value.Inputs.WorkerRuntime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	op, err := experiment.Open(value.EvaluatedRoot, value.ExperimentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := op.BindRun(coderRunID, experiment.NewFreshOrigin(), inputs); err != nil {
+		t.Fatal(err)
+	}
+	host, err := tool.LoadPiRuntimeHost(value.runtimePlanPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile, err := host.Profile("coder-repair")
+	if err != nil {
+		t.Fatal(err)
+	}
+	handoff, err := store.Put([]byte("terminal Coder handoff"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	coderProfile := run.CoderProfile{Handoff: handoff, SourceSnapshot: profile.CoderSourceSnapshot, CandidateWorkspace: profile.CoderWorkspaceReceipt, CapabilityProfile: profile.CoderCapabilityProfile}
+	payload, err := run.EncodeStartPayload(effect.CoderStart, run.StartPayload{Coder: &coderProfile})
+	if err != nil {
+		t.Fatal(err)
+	}
+	payloadRef, err := store.Put(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	intent := effect.Intent{ID: "terminal-coder", RunID: coderRunID, Kind: effect.CoderStart, Payload: payloadRef}
+	coder, err := run.Open(value.EvaluatedRoot, value.ExperimentID, coderRunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := run.StopPolicy{FirstEventTimeout: time.Second, SoftIdleTimeout: 2 * time.Second, HardIdleTimeout: 3 * time.Second, OwnsWorkerProcess: true}
+	if _, err := coder.BeginManagedAttachedEffect(intent, run.ManagedAttachedSpec{
+		Adapter: "test", Policy: policy, Capabilities: run.RequiredAdapterCapabilities(), Command: []string{"/bin/sh", "-c", "exit 0"}, Environment: []string{"PATH=/usr/bin:/bin"}, WorkingDirectory: value.EvaluatedRoot,
+		Ready: func() (string, []byte, error) { return "terminal-coder-session", []byte("cursor"), nil },
+		Coder: &coderProfile,
+		Finalize: func(code int) error {
+			if code != 0 {
+				return errors.New("test Coder exited unsuccessfully")
+			}
+			_, err := coder.RecordCoderCompletion(candidate)
+			return err
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		receipt, _, err := coder.CoderCompletionReceipt()
+		if err == nil {
+			return receipt, candidate
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("terminal Coder completion was not admitted")
+	return artifact.Ref{}, artifact.Ref{}
 }
 
 func testSkillArtifact(t *testing.T) string {

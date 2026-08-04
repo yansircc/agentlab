@@ -2,6 +2,7 @@ package deployctlfixture
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/strictjson"
@@ -20,10 +21,19 @@ type runtimeBinding struct {
 }
 
 func (value runtimeBinding) validate() error {
-	if value.Contract != runtimeBindingContract || !value.Adapter.Valid() || !value.CandidateExecutable.Valid() || value.WorkerProfile != "baseline-worker" || value.CoderProfile != "coder-repair" {
+	if value.Contract != runtimeBindingContract || !value.Adapter.Valid() || !value.CandidateExecutable.Valid() || !validWorkerProfile(value.WorkerProfile) || value.CoderProfile != "coder-repair" {
 		return errors.New("deployctl runtime binding is invalid")
 	}
 	return nil
+}
+
+func candidateWorkerProfileRef(runID string) string { return "candidate-worker-" + runID }
+
+func validWorkerProfile(value string) bool {
+	if value == "baseline-worker" {
+		return true
+	}
+	return strings.HasPrefix(value, "candidate-worker-") && preparedRunID.MatchString(strings.TrimPrefix(value, "candidate-worker-"))
 }
 
 func recordRuntimeBinding(store artifact.Store, value runtimeBinding) (artifact.Ref, error) {
