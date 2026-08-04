@@ -17,9 +17,10 @@ func initialState() state {
 	return state{
 		findings: map[string]finding.Finding{}, dispositions: map[string]finding.Disposition{},
 		diagnoses: map[string]diagnosis.Diagnosis{}, candidates: map[string]diagnosis.RepairCandidate{},
-		runs:        map[string]runBinding{},
-		comparisons: map[string]comparison.Observation{},
-		gates:       map[string]gate.Receipt{}, gateDecisions: map[string]SupervisorDecision{},
+		interventions: map[artifact.Ref]Intervention{},
+		runs:          map[string]runBinding{},
+		comparisons:   map[string]comparison.Observation{},
+		gates:         map[string]gate.Receipt{}, gateDecisions: map[string]SupervisorDecision{},
 		effects:   map[string]DecisionBoundEffect{},
 		decisions: map[string]SupervisorDecision{},
 		handoffs:  map[artifact.Ref]HandoffRecord{},
@@ -47,6 +48,9 @@ func (o *Operation) replayUnvalidated() (state, error) {
 		current.eventCount = record.Sequence
 		return nil
 	})
+	if err == nil {
+		err = o.validateInterventions(current)
+	}
 	if err == nil {
 		err = o.validateRunLineage(current)
 	}
@@ -152,6 +156,8 @@ func (s *state) apply(record ledger.Record) error {
 		return s.decisionDiagnosis(record)
 	case eventDecisionCandidate:
 		return s.decisionCandidate(record)
+	case eventDecisionIntervention:
+		return s.decisionIntervention(record)
 	case eventDecisionRun:
 		return s.decisionRun(record)
 	case eventDecisionComparison:

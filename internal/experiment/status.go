@@ -3,6 +3,7 @@ package experiment
 import (
 	"errors"
 
+	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/finding"
 )
 
@@ -14,6 +15,7 @@ func (o *Operation) Status() (Status, error) {
 	status := Status{ExperimentID: o.id, EventCount: current.eventCount, FindingIDs: append([]string(nil), current.order...), DispositionCount: len(current.dispositions)}
 	status.DiagnosisIDs = append([]string(nil), current.diagnosisOrder...)
 	status.CandidateIDs = append([]string(nil), current.candidateOrder...)
+	status.InterventionRefs = append([]artifact.Ref(nil), current.interventionOrder...)
 	status.RunIDs = append([]string(nil), current.runOrder...)
 	status.ComparisonIDs = append([]string(nil), current.comparisonOrder...)
 	status.GateIDs = append([]string(nil), current.gateOrder...)

@@ -14,19 +14,20 @@ var decisionIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 type DecisionAction string
 
 const (
-	DecisionWorkerStart DecisionAction = "worker_start"
-	DecisionCoderStart  DecisionAction = "coder_start"
-	DecisionStop        DecisionAction = "stop"
-	DecisionCheckpoint  DecisionAction = "checkpoint"
-	DecisionFork        DecisionAction = "fork"
-	DecisionFinding     DecisionAction = "finding"
-	DecisionHandoff     DecisionAction = "coder_handoff"
-	DecisionDiagnosis   DecisionAction = "diagnosis"
-	DecisionCandidate   DecisionAction = "candidate"
-	DecisionRunBinding  DecisionAction = "run_binding"
-	DecisionComparison  DecisionAction = "comparison"
-	DecisionGate        DecisionAction = "gate"
-	DecisionContinue    DecisionAction = "continue"
+	DecisionWorkerStart  DecisionAction = "worker_start"
+	DecisionCoderStart   DecisionAction = "coder_start"
+	DecisionStop         DecisionAction = "stop"
+	DecisionCheckpoint   DecisionAction = "checkpoint"
+	DecisionFork         DecisionAction = "fork"
+	DecisionFinding      DecisionAction = "finding"
+	DecisionHandoff      DecisionAction = "coder_handoff"
+	DecisionDiagnosis    DecisionAction = "diagnosis"
+	DecisionCandidate    DecisionAction = "candidate"
+	DecisionIntervention DecisionAction = "intervention"
+	DecisionRunBinding   DecisionAction = "run_binding"
+	DecisionComparison   DecisionAction = "comparison"
+	DecisionGate         DecisionAction = "gate"
+	DecisionContinue     DecisionAction = "continue"
 )
 
 // SupervisorDecision is public evidence only. Its timestamp is the enclosing
@@ -111,7 +112,7 @@ func (value DecisionBoundContinue) Validate() error {
 }
 
 func (value DecisionAction) valid() bool {
-	return value.effectKind() != "" || value == DecisionFinding || value == DecisionHandoff || value == DecisionDiagnosis || value == DecisionCandidate || value == DecisionRunBinding || value == DecisionComparison || value == DecisionGate || value == DecisionContinue
+	return value.effectKind() != "" || value == DecisionFinding || value == DecisionHandoff || value == DecisionDiagnosis || value == DecisionCandidate || value == DecisionIntervention || value == DecisionRunBinding || value == DecisionComparison || value == DecisionGate || value == DecisionContinue
 }
 
 func (value DecisionBoundEffect) Validate() error {

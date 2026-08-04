@@ -23,6 +23,7 @@ var applyActionDecoder = map[string]func() applyOperation{
 	"render_handoff":               func() applyOperation { return &renderHandoff{} },
 	"record_diagnosis":             func() applyOperation { return &recordDiagnosis{} },
 	"bind_candidate":               func() applyOperation { return &bindCandidate{} },
+	"record_intervention":          func() applyOperation { return &recordIntervention{} },
 	"continue":                     func() applyOperation { return &continueRun{} },
 }
 

@@ -15,7 +15,7 @@ func TestSpliceOriginDerivesVerifiedLineage(t *testing.T) {
 	op, _ := Open(root, "origin-exp")
 	_, _ = op.Begin("origin-prep")
 	_, evidence, checkpoint, prefix := spliceParent(t, op, root, "parent")
-	intervention := putTestArtifact(t, op, "reobserve public contract")
+	intervention := recordTestIntervention(t, op, evidence, "reobserve public contract")
 	origin := testSpliceOrigin(t, "parent", evidence, checkpoint, prefix, &intervention)
 	bindPreparedTestRun(t, op, "child", origin, testRunInputs(t, op, "child", "child"))
 	manifest, _, err := op.RunManifest("child")
@@ -59,6 +59,7 @@ func TestSpliceOriginRejectsUnownedFacts(t *testing.T) {
 	_, _, foreignCheckpoint, _ := spliceParent(t, op, root, "other")
 	fake := artifact.Ref{Scope: op.artifacts.Scope(), Algorithm: "sha256", Digest: strings.Repeat("a", 64), Size: 1}
 	intervention := fake
+	unrecorded := putTestArtifact(t, op, "unrecorded intervention")
 	cases := []struct {
 		name   string
 		runID  string
@@ -70,6 +71,7 @@ func TestSpliceOriginRejectsUnownedFacts(t *testing.T) {
 		{"foreign checkpoint", "foreign", testSpliceOrigin(t, "parent", evidence, foreignCheckpoint, prefix, nil)},
 		{"missing public prefix", "missing-prefix", testSpliceOrigin(t, "parent", evidence, checkpoint, fake, nil)},
 		{"missing intervention", "missing-intervention", testSpliceOrigin(t, "parent", evidence, checkpoint, prefix, &intervention)},
+		{"unrecorded intervention", "unrecorded-intervention", testSpliceOrigin(t, "parent", evidence, checkpoint, prefix, &unrecorded)},
 	}
 	for _, test := range cases {
 		prepared, err := RecordPreparedRun(op.artifacts, PreparedRun{Contract: PreparedRunContract, RunID: test.runID, Inputs: testRunInputs(t, op, test.runID, test.name)})
@@ -80,6 +82,18 @@ func TestSpliceOriginRejectsUnownedFacts(t *testing.T) {
 			t.Fatalf("%s was accepted", test.name)
 		}
 	}
+}
+
+func recordTestIntervention(t *testing.T, op *Operation, evidence run.EvidenceRef, text string) artifact.Ref {
+	t.Helper()
+	ref, err := op.RecordInterventionWithDecision(DecisionBoundIntervention{
+		Decision:     SupervisorDecision{ID: "intervention-" + text[:1], WorkerRun: evidence.RunID, EvidenceThrough: evidence.Sequence, Claim: "public contract changed", Action: DecisionIntervention, Evidence: []run.EvidenceRef{evidence}, Falsifier: "public contract is unchanged"},
+		Intervention: Intervention{Contract: InterventionContract, Text: text},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ref
 }
 
 func TestRunOriginCycleIsRejected(t *testing.T) {

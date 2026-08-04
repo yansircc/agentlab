@@ -95,6 +95,9 @@ func (o *Operation) validateSpliceOrigin(runID string, value SpliceOriginSpec, c
 	if value.ParentRun == runID || value.ParentEvidence.ExperimentID != o.id || value.ParentEvidence.RunID != value.ParentRun {
 		return errors.New("splice parent is invalid")
 	}
+	if value.Intervention != nil && current.interventions[*value.Intervention].Contract == "" {
+		return errors.New("splice intervention is not experiment-owned")
+	}
 	if current.runs[value.ParentRun].RunID == "" {
 		return errors.New("splice parent run does not exist")
 	}

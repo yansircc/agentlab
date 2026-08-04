@@ -96,11 +96,11 @@ func prepareWorkerRuntime(root, session string, resume bool) error {
 }
 
 func workerPrompt(binding Binding, runID string, launch PiWorkerLaunch) (string, error) {
-	experiment, err := binding.experiment()
+	experimentOp, err := binding.experiment()
 	if err != nil {
 		return "", err
 	}
-	manifest, _, err := experiment.RunManifest(runID)
+	manifest, _, err := experimentOp.RunManifest(runID)
 	if err != nil || manifest.WorkerInput != launch.WorkerInput || run.VerifyCandidateExecutable(binding.store(), launch.CandidateExecutable, manifest.Candidate, launch.DeployctlExecutable) != nil {
 		return "", errors.New("worker launch differs from manifest")
 	}
@@ -108,7 +108,17 @@ func workerPrompt(binding Binding, runID string, launch PiWorkerLaunch) (string,
 	if err != nil {
 		return "", err
 	}
-	return "You are the isolated Worker. Use only the public deployctl tools to complete the sealed task.\n\n" + value, nil
+	prompt := "You are the isolated Worker. Use only the public deployctl tools to complete the sealed task.\n\n" + value
+	if origin, ok := manifest.Origin.Splice(); ok && origin.Intervention != nil {
+		intervention, err := experimentOp.Intervention(*origin.Intervention)
+		if err != nil {
+			return "", errors.New("splice intervention is invalid")
+		}
+		// The artifact text is the entire new model-visible fact. The static
+		// delimiter only makes its role explicit; no provider input is merged.
+		prompt += "\n\nIntervention:\n" + intervention.Text
+	}
+	return prompt, nil
 }
 
 func writeWorkerExtension(root string) (string, error) {

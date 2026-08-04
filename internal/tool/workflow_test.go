@@ -157,9 +157,13 @@ func TestFourToolsReachFullSupervisionWorkflow(t *testing.T) {
 		t.Fatalf("checkpoint result = %#v", checkpointResult)
 	}
 
-	intervention, err := store.Put([]byte("observe the updated public target contract before continuing"))
-	if err != nil {
-		t.Fatal(err)
+	interventionResult := workflowInvoke(t, binding, ApplyTool, recordIntervention{Action: "record_intervention", Value: experiment.DecisionBoundIntervention{
+		Decision:     workflowDecision("record-intervention", "baseline", baselineEvidence, experiment.DecisionIntervention),
+		Intervention: experiment.Intervention{Contract: experiment.InterventionContract, Text: "observe the updated public target contract before continuing"},
+	}})
+	intervention, ok := interventionResult.(artifact.Ref)
+	if !ok {
+		t.Fatalf("intervention result = %#v", interventionResult)
 	}
 	origin, err := experiment.NewSpliceOrigin(experiment.SpliceOriginSpec{
 		ParentRun: "baseline", ParentEvidence: baselineEvidence, RuntimeCheckpoint: checkpoint.Checkpoint, PublicPrefix: checkpoint.PublicPrefix,
@@ -212,7 +216,7 @@ func TestFourToolsReachFullSupervisionWorkflow(t *testing.T) {
 	workflowInvoke(t, binding, CompareTool, showGate{Action: "gate_show", GateID: blockedGate.ID})
 
 	status, err := experimentOp.Status()
-	if err != nil || len(status.DecisionIDs) != 15 || len(status.RunIDs) != 3 || len(status.CandidateIDs) != 1 || len(status.GateIDs) != 1 {
+	if err != nil || len(status.DecisionIDs) != 16 || len(status.InterventionRefs) != 1 || len(status.RunIDs) != 3 || len(status.CandidateIDs) != 1 || len(status.GateIDs) != 1 {
 		t.Fatalf("workflow status = %#v, %v", status, err)
 	}
 }
