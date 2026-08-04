@@ -43,7 +43,7 @@ func (value PiWorkerLaunch) clone() PiWorkerLaunch {
 func startPiWorker(binding Binding, operation *run.Operation, intent effect.Intent, profile PiRuntimeProfile) (any, error) {
 	launch := *profile.WorkerLaunch
 	prompt, err := workerPrompt(binding, intent.RunID, launch)
-	if err != nil || preparePiRuntime(launch.Launch.RuntimeRoot, profile.SessionPath) != nil {
+	if err != nil || prepareWorkerRuntime(launch.Launch.RuntimeRoot, profile.SessionPath, profile.resumeExistingSession) != nil {
 		return nil, errors.New("worker runtime is invalid")
 	}
 	extension, err := writeWorkerExtension(launch.Launch.RuntimeRoot)
@@ -75,6 +75,24 @@ func startPiWorker(binding Binding, operation *run.Operation, intent effect.Inte
 		_, err := piadapter.Poll(operation, session)
 		return err
 	})
+}
+
+func prepareWorkerRuntime(root, session string, resume bool) error {
+	if !resume {
+		return preparePiRuntime(root, session)
+	}
+	if !filepath.IsAbs(root) || !filepath.IsAbs(session) || !inside(root, session) {
+		return errors.New("forked Worker runtime path is invalid")
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil || len(entries) != 1 || entries[0].IsDir() || entries[0].Name() != filepath.Base(session) {
+		return errors.New("forked Worker runtime root differs from receipt")
+	}
+	info, err := os.Lstat(session)
+	if err != nil || !info.Mode().IsRegular() {
+		return errors.New("forked Worker session is invalid")
+	}
+	return nil
 }
 
 func workerPrompt(binding Binding, runID string, launch PiWorkerLaunch) (string, error) {

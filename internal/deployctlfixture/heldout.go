@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 
 	"github.com/yansircc/agentlab/internal/artifact"
-	"github.com/yansircc/agentlab/internal/effect"
 	"github.com/yansircc/agentlab/internal/experiment"
 	"github.com/yansircc/agentlab/internal/run"
 	"github.com/yansircc/agentlab/internal/tool"
@@ -51,8 +50,8 @@ func (value Preflight) VerifyHeldoutPreparedRun(preparedRef artifact.Ref) (artif
 	if err != nil {
 		return artifact.Ref{}, errors.New("deployctl runtime plan is invalid")
 	}
-	profile, err := host.Profile(runtime.WorkerProfile)
-	if err != nil || profile.Role != effect.WorkerStart || profile.RunID != prepared.RunID || profile.WorkerLaunch == nil || profile.WorkerLaunch.CandidateExecutable != runtime.CandidateExecutable || run.VerifyCandidateExecutable(store, runtime.CandidateExecutable, prepared.Inputs.Candidate, profile.WorkerLaunch.DeployctlExecutable) != nil {
+	profile, err := host.PreparedWorker(runtime.WorkerProfile)
+	if err != nil || profile.RunID != prepared.RunID || profile.WorkerRuntime != prepared.Inputs.WorkerRuntime || profile.WorkerLaunch.CandidateExecutable != runtime.CandidateExecutable || run.VerifyCandidateExecutable(store, runtime.CandidateExecutable, prepared.Inputs.Candidate, profile.WorkerLaunch.DeployctlExecutable) != nil {
 		return artifact.Ref{}, errors.New("deployctl held-out Worker profile differs from prepared run")
 	}
 	nonce, err := heldoutNonce()

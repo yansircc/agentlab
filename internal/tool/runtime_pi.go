@@ -11,7 +11,7 @@ import (
 	"github.com/yansircc/agentlab/internal/run"
 )
 
-const piRuntimePlanContract = "agentlab.pi-runtime-plan.v1"
+const piRuntimePlanContract = "agentlab.pi-runtime-plan.v2"
 
 // PiRuntimeProfile is Host-private runtime authority. It is registered before
 // the Supervisor starts; only Ref crosses the four-tool boundary.
@@ -22,7 +22,6 @@ type PiRuntimeProfile struct {
 	Role                   effect.Kind              `json:"role"`
 	SessionPath            string                   `json:"session_path"`
 	Identity               piadapter.IdentityConfig `json:"identity"`
-	ChildSessionDir        string                   `json:"child_session_dir,omitempty"`
 	Policy                 run.StopPolicy           `json:"policy"`
 	WorkerLaunch           *PiWorkerLaunch          `json:"worker_launch,omitempty"`
 	CoderSourceSnapshot    artifact.Ref             `json:"coder_source_snapshot,omitempty"`
@@ -30,9 +29,14 @@ type PiRuntimeProfile struct {
 	CoderCapabilityProfile artifact.Ref             `json:"coder_capability_profile,omitempty"`
 	CoderWorkspace         string                   `json:"coder_workspace,omitempty"`
 	CoderLaunch            *PiLaunch                `json:"coder_launch,omitempty"`
+	resumeExistingSession  bool
 }
 
-type PiRuntimeHost struct{ profiles map[string]PiRuntimeProfile }
+type PiRuntimeHost struct {
+	profiles        map[string]PiRuntimeProfile
+	preparedWorkers map[string]PiPreparedWorkerRuntime
+	planPath        string
+}
 
 // PiPollResult exposes only the Host-authored Coder completion receipt after
 // its terminal ledger fact exists. It never exposes session bytes or paths.
@@ -42,7 +46,11 @@ type PiPollResult struct {
 }
 
 func NewPiRuntimeHost(profiles []PiRuntimeProfile) (*PiRuntimeHost, error) {
-	result := &PiRuntimeHost{profiles: make(map[string]PiRuntimeProfile, len(profiles))}
+	return newPiRuntimeHost(profiles, nil)
+}
+
+func newPiRuntimeHost(profiles []PiRuntimeProfile, preparedWorkers []PiPreparedWorkerRuntime) (*PiRuntimeHost, error) {
+	result := &PiRuntimeHost{profiles: make(map[string]PiRuntimeProfile, len(profiles)), preparedWorkers: make(map[string]PiPreparedWorkerRuntime, len(preparedWorkers))}
 	sessions := map[string]bool{}
 	var workspaces, runtimes []string
 	for _, profile := range profiles {
@@ -71,15 +79,25 @@ func NewPiRuntimeHost(profiles []PiRuntimeProfile) (*PiRuntimeHost, error) {
 			runtimes = append(runtimes, profile.WorkerLaunch.Launch.RuntimeRoot)
 		}
 	}
+	for _, template := range preparedWorkers {
+		if err := template.Validate(); err != nil || result.profiles[template.Ref].Ref != "" || result.preparedWorkers[template.Ref].Ref != "" || sessions[template.FreshSessionPath] || profileOverlaps(PiRuntimeProfile{WorkerLaunch: &template.WorkerLaunch}, workspaces, runtimes) {
+			return nil, errors.New("prepared Pi Worker runtime is invalid")
+		}
+		copy := template.clone()
+		result.preparedWorkers[template.Ref] = copy
+		sessions[template.FreshSessionPath] = true
+		workspaces = append(workspaces, template.WorkerLaunch.FixtureRoot)
+		runtimes = append(runtimes, template.WorkerLaunch.Launch.RuntimeRoot)
+	}
 	return result, nil
 }
 
 func DecodePiRuntimeHost(data []byte) (*PiRuntimeHost, error) {
-	profiles, err := decodePiRuntimeProfiles(data)
+	plan, err := decodePiRuntimePlan(data)
 	if err != nil {
 		return nil, err
 	}
-	return NewPiRuntimeHost(profiles)
+	return newPiRuntimeHost(plan.Profiles, plan.PreparedWorkers)
 }
 
 func (value PiRuntimeProfile) Validate() error {
@@ -91,9 +109,6 @@ func (value PiRuntimeProfile) Validate() error {
 	}
 	if value.Role == effect.CoderStart && (value.WorkerLaunch != nil || !value.CoderSourceSnapshot.Valid() || !value.CoderWorkspaceReceipt.Valid() || !value.CoderCapabilityProfile.Valid() || !filepath.IsAbs(value.CoderWorkspace) || value.CoderLaunch == nil || value.CoderLaunch.Validate() != nil || !value.Policy.OwnsWorkerProcess || value.Policy.KillOnHardIdle || !inside(value.CoderLaunch.RuntimeRoot, value.SessionPath) || overlaps(value.CoderWorkspace, value.CoderLaunch.RuntimeRoot) || overlaps(value.CoderWorkspace, value.Identity.SDKRoot) || overlaps(value.CoderLaunch.RuntimeRoot, value.Identity.SDKRoot)) {
 		return errors.New("coder runtime profile is invalid")
-	}
-	if value.ChildSessionDir != "" && !filepath.IsAbs(value.ChildSessionDir) {
-		return errors.New("Pi child session directory is invalid")
 	}
 	return nil
 }
@@ -126,7 +141,21 @@ func profileRoots(profile PiRuntimeProfile) (string, string) {
 }
 
 func (h *PiRuntimeHost) Start(binding Binding, intent effect.Intent, ref string) (any, error) {
-	profile, err := h.profile(binding, intent.RunID, ref)
+	profile, err := h.activeWorkerProfile(binding, intent.RunID, ref)
+	if err == nil {
+		if intent.Kind != effect.WorkerStart {
+			return nil, errors.New("Pi start profile differs from intent")
+		}
+		if _, err := piadapter.VerifyRuntimeIdentity(profile.Identity); err != nil {
+			return nil, errors.New("Pi runtime identity differs from Host binding")
+		}
+		op, err := run.Open(binding.Root, binding.ExperimentID, intent.RunID)
+		if err != nil {
+			return nil, err
+		}
+		return startPiWorker(binding, op, intent, profile)
+	}
+	profile, err = h.profile(binding, intent.RunID, ref)
 	if err != nil || intent.Kind != profile.Role {
 		return nil, errors.New("Pi start profile differs from intent")
 	}
@@ -147,13 +176,17 @@ func (h *PiRuntimeHost) Start(binding Binding, intent effect.Intent, ref string)
 		}
 		return startPiCoder(binding, op, intent, profile, profileReceipt)
 	}
-	return startPiWorker(binding, op, intent, profile)
+	return nil, errors.New("Pi start role is invalid")
 }
 
 func (h *PiRuntimeHost) Poll(binding Binding, runID, ref string) (any, error) {
-	profile, err := h.profile(binding, runID, ref)
-	if err != nil {
-		return nil, err
+	profile, workerErr := h.activeWorkerProfile(binding, runID, ref)
+	if workerErr != nil {
+		var err error
+		profile, err = h.profile(binding, runID, ref)
+		if err != nil {
+			return nil, err
+		}
 	}
 	op, err := run.Open(binding.Root, binding.ExperimentID, runID)
 	if err != nil {
@@ -172,7 +205,7 @@ func (h *PiRuntimeHost) Poll(binding Binding, runID, ref string) (any, error) {
 }
 
 func (h *PiRuntimeHost) Checkpoint(binding Binding, intent effect.Intent, ref string) (any, error) {
-	profile, err := h.profile(binding, intent.RunID, ref)
+	profile, err := h.activeWorkerProfile(binding, intent.RunID, ref)
 	if err != nil || intent.Kind != effect.Checkpoint {
 		return nil, errors.New("Pi checkpoint profile differs from intent")
 	}
@@ -183,16 +216,47 @@ func (h *PiRuntimeHost) Checkpoint(binding Binding, intent effect.Intent, ref st
 	return piadapter.CheckpointEffect(op, intent, piadapter.CheckpointEffectSpec{SDKRoot: profile.Identity.SDKRoot, ContextFilterPath: profile.Identity.ContextFilterPath, SessionPath: profile.SessionPath})
 }
 
-func (h *PiRuntimeHost) Fork(binding Binding, intent effect.Intent, ref string) (any, error) {
-	profile, err := h.profile(binding, intent.RunID, ref)
-	if err != nil || intent.Kind != effect.Fork || profile.ChildSessionDir == "" {
+func (h *PiRuntimeHost) Fork(binding Binding, intent effect.Intent, ref, childRun string) (any, error) {
+	profile, err := h.activeWorkerProfile(binding, intent.RunID, ref)
+	if err != nil || h.planPath == "" || intent.Kind != effect.Fork || childRun == "" {
 		return nil, errors.New("Pi fork profile differs from intent")
+	}
+	template, err := h.preparedWorkerForRun(binding, childRun)
+	if err != nil {
+		return nil, errors.New("Pi fork child runtime is absent")
+	}
+	manifest, manifestRef, err := preparedWorkerManifest(binding, template)
+	if err != nil {
+		return nil, err
+	}
+	origin, ok := manifest.Origin.Splice()
+	if !ok || origin.ParentRun != intent.RunID {
+		return nil, errors.New("Pi fork child origin differs from parent")
 	}
 	op, err := run.Open(binding.Root, binding.ExperimentID, intent.RunID)
 	if err != nil {
 		return nil, err
 	}
-	return piadapter.Fork(op, intent, piadapter.ForkSpec{SDKRoot: profile.Identity.SDKRoot, ContextFilterPath: profile.Identity.ContextFilterPath, ParentSession: profile.SessionPath, ChildSessionDir: profile.ChildSessionDir})
+	payloadData, err := op.ReadEffectPayload(intent)
+	if err != nil {
+		return nil, err
+	}
+	payload, err := piadapter.DecodeForkPayload(payloadData)
+	if err != nil || payload.ChildRun != childRun || payload.Checkpoint != origin.RuntimeCheckpoint {
+		return nil, errors.New("Pi fork intent differs from child origin")
+	}
+	if template.Forked != nil && (template.Forked.ParentRun != intent.RunID || template.Forked.ForkReceipt.IntentID != intent.ID || template.Forked.Forked.ExpectedCheckpoint != payload.Checkpoint) {
+		return nil, errors.New("Pi fork child is already bound to another receipt")
+	}
+	result, err := piadapter.Fork(op, intent, piadapter.ForkSpec{SDKRoot: profile.Identity.SDKRoot, ContextFilterPath: profile.Identity.ContextFilterPath, ParentSession: profile.SessionPath, ChildSessionDir: template.WorkerLaunch.Launch.RuntimeRoot})
+	if err != nil {
+		return nil, err
+	}
+	forked := PiForkedWorkerBinding{ParentRun: intent.RunID, ParentRuntimeRef: ref, ChildManifest: manifestRef, ForkReceipt: result.Receipt, Forked: result.Forked}
+	if err := h.bindForkedPreparedWorker(template.Ref, forked); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func (h *PiRuntimeHost) profile(binding Binding, runID, ref string) (PiRuntimeProfile, error) {
@@ -204,4 +268,63 @@ func (h *PiRuntimeHost) profile(binding Binding, runID, ref string) (PiRuntimePr
 		return PiRuntimeProfile{}, errors.New("Pi runtime profile is outside Host binding")
 	}
 	return profile, nil
+}
+
+func (h *PiRuntimeHost) preparedWorker(binding Binding, runID, ref string) (PiPreparedWorkerRuntime, error) {
+	if h == nil || binding.ExperimentID == "" || ref == "" {
+		return PiPreparedWorkerRuntime{}, errors.New("prepared Pi Worker runtime is absent")
+	}
+	profile := h.preparedWorkers[ref]
+	if profile.Ref == "" || profile.ExperimentID != binding.ExperimentID || profile.RunID != runID {
+		return PiPreparedWorkerRuntime{}, errors.New("prepared Pi Worker runtime is outside Host binding")
+	}
+	return profile.clone(), nil
+}
+
+func (h *PiRuntimeHost) preparedWorkerForRun(binding Binding, runID string) (PiPreparedWorkerRuntime, error) {
+	if h == nil || binding.ExperimentID == "" || runID == "" {
+		return PiPreparedWorkerRuntime{}, errors.New("prepared Pi Worker runtime is absent")
+	}
+	var result PiPreparedWorkerRuntime
+	for _, profile := range h.preparedWorkers {
+		if profile.ExperimentID != binding.ExperimentID || profile.RunID != runID {
+			continue
+		}
+		if result.Ref != "" {
+			return PiPreparedWorkerRuntime{}, errors.New("prepared Pi Worker runtime is ambiguous")
+		}
+		result = profile
+	}
+	if result.Ref == "" {
+		return PiPreparedWorkerRuntime{}, errors.New("prepared Pi Worker runtime is absent")
+	}
+	return result.clone(), nil
+}
+
+func (h *PiRuntimeHost) PreparedWorker(ref string) (PiPreparedWorkerRuntime, error) {
+	if h == nil || ref == "" {
+		return PiPreparedWorkerRuntime{}, errors.New("prepared Pi Worker runtime is absent")
+	}
+	value := h.preparedWorkers[ref]
+	if value.Ref == "" {
+		return PiPreparedWorkerRuntime{}, errors.New("prepared Pi Worker runtime is absent")
+	}
+	return value.clone(), nil
+}
+
+func (h *PiRuntimeHost) bindForkedPreparedWorker(ref string, forked PiForkedWorkerBinding) error {
+	if h == nil || h.planPath == "" {
+		return errors.New("Pi runtime plan is unavailable")
+	}
+	if err := BindPiForkedWorkerRuntime(h.planPath, ref, forked); err != nil {
+		return err
+	}
+	profile := h.preparedWorkers[ref]
+	if profile.Ref == "" {
+		return errors.New("prepared Pi Worker runtime is absent")
+	}
+	copy := forked
+	profile.Forked = &copy
+	h.preparedWorkers[ref] = profile
+	return nil
 }

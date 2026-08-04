@@ -23,8 +23,9 @@ type ForkSpec struct {
 }
 
 type ForkResult struct {
-	Forked  run.SessionForked `json:"forked"`
-	Receipt effect.Receipt    `json:"receipt"`
+	Forked           run.SessionForked `json:"forked"`
+	Receipt          effect.Receipt    `json:"receipt"`
+	ChildSessionPath string            `json:"-"`
 }
 
 type forkAttempt struct {
@@ -42,10 +43,11 @@ type forkAttempt struct {
 type ForkPayload struct {
 	Checkpoint artifact.Ref    `json:"checkpoint"`
 	Identity   AdapterIdentity `json:"identity"`
+	ChildRun   string          `json:"child_run"`
 }
 
 func (value ForkPayload) Validate() error {
-	if !value.Checkpoint.Valid() || value.Identity.Validate() != nil {
+	if !value.Checkpoint.Valid() || value.Identity.Validate() != nil || !validRunID(value.ChildRun) {
 		return errors.New("Pi fork payload is invalid")
 	}
 	return nil
@@ -58,6 +60,14 @@ func EncodeForkPayload(value ForkPayload) ([]byte, error) {
 	return json.Marshal(value)
 }
 
+func DecodeForkPayload(data []byte) (ForkPayload, error) {
+	var value ForkPayload
+	if strictjson.Decode(data, &value) != nil || value.Validate() != nil {
+		return ForkPayload{}, errors.New("Pi fork payload is invalid")
+	}
+	return value, nil
+}
+
 func Fork(operation *run.Operation, intent effect.Intent, spec ForkSpec) (ForkResult, error) {
 	if intent.Kind != effect.Fork || intent.RunID == "" || intent.Validate() != nil || spec.SDKRoot == "" || spec.ParentSession == "" || spec.ChildSessionDir == "" {
 		return ForkResult{}, errors.New("Pi fork request is invalid")
@@ -66,8 +76,8 @@ func Fork(operation *run.Operation, intent effect.Intent, spec ForkSpec) (ForkRe
 	if err != nil {
 		return ForkResult{}, err
 	}
-	var payload ForkPayload
-	if strictjson.Decode(payloadData, &payload) != nil || payload.Validate() != nil {
+	payload, err := DecodeForkPayload(payloadData)
+	if err != nil {
 		return ForkResult{}, errors.New("Pi fork payload is invalid")
 	}
 	config := IdentityConfig{SDKRoot: spec.SDKRoot, ContextFilterPath: spec.ContextFilterPath, AdapterDigest: payload.Identity.AdapterDigest, Provider: payload.Identity.Provider, Model: payload.Identity.Model, ThinkingPolicy: payload.Identity.ThinkingPolicy, CompactionPolicy: payload.Identity.CompactionPolicy}
@@ -85,7 +95,7 @@ func Fork(operation *run.Operation, intent effect.Intent, spec ForkSpec) (ForkRe
 		if err != nil {
 			return ForkResult{}, err
 		}
-		return ForkResult{Forked: reconciled.Forked, Receipt: receipt}, nil
+		return ForkResult{Forked: reconciled.Forked, Receipt: receipt, ChildSessionPath: reconciled.ChildSessionPath}, nil
 	}
 	checkpoint, prefix, session, opaque, err := operation.RuntimeCheckpointData(payload.Checkpoint)
 	if err != nil || checkpoint.Adapter != adapterName {
@@ -143,7 +153,7 @@ func Fork(operation *run.Operation, intent effect.Intent, spec ForkSpec) (ForkRe
 		return ForkResult{}, err
 	}
 	receipt, err := operation.SettleEffect(intent, evidence)
-	return ForkResult{Forked: forked, Receipt: receipt}, err
+	return ForkResult{Forked: forked, Receipt: receipt, ChildSessionPath: childPath}, err
 }
 
 func newForkAttempt(spec ForkSpec, state checkpointState, checkpoint run.RuntimeCheckpoint, checkpointRef artifact.Ref, identity AdapterIdentity) (forkAttempt, error) {
@@ -162,4 +172,16 @@ func requireEmptyDirectory(path string) error {
 		return errors.New("Pi child session directory is not empty")
 	}
 	return nil
+}
+
+func validRunID(value string) bool {
+	if len(value) == 0 || len(value) > 128 {
+		return false
+	}
+	for index, item := range value {
+		if !(item >= 'A' && item <= 'Z' || item >= 'a' && item <= 'z' || item >= '0' && item <= '9' || item == '.' || item == '_' || item == '-') || (index == 0 && (item == '.' || item == '_' || item == '-')) {
+			return false
+		}
+	}
+	return true
 }

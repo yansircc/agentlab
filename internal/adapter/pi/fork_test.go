@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -49,7 +50,7 @@ func TestForkReconcilesOneUnknownSDKChildWithoutRetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	payloadData, err := EncodeForkPayload(ForkPayload{Checkpoint: checkpoint.Checkpoint.Checkpoint, Identity: identity})
+	payloadData, err := EncodeForkPayload(ForkPayload{Checkpoint: checkpoint.Checkpoint.Checkpoint, Identity: identity, ChildRun: "child-run"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,19 +65,38 @@ func TestForkReconcilesOneUnknownSDKChildWithoutRetry(t *testing.T) {
 	}
 	reopened, _ := run.Open(root, "fork-exp", "parent-run")
 	result, err := Fork(reopened, intent, spec)
-	if err != nil || result.Receipt.IntentID != intent.ID || result.Forked.ChildSession.Digest == "" {
+	if err != nil || result.Receipt.IntentID != intent.ID || result.Forked.ChildSession.Digest == "" || !withinDirectory(spec.ChildSessionDir, result.ChildSessionPath) {
 		t.Fatalf("reconciled fork = %#v, %v", result, err)
 	}
 	recovered, err := ReconcileForkedSession(reopened, intent.ID, spec, config)
 	if err != nil || recovered.Forked != result.Forked || !withinDirectory(spec.ChildSessionDir, recovered.ChildSessionPath) {
 		t.Fatalf("recovered fork = %#v, %v", recovered, err)
 	}
-	if again, err := Fork(reopened, intent, spec); err != nil || again.Receipt != result.Receipt || again.Forked != result.Forked {
+	if again, err := Fork(reopened, intent, spec); err != nil || again.Receipt != result.Receipt || again.Forked != result.Forked || again.ChildSessionPath != result.ChildSessionPath {
 		t.Fatalf("idempotent fork = %#v, %v", again, err)
 	}
 	children, err := filepath.Glob(filepath.Join(spec.ChildSessionDir, "*.jsonl"))
 	if err != nil || len(children) != 1 {
 		t.Fatalf("child sessions = %#v, %v", children, err)
+	}
+	childData, err := os.ReadFile(result.ChildSessionPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(result.ChildSessionPath, []byte(strings.Replace(string(childData), "ALPHA", "BETA", 1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReconcileForkedSession(reopened, intent.ID, spec, config); err == nil {
+		t.Fatal("fork reconciliation accepted a changed child public prefix")
+	}
+}
+
+func TestForkPayloadRequiresHostSelectedChildRun(t *testing.T) {
+	digest := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	identity := AdapterIdentity{Contract: AdapterIdentityContract, PackageName: PinnedPackageName, PackageVersion: PinnedPackageVersion, AdapterDigest: digest, BridgeDigest: digest, ContextBuilderDigest: digest, ContextFilterDigest: digest, Provider: "provider", Model: "model", ThinkingPolicy: "off", CompactionPolicy: "off", Capabilities: []Capability{CapabilityPublicTree, CapabilityArbitraryFork, CapabilityContextSemantics}}
+	checkpoint := artifact.Ref{Scope: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Algorithm: "sha256", Digest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", Size: 1}
+	if _, err := EncodeForkPayload(ForkPayload{Checkpoint: checkpoint, Identity: identity}); err == nil {
+		t.Fatal("fork payload omitted child run")
 	}
 }
 

@@ -135,8 +135,8 @@ func TestBindRuntimeBuildsAHostPrivateExactProfilePlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	profile, err := host.Profile("baseline-worker")
-	if err != nil || profile.ChildSessionDir != filepath.Join(spec.HostRoot, "worker-children") {
-		t.Fatalf("baseline fork namespace = %#v, %v", profile, err)
+	if err != nil {
+		t.Fatalf("baseline Worker profile = %#v, %v", profile, err)
 	}
 	supervisor, err := tool.LoadPiSupervisorPlan(filepath.Join(spec.HostRoot, "supervisor-plan.json"))
 	if err != nil || supervisor.Binding.Root != value.EvaluatedRoot || supervisor.Binding.PreparationID != value.PreparationID || supervisor.Binding.ExperimentID != value.ExperimentID || supervisor.Binding.RuntimePlanPath != filepath.Join(spec.HostRoot, "pi-runtime-plan.json") || supervisor.Identity != profile.Identity || supervisor.Launch.RuntimeRoot != filepath.Join(spec.HostRoot, "supervisor-runtime") || supervisor.SessionPath != filepath.Join(spec.HostRoot, "supervisor-runtime", "session.jsonl") {
@@ -195,9 +195,12 @@ func TestBindRuntimeBuildsAHostPrivateExactProfilePlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	candidateProfile, err := host.Profile(runtimeBinding.WorkerProfile)
-	if err != nil || candidateProfile.RunID != prepared.RunID || candidateProfile.WorkerLaunch == nil || candidateProfile.WorkerLaunch.FixtureRoot == value.Fixture.Root() || candidateProfile.WorkerLaunch.CandidateExecutable != runtimeBinding.CandidateExecutable {
-		t.Fatalf("candidate Host profile = %#v, %v", candidateProfile, err)
+	candidateProfile, err := host.PreparedWorker(runtimeBinding.WorkerProfile)
+	if err != nil || candidateProfile.RunID != prepared.RunID || candidateProfile.WorkerLaunch.FixtureRoot == value.Fixture.Root() || candidateProfile.WorkerLaunch.CandidateExecutable != runtimeBinding.CandidateExecutable || candidateProfile.WorkerRuntime != prepared.Inputs.WorkerRuntime || candidateProfile.Forked != nil {
+		t.Fatalf("candidate Host prepared runtime = %#v, %v", candidateProfile, err)
+	}
+	if _, err := host.Profile(runtimeBinding.WorkerProfile); err == nil {
+		t.Fatal("prepared Worker runtime was exposed as a fresh static profile")
 	}
 	if err := VerifyBuild(store, runtimeBinding.CandidateExecutable, prepared.Inputs.Candidate, candidateProfile.WorkerLaunch.DeployctlExecutable); err != nil {
 		t.Fatalf("candidate executable differs from prepared snapshot: %v", err)

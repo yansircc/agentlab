@@ -141,6 +141,7 @@ type forkRun struct {
 	RunID      string                        `json:"run_id"`
 	RuntimeRef string                        `json:"runtime_ref"`
 	Checkpoint artifact.Ref                  `json:"checkpoint"`
+	ChildRun   string                        `json:"child_run"`
 }
 
 func (forkRun) toolName() string { return RunTool }
@@ -149,14 +150,14 @@ func (value forkRun) execute(binding Binding) (any, error) {
 	if binding.Runtime == nil || value.EffectID != value.Decision.ID {
 		return nil, errors.New("fork operation is invalid")
 	}
-	intent, err := binding.Runtime.ForkIntent(binding, ForkRequest{ID: value.EffectID, RunID: value.RunID, RuntimeRef: value.RuntimeRef, Checkpoint: value.Checkpoint})
+	intent, err := binding.Runtime.ForkIntent(binding, ForkRequest{ID: value.EffectID, RunID: value.RunID, RuntimeRef: value.RuntimeRef, Checkpoint: value.Checkpoint, ChildRun: value.ChildRun})
 	if err != nil {
 		return nil, err
 	}
 	if err := commitEffectForDecision(binding, value.Decision, intent); err != nil {
 		return nil, err
 	}
-	return binding.Runtime.Fork(binding, intent, value.RuntimeRef)
+	return binding.Runtime.Fork(binding, intent, value.RuntimeRef, value.ChildRun)
 }
 
 func commitEffectForDecision(binding Binding, decision experiment.SupervisorDecision, intent effect.Intent) error {

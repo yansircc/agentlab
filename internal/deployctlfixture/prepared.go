@@ -83,16 +83,9 @@ func (value Preflight) prepareFreshRun(runID string, candidate artifact.Ref) (ar
 	if err != nil {
 		return artifact.Ref{}, err
 	}
-	profile, err := value.candidateWorkerProfile(runID, fixture, executable, candidateExecutable)
-	if err != nil {
-		return artifact.Ref{}, err
-	}
-	if err := tool.AppendPiRuntimeProfile(value.runtimePlanPath, profile); err != nil {
-		return artifact.Ref{}, err
-	}
 	runtime, err := recordRuntimeBinding(store, runtimeBinding{
 		Contract: runtimeBindingContract, Adapter: value.LiveCanary, CandidateExecutable: candidateExecutable,
-		WorkerProfile: profile.Ref, CoderProfile: "coder-repair",
+		WorkerProfile: candidateWorkerProfileRef(runID), CoderProfile: "coder-repair",
 	})
 	if err != nil {
 		return artifact.Ref{}, err
@@ -101,9 +94,20 @@ func (value Preflight) prepareFreshRun(runID string, candidate artifact.Ref) (ar
 	if err != nil {
 		return artifact.Ref{}, err
 	}
-	return experiment.RecordPreparedRun(store, experiment.PreparedRun{
+	prepared, err := experiment.RecordPreparedRun(store, experiment.PreparedRun{
 		Contract: experiment.PreparedRunContract, RunID: runID, Inputs: inputs,
 	})
+	if err != nil {
+		return artifact.Ref{}, err
+	}
+	profile, err := value.candidateWorkerRuntime(runID, runtime, fixture, executable, candidateExecutable)
+	if err != nil {
+		return artifact.Ref{}, err
+	}
+	if err := tool.AppendPiPreparedWorkerRuntime(value.runtimePlanPath, profile); err != nil {
+		return artifact.Ref{}, err
+	}
+	return prepared, nil
 }
 
 func (value Preflight) terminalCoderCompletion(receipt artifact.Ref) (run.CoderCompletion, error) {
@@ -133,14 +137,14 @@ func (value Preflight) terminalCoderCompletion(receipt artifact.Ref) (run.CoderC
 	return completion, nil
 }
 
-func (value Preflight) candidateWorkerProfile(runID string, fixture Fixture, executable string, candidateExecutable artifact.Ref) (tool.PiRuntimeProfile, error) {
+func (value Preflight) candidateWorkerRuntime(runID string, runtime artifact.Ref, fixture Fixture, executable string, candidateExecutable artifact.Ref) (tool.PiPreparedWorkerRuntime, error) {
 	host, err := tool.LoadPiRuntimeHost(value.runtimePlanPath)
 	if err != nil {
-		return tool.PiRuntimeProfile{}, errors.New("deployctl runtime plan is invalid")
+		return tool.PiPreparedWorkerRuntime{}, errors.New("deployctl runtime plan is invalid")
 	}
 	profile, err := host.Profile("baseline-worker")
 	if err != nil || profile.WorkerLaunch == nil {
-		return tool.PiRuntimeProfile{}, errors.New("deployctl Worker profile is absent")
+		return tool.PiPreparedWorkerRuntime{}, errors.New("deployctl Worker profile is absent")
 	}
 	launch := *profile.WorkerLaunch
 	launchConfig := launch.Launch
@@ -150,13 +154,14 @@ func (value Preflight) candidateWorkerProfile(runID string, fixture Fixture, exe
 	launch.FixtureRoot = fixture.Root()
 	launch.DeployctlExecutable = executable
 	launch.CandidateExecutable = candidateExecutable
-	profile.Ref = candidateWorkerProfileRef(runID)
-	profile.RunID = runID
-	profile.SessionPath = filepath.Join(runtimeRoot, "session.jsonl")
-	profile.ChildSessionDir = filepath.Join(value.hostRoot, "candidate-children-"+runID)
-	profile.WorkerLaunch = &launch
-	if profile.Validate() != nil {
-		return tool.PiRuntimeProfile{}, errors.New("deployctl candidate Worker profile is invalid")
+	template := tool.PiPreparedWorkerRuntime{
+		Ref: candidateWorkerProfileRef(runID), ExperimentID: value.ExperimentID, RunID: runID, WorkerRuntime: runtime,
+		FreshSessionPath: filepath.Join(runtimeRoot, "session.jsonl"), Identity: profile.Identity,
+		Policy:       profile.Policy,
+		WorkerLaunch: launch,
 	}
-	return profile, nil
+	if template.Validate() != nil {
+		return tool.PiPreparedWorkerRuntime{}, errors.New("deployctl candidate Worker runtime is invalid")
+	}
+	return template, nil
 }

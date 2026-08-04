@@ -44,7 +44,7 @@ type RuntimeHost interface {
 	Start(Binding, effect.Intent, string) (any, error)
 	Poll(Binding, string, string) (any, error)
 	Checkpoint(Binding, effect.Intent, string) (any, error)
-	Fork(Binding, effect.Intent, string) (any, error)
+	Fork(Binding, effect.Intent, string, string) (any, error)
 }
 
 type StartRequest struct {
@@ -66,6 +66,7 @@ type ForkRequest struct {
 	RunID      string
 	RuntimeRef string
 	Checkpoint artifact.Ref
+	ChildRun   string
 }
 
 func (b Binding) Validate() error {
