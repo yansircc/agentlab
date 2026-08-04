@@ -15,33 +15,27 @@ type runOperation interface {
 	runOperation()
 }
 
+var runActionDecoder = map[string]func() runOperation{
+	"start":      func() runOperation { return &startRun{} },
+	"stop":       func() runOperation { return &stopRun{} },
+	"checkpoint": func() runOperation { return &checkpointRun{} },
+	"fork":       func() runOperation { return &forkRun{} },
+	"poll":       func() runOperation { return &pollRun{} },
+	"status":     func() runOperation { return &statusRun{} },
+}
+
+func runActionNames() []string { return actionNames(runActionDecoder) }
+
 func decodeRun(data []byte) (Operation, error) {
 	action, err := decodeAction(data)
 	if err != nil {
 		return nil, err
 	}
-	switch action {
-	case "start":
-		var value startRun
-		return decodeRunValue(data, &value)
-	case "stop":
-		var value stopRun
-		return decodeRunValue(data, &value)
-	case "checkpoint":
-		var value checkpointRun
-		return decodeRunValue(data, &value)
-	case "fork":
-		var value forkRun
-		return decodeRunValue(data, &value)
-	case "poll":
-		var value pollRun
-		return decodeRunValue(data, &value)
-	case "status":
-		var value statusRun
-		return decodeRunValue(data, &value)
-	default:
+	newValue, ok := runActionDecoder[action]
+	if !ok {
 		return nil, errors.New("unknown run action")
 	}
+	return decodeRunValue(data, newValue())
 }
 
 func decodeRunValue(data []byte, value runOperation) (Operation, error) {

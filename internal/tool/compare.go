@@ -11,27 +11,25 @@ type compareOperation interface {
 	compareOperation()
 }
 
+var compareActionDecoder = map[string]func() compareOperation{
+	"record":      func() compareOperation { return &recordComparison{} },
+	"gate_record": func() compareOperation { return &recordGate{} },
+	"show":        func() compareOperation { return &showComparison{} },
+	"gate_show":   func() compareOperation { return &showGate{} },
+}
+
+func compareActionNames() []string { return actionNames(compareActionDecoder) }
+
 func decodeCompare(data []byte) (Operation, error) {
 	action, err := decodeAction(data)
 	if err != nil {
 		return nil, err
 	}
-	switch action {
-	case "record":
-		var value recordComparison
-		return decodeCompareValue(data, &value)
-	case "gate_record":
-		var value recordGate
-		return decodeCompareValue(data, &value)
-	case "show":
-		var value showComparison
-		return decodeCompareValue(data, &value)
-	case "gate_show":
-		var value showGate
-		return decodeCompareValue(data, &value)
-	default:
+	newValue, ok := compareActionDecoder[action]
+	if !ok {
 		return nil, errors.New("unknown compare action")
 	}
+	return decodeCompareValue(data, newValue())
 }
 
 func decodeCompareValue(data []byte, value compareOperation) (Operation, error) {

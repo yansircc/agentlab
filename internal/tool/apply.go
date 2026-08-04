@@ -2,10 +2,31 @@ package tool
 
 import (
 	"errors"
+	"sort"
 
 	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/preparation"
 )
+
+var applyActionDecoder = map[string]func() applyOperation{
+	"begin_preparation":            func() applyOperation { return &beginPreparation{} },
+	"record_fact":                  func() applyOperation { return &recordFact{} },
+	"propose_preparation_decision": func() applyOperation { return &proposePreparationDecision{} },
+	"resolve_preparation_decision": func() applyOperation { return &resolvePreparationDecision{} },
+	"record_leakage_assay":         func() applyOperation { return &recordLeakageAssay{} },
+	"challenge_basis":              func() applyOperation { return &emptyApply{} },
+	"seal_preparation":             func() applyOperation { return &emptyApply{} },
+	"begin_experiment":             func() applyOperation { return &emptyApply{} },
+	"challenge":                    func() applyOperation { return &challengePreparation{} },
+	"bind_run":                     func() applyOperation { return &bindRun{} },
+	"record_finding":               func() applyOperation { return &recordFinding{} },
+	"render_handoff":               func() applyOperation { return &renderHandoff{} },
+	"record_diagnosis":             func() applyOperation { return &recordDiagnosis{} },
+	"bind_candidate":               func() applyOperation { return &bindCandidate{} },
+	"continue":                     func() applyOperation { return &continueRun{} },
+}
+
+func applyActionNames() []string { return actionNames(applyActionDecoder) }
 
 type applyOperation interface {
 	Operation
@@ -17,49 +38,11 @@ func decodeApply(data []byte) (Operation, error) {
 	if err != nil {
 		return nil, err
 	}
-	switch action {
-	case "begin_preparation":
-		var value beginPreparation
-		return decodeApplyValue(data, &value)
-	case "record_fact":
-		var value recordFact
-		return decodeApplyValue(data, &value)
-	case "propose_preparation_decision":
-		var value proposePreparationDecision
-		return decodeApplyValue(data, &value)
-	case "resolve_preparation_decision":
-		var value resolvePreparationDecision
-		return decodeApplyValue(data, &value)
-	case "record_leakage_assay":
-		var value recordLeakageAssay
-		return decodeApplyValue(data, &value)
-	case "challenge_basis", "seal_preparation", "begin_experiment":
-		var value emptyApply
-		return decodeApplyValue(data, &value)
-	case "challenge":
-		var value challengePreparation
-		return decodeApplyValue(data, &value)
-	case "bind_run":
-		var value bindRun
-		return decodeApplyValue(data, &value)
-	case "record_finding":
-		var value recordFinding
-		return decodeApplyValue(data, &value)
-	case "render_handoff":
-		var value renderHandoff
-		return decodeApplyValue(data, &value)
-	case "record_diagnosis":
-		var value recordDiagnosis
-		return decodeApplyValue(data, &value)
-	case "bind_candidate":
-		var value bindCandidate
-		return decodeApplyValue(data, &value)
-	case "continue":
-		var value continueRun
-		return decodeApplyValue(data, &value)
-	default:
+	newValue, ok := applyActionDecoder[action]
+	if !ok {
 		return nil, errors.New("unknown apply action")
 	}
+	return decodeApplyValue(data, newValue())
 }
 
 func decodeApplyValue(data []byte, value applyOperation) (Operation, error) {
@@ -67,6 +50,15 @@ func decodeApplyValue(data []byte, value applyOperation) (Operation, error) {
 		return nil, err
 	}
 	return value, nil
+}
+
+func actionNames[T any](values map[string]T) []string {
+	result := make([]string, 0, len(values))
+	for action := range values {
+		result = append(result, action)
+	}
+	sort.Strings(result)
+	return result
 }
 
 type emptyApply struct {

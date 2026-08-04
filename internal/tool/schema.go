@@ -56,7 +56,7 @@ func opaque(description string) map[string]any {
 
 func applySchema() map[string]any {
 	return object(map[string]any{
-		"action":           enum("begin_preparation", "record_fact", "propose_preparation_decision", "resolve_preparation_decision", "record_leakage_assay", "challenge_basis", "challenge", "seal_preparation", "begin_experiment", "bind_run", "record_finding", "render_handoff", "record_diagnosis", "bind_candidate", "continue"),
+		"action":           enum(applyActionNames()...),
 		"user_intent":      opaque("Host-issued immutable user-intent artifact ref."),
 		"source_snapshot":  opaque("Host-issued immutable source-snapshot artifact ref."),
 		"public_artifacts": map[string]any{"type": "array", "items": opaque("Host-issued public artifact ref.")},
@@ -68,7 +68,7 @@ func applySchema() map[string]any {
 
 func runSchema() map[string]any {
 	return object(map[string]any{
-		"action":   enum("start", "poll", "stop", "checkpoint", "fork", "status"),
+		"action":   enum(runActionNames()...),
 		"decision": opaque("Supervisor decision bound atomically to the requested effect."), "effect_id": text("Write-once effect identity."),
 		"runtime_ref": text("Host-issued opaque runtime profile ref."), "run_id": text("Experiment-scoped opaque run ref."), "handoff": opaque("Experiment-owned Coder handoff ref."),
 		"reason": text("Durable stop reason."), "entry_locator": text("Public runtime-tree entry locator."), "checkpoint": opaque("Runtime checkpoint ref."), "child_run": text("Host-prepared child run id."),
@@ -84,7 +84,7 @@ func inspectSchema() map[string]any {
 
 func compareSchema() map[string]any {
 	return object(map[string]any{
-		"action": enum("record", "show", "gate_record", "gate_show"), "value": opaque("Closed decision-bound comparison or gate."),
+		"action": enum(compareActionNames()...), "value": opaque("Closed decision-bound comparison or gate."),
 		"comparison_id": text("Experiment-scoped opaque comparison ref."), "gate_id": text("Experiment-scoped opaque gate ref."),
 	}, "action")
 }

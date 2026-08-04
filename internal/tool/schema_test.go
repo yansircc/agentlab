@@ -33,6 +33,25 @@ func TestProjectionRejectsUnknownProvider(t *testing.T) {
 	}
 }
 
+func TestActionSchemasProjectClosedDecoderSets(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		schema map[string]any
+		want   []string
+	}{
+		{name: "apply", schema: applySchema(), want: applyActionNames()},
+		{name: "run", schema: runSchema(), want: runActionNames()},
+		{name: "compare", schema: compareSchema(), want: compareActionNames()},
+	} {
+		properties := test.schema["properties"].(map[string]any)
+		action := properties["action"].(map[string]any)
+		got := action["enum"].([]string)
+		if !reflect.DeepEqual(got, test.want) {
+			t.Fatalf("%s action schema = %#v, want %#v", test.name, got, test.want)
+		}
+	}
+}
+
 func assertNoLocator(t *testing.T, value any) {
 	t.Helper()
 	data, err := json.Marshal(value)
