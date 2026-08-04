@@ -246,6 +246,9 @@ func TestBindRuntimeBuildsAHostPrivateExactProfilePlan(t *testing.T) {
 	if err := VerifyHeldoutArtifact(store, heldoutRef, prepared.Inputs.Candidate); err != nil {
 		t.Fatalf("exact held-out verification was rejected: %v", err)
 	}
+	if err := VerifyHeldoutArtifact(store, artifact.Ref{}, prepared.Inputs.Candidate); err == nil {
+		t.Fatal("recursive gate accepted a missing held-out verification")
+	}
 	if err := VerifyHeldoutArtifact(store, heldoutRef, value.Candidate); err == nil {
 		t.Fatal("held-out verification was reused for another candidate")
 	}
