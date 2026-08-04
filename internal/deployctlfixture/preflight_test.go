@@ -91,6 +91,25 @@ func TestLoadRuntimePreflightRejectsTamperedHostLocator(t *testing.T) {
 	}
 }
 
+func TestRuntimeCredentialBindingsRequireThreeDistinctHostHandles(t *testing.T) {
+	value := RuntimeSpec{ProviderCredentialEnv: "PROVIDER_TOKEN", WorkerCredentialHandle: "HOST_WORKER_TOKEN", CoderCredentialHandle: "HOST_CODER_TOKEN", SupervisorCredentialHandle: "HOST_SUPERVISOR_TOKEN"}
+	credentials, err := value.credentials()
+	if err != nil || credentials.workerEnvironment()[value.ProviderCredentialEnv] != value.WorkerCredentialHandle || credentials.coderEnvironment()[value.ProviderCredentialEnv] != value.CoderCredentialHandle || credentials.supervisorEnvironment()[value.ProviderCredentialEnv] != value.SupervisorCredentialHandle {
+		t.Fatalf("runtime credential binding = %#v, %v", credentials, err)
+	}
+	for _, mutate := range []func(*RuntimeSpec){
+		func(spec *RuntimeSpec) { spec.ProviderCredentialEnv = "" },
+		func(spec *RuntimeSpec) { spec.WorkerCredentialHandle = spec.CoderCredentialHandle },
+		func(spec *RuntimeSpec) { spec.SupervisorCredentialHandle = "not a valid env name" },
+	} {
+		invalid := value
+		mutate(&invalid)
+		if _, err := invalid.credentials(); err == nil {
+			t.Fatalf("invalid runtime credential binding was accepted: %#v", invalid)
+		}
+	}
+}
+
 func TestBindRuntimeBuildsAHostPrivateExactProfilePlan(t *testing.T) {
 	piPath, err := exec.LookPath("pi")
 	if err != nil {
@@ -109,9 +128,9 @@ func TestBindRuntimeBuildsAHostPrivateExactProfilePlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	spec := RuntimeSpec{HostRoot: filepath.Join(parent, "host"), SkillRoot: testSkillArtifact(t), SDKRoot: filepath.Dir(filepath.Dir(resolved)), NodePath: node, Provider: "structural-test", Model: "structural-test", ThinkingPolicy: "off", CompactionPolicy: "off"}
+	spec := RuntimeSpec{HostRoot: filepath.Join(parent, "host"), SkillRoot: testSkillArtifact(t), SDKRoot: filepath.Dir(filepath.Dir(resolved)), NodePath: node, Provider: "structural-test", Model: "structural-test", ThinkingPolicy: "off", CompactionPolicy: "off", ProviderCredentialEnv: "PROVIDER_TOKEN", WorkerCredentialHandle: "AGENTLAB_TEST_WORKER_TOKEN", CoderCredentialHandle: "AGENTLAB_TEST_CODER_TOKEN", SupervisorCredentialHandle: "AGENTLAB_TEST_SUPERVISOR_TOKEN"}
 	value, err = value.bindRuntime(spec, func(canary piadapter.LiveCanarySpec) (piadapter.LiveCanaryReceipt, error) {
-		if canary.NodePath != spec.NodePath || canary.SDKRoot != spec.SDKRoot || canary.Identity.Provider != spec.Provider || canary.Identity.Model != spec.Model {
+		if canary.NodePath != spec.NodePath || canary.SDKRoot != spec.SDKRoot || canary.Identity.Provider != spec.Provider || canary.Identity.Model != spec.Model || canary.ProviderCredentialEnv != spec.ProviderCredentialEnv || canary.CredentialHandle != spec.WorkerCredentialHandle {
 			t.Fatalf("canary binding = %#v", canary)
 		}
 		return piadapter.LiveCanaryReceipt{Contract: piadapter.LiveCanaryContract, PublicSuffixExcluded: true, PrivateThinkingExcluded: true}, nil
@@ -141,6 +160,13 @@ func TestBindRuntimeBuildsAHostPrivateExactProfilePlan(t *testing.T) {
 	supervisor, err := tool.LoadPiSupervisorPlan(filepath.Join(spec.HostRoot, "supervisor-plan.json"))
 	if err != nil || supervisor.Binding.Root != value.EvaluatedRoot || supervisor.Binding.PreparationID != value.PreparationID || supervisor.Binding.ExperimentID != value.ExperimentID || supervisor.Binding.RuntimePlanPath != filepath.Join(spec.HostRoot, "pi-runtime-plan.json") || supervisor.Identity != profile.Identity || supervisor.Launch.RuntimeRoot != filepath.Join(spec.HostRoot, "supervisor-runtime") || supervisor.SessionPath != filepath.Join(spec.HostRoot, "supervisor-runtime", "session.jsonl") {
 		t.Fatalf("Supervisor plan = %#v, %v", supervisor, err)
+	}
+	if profile.WorkerLaunch == nil {
+		t.Fatal("baseline Worker profile omitted launch binding")
+	}
+	coderProfile, err := host.Profile("coder-repair")
+	if err != nil || coderProfile.CoderLaunch == nil || !verifyRuntimeCredentialIsolation(profile.WorkerLaunch.Launch, *coderProfile.CoderLaunch, supervisor.Launch) {
+		t.Fatalf("runtime credential isolation = %#v / %#v / %#v, %v", profile, coderProfile, supervisor, err)
 	}
 	if _, err := value.SupervisorStatus(); err == nil {
 		t.Fatal("runtime preflight fabricated a Supervisor process receipt")

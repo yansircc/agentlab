@@ -23,14 +23,63 @@ import (
 // never decoded from a Supervisor tool request or persisted in an evaluated
 // artifact, because it contains process and filesystem authority.
 type RuntimeSpec struct {
-	HostRoot         string
-	SkillRoot        string
-	SDKRoot          string
-	NodePath         string
-	Provider         string
-	Model            string
-	ThinkingPolicy   string
-	CompactionPolicy string
+	HostRoot                   string
+	SkillRoot                  string
+	SDKRoot                    string
+	NodePath                   string
+	Provider                   string
+	Model                      string
+	ThinkingPolicy             string
+	CompactionPolicy           string
+	ProviderCredentialEnv      string
+	WorkerCredentialHandle     string
+	CoderCredentialHandle      string
+	SupervisorCredentialHandle string
+}
+
+type runtimeCredentials struct {
+	environment string
+	worker      string
+	coder       string
+	supervisor  string
+}
+
+func (value RuntimeSpec) credentials() (runtimeCredentials, error) {
+	result := runtimeCredentials{environment: value.ProviderCredentialEnv, worker: value.WorkerCredentialHandle, coder: value.CoderCredentialHandle, supervisor: value.SupervisorCredentialHandle}
+	if !runtimeEnvironmentName(result.environment) || !runtimeEnvironmentName(result.worker) || !runtimeEnvironmentName(result.coder) || !runtimeEnvironmentName(result.supervisor) || result.worker == result.coder || result.worker == result.supervisor || result.coder == result.supervisor {
+		return runtimeCredentials{}, errors.New("deployctl provider credential binding is invalid")
+	}
+	return result, nil
+}
+
+func (value runtimeCredentials) workerEnvironment() map[string]string {
+	return map[string]string{value.environment: value.worker}
+}
+
+func (value runtimeCredentials) coderEnvironment() map[string]string {
+	return map[string]string{value.environment: value.coder}
+}
+
+func (value runtimeCredentials) supervisorEnvironment() map[string]string {
+	return map[string]string{value.environment: value.supervisor}
+}
+
+func verifyRuntimeCredentialIsolation(worker, coder, supervisor tool.PiLaunch) bool {
+	values := []map[string]string{worker.SecretEnvironmentHandles, coder.SecretEnvironmentHandles, supervisor.SecretEnvironmentHandles}
+	var environment string
+	handles := map[string]bool{}
+	for _, value := range values {
+		if len(value) != 1 {
+			return false
+		}
+		for key, handle := range value {
+			if !runtimeEnvironmentName(key) || !runtimeEnvironmentName(handle) || (environment != "" && environment != key) || handles[handle] {
+				return false
+			}
+			environment, handles[handle] = key, true
+		}
+	}
+	return environment != "" && len(handles) == len(values)
 }
 
 // BindRuntime completes Stage 0's deterministic Host assembly. It binds the
@@ -43,6 +92,10 @@ func (value Preflight) BindRuntime(spec RuntimeSpec) (Preflight, error) {
 func (value Preflight) bindRuntime(spec RuntimeSpec, canary liveCanaryRunner) (Preflight, error) {
 	if err := value.verifyProvision(); err != nil || !newHostRoot(spec.HostRoot, value.EvaluatedRoot, value.AuditRoot, spec.SkillRoot, spec.SDKRoot) {
 		return Preflight{}, errors.New("deployctl runtime preflight is invalid")
+	}
+	credentials, err := spec.credentials()
+	if err != nil {
+		return Preflight{}, err
 	}
 	binary, extension, err := bundledPaths(spec.SkillRoot)
 	if err != nil {
@@ -65,7 +118,7 @@ func (value Preflight) bindRuntime(spec RuntimeSpec, canary liveCanaryRunner) (P
 	if err != nil {
 		return Preflight{}, err
 	}
-	canaryRef, err := bindLiveCanary(store, piadapter.LiveCanarySpec{NodePath: spec.NodePath, SDKRoot: spec.SDKRoot, ExtensionPath: extension, BinaryPath: binary, Identity: identity}, adapter, canary)
+	canaryRef, err := bindLiveCanary(store, piadapter.LiveCanarySpec{NodePath: spec.NodePath, SDKRoot: spec.SDKRoot, ExtensionPath: extension, BinaryPath: binary, ProviderCredentialEnv: credentials.environment, CredentialHandle: credentials.worker, Identity: identity}, adapter, canary)
 	if err != nil {
 		return Preflight{}, err
 	}
@@ -81,7 +134,7 @@ func (value Preflight) bindRuntime(spec RuntimeSpec, canary liveCanaryRunner) (P
 	if err != nil {
 		return Preflight{}, err
 	}
-	profiles, err := runtimeProfiles(value, spec, identity, workspace, workspaceReceipt, capability)
+	profiles, err := runtimeProfiles(value, spec, credentials, identity, workspace, workspaceReceipt, capability)
 	if err != nil {
 		return Preflight{}, err
 	}
@@ -127,7 +180,7 @@ func (value Preflight) bindRuntime(spec RuntimeSpec, canary liveCanaryRunner) (P
 		Contract: tool.PiSupervisorPlanContract,
 		Launch: tool.PiLaunch{
 			NodePath: spec.NodePath, RuntimeRoot: filepath.Join(spec.HostRoot, "supervisor-runtime"),
-			ReadOnlyRoots: []string{spec.SDKRoot, spec.SkillRoot}, AllowNetwork: true,
+			ReadOnlyRoots: []string{spec.SDKRoot, spec.SkillRoot}, SecretEnvironmentHandles: credentials.supervisorEnvironment(), AllowNetwork: true,
 		},
 		SessionPath: filepath.Join(spec.HostRoot, "supervisor-runtime", "session.jsonl"), SkillRoot: spec.SkillRoot, Identity: identityConfig,
 		Binding: tool.PiSupervisorBinding{Root: value.EvaluatedRoot, PreparationID: value.PreparationID, ExperimentID: value.ExperimentID, RuntimePlanPath: planPath},
@@ -147,7 +200,7 @@ func (value Preflight) bindRuntime(spec RuntimeSpec, canary liveCanaryRunner) (P
 	return value, value.Verify()
 }
 
-func runtimeProfiles(value Preflight, spec RuntimeSpec, identity piadapter.AdapterIdentity, workspace string, workspaceReceipt, capability artifact.Ref) ([]tool.PiRuntimeProfile, error) {
+func runtimeProfiles(value Preflight, spec RuntimeSpec, credentials runtimeCredentials, identity piadapter.AdapterIdentity, workspace string, workspaceReceipt, capability artifact.Ref) ([]tool.PiRuntimeProfile, error) {
 	if !filepath.IsAbs(spec.NodePath) || !workspaceReceipt.Valid() || !capability.Valid() {
 		return nil, errors.New("deployctl runtime profile is invalid")
 	}
@@ -161,17 +214,29 @@ func runtimeProfiles(value Preflight, spec RuntimeSpec, identity piadapter.Adapt
 	worker := tool.PiRuntimeProfile{
 		Ref: "baseline-worker", ExperimentID: value.ExperimentID, RunID: value.BaselineRunID, Role: effect.WorkerStart, SessionPath: filepath.Join(workerRuntime, "session.jsonl"),
 		Identity: piadapter.IdentityConfig{SDKRoot: spec.SDKRoot, ContextFilterPath: filepath.Join(spec.SkillRoot, "extension.ts"), AdapterDigest: identity.AdapterDigest, Provider: spec.Provider, Model: spec.Model, ThinkingPolicy: spec.ThinkingPolicy, CompactionPolicy: spec.CompactionPolicy},
-		Policy:   policy, WorkerLaunch: &tool.PiWorkerLaunch{Launch: tool.PiLaunch{NodePath: spec.NodePath, RuntimeRoot: workerRuntime, ReadOnlyRoots: []string{spec.SDKRoot}, AllowNetwork: true}, FixtureRoot: value.Fixture.Root(), DeployctlExecutable: filepath.Join(value.EvaluatedRoot, "baseline-candidate", "bin", "deployctl"), CandidateExecutable: value.CandidateExecutable, WorkerInput: value.WorkerInput},
+		Policy:   policy, WorkerLaunch: &tool.PiWorkerLaunch{Launch: tool.PiLaunch{NodePath: spec.NodePath, RuntimeRoot: workerRuntime, ReadOnlyRoots: []string{spec.SDKRoot}, SecretEnvironmentHandles: credentials.workerEnvironment(), AllowNetwork: true}, FixtureRoot: value.Fixture.Root(), DeployctlExecutable: filepath.Join(value.EvaluatedRoot, "baseline-candidate", "bin", "deployctl"), CandidateExecutable: value.CandidateExecutable, WorkerInput: value.WorkerInput},
 	}
 	coder := tool.PiRuntimeProfile{
 		Ref: "coder-repair", ExperimentID: value.ExperimentID, RunID: coderRunID, Role: effect.CoderStart, SessionPath: filepath.Join(coderRuntime, "session.jsonl"),
 		Identity: worker.Identity, Policy: policy, CoderSourceSnapshot: value.SourceSnapshot, CoderWorkspaceReceipt: workspaceReceipt, CoderCapabilityProfile: capability, CoderWorkspace: workspace,
-		CoderLaunch: &tool.PiLaunch{NodePath: spec.NodePath, RuntimeRoot: coderRuntime, ReadOnlyRoots: []string{spec.SDKRoot}, AllowedExecutables: tools, AllowNetwork: true},
+		CoderLaunch: &tool.PiLaunch{NodePath: spec.NodePath, RuntimeRoot: coderRuntime, ReadOnlyRoots: []string{spec.SDKRoot}, AllowedExecutables: tools, SecretEnvironmentHandles: credentials.coderEnvironment(), AllowNetwork: true},
 	}
 	if _, err := tool.NewPiRuntimeHost([]tool.PiRuntimeProfile{worker, coder}); err != nil {
 		return nil, err
 	}
 	return []tool.PiRuntimeProfile{worker, coder}, nil
+}
+
+func runtimeEnvironmentName(value string) bool {
+	if value == "" {
+		return false
+	}
+	for index, item := range value {
+		if !(item == '_' || item >= 'A' && item <= 'Z' || item >= 'a' && item <= 'z' || index > 0 && item >= '0' && item <= '9') {
+			return false
+		}
+	}
+	return true
 }
 
 func bundledPaths(root string) (string, string, error) {

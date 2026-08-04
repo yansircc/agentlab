@@ -30,7 +30,7 @@ func TestBindRuntimeRejectsCanaryBeforeHostPlanOrManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 	host := filepath.Join(parent, "host")
-	_, err = value.bindRuntime(RuntimeSpec{HostRoot: host, SkillRoot: testSkillArtifact(t), SDKRoot: filepath.Dir(filepath.Dir(resolved)), NodePath: node, Provider: "structural-test", Model: "structural-test", ThinkingPolicy: "off", CompactionPolicy: "off"}, func(piadapter.LiveCanarySpec) (piadapter.LiveCanaryReceipt, error) {
+	_, err = value.bindRuntime(RuntimeSpec{HostRoot: host, SkillRoot: testSkillArtifact(t), SDKRoot: filepath.Dir(filepath.Dir(resolved)), NodePath: node, Provider: "structural-test", Model: "structural-test", ThinkingPolicy: "off", CompactionPolicy: "off", ProviderCredentialEnv: "PROVIDER_TOKEN", WorkerCredentialHandle: "AGENTLAB_TEST_WORKER_TOKEN", CoderCredentialHandle: "AGENTLAB_TEST_CODER_TOKEN", SupervisorCredentialHandle: "AGENTLAB_TEST_SUPERVISOR_TOKEN"}, func(piadapter.LiveCanarySpec) (piadapter.LiveCanaryReceipt, error) {
 		return piadapter.LiveCanaryReceipt{}, errors.New("final provider rejected canary")
 	})
 	if err == nil {

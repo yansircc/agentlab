@@ -14,15 +14,16 @@ func TestLiveCanaryBridgeReturnsOnlyBooleanReceipt(t *testing.T) {
 	if err != nil {
 		t.Skip("Node is not installed")
 	}
-	bridge := []byte(`import{readFileSync}from"node:fs";const v=JSON.parse(readFileSync(0,"utf8"));const keys=["package_root","package_name","package_version","extension_path","node_path","provider","model","thinking","compaction","work_root"];if(Object.keys(v).length!==keys.length||keys.some(k=>typeof v[k]!=="string"))process.exit(1);process.stdout.write('{"contract":"agentlab.pi-live-context-canary.v1","public_suffix_excluded":true,"private_thinking_excluded":true}\n')`)
-	value, err := runLiveCanaryBridge(LiveCanarySpec{NodePath: node, SDKRoot: "/sdk", ExtensionPath: "/skill/extension.ts", BinaryPath: "/skill/bin/agentlab", Identity: liveCanaryIdentity()}, bridge)
+	t.Setenv("AGENTLAB_CANARY_CREDENTIAL", "test-credential")
+	bridge := []byte(`import{readFileSync}from"node:fs";const v=JSON.parse(readFileSync(0,"utf8"));const keys=["package_root","package_name","package_version","extension_path","node_path","provider","model","thinking","compaction","work_root"];if(Object.keys(v).length!==keys.length||keys.some(k=>typeof v[k]!=="string")||process.env.PROVIDER_TOKEN!=="test-credential"||Object.keys(process.env).some(k=>!["PROVIDER_TOKEN","HOME","PI_CODING_AGENT_DIR","PI_CODING_AGENT_SESSION_DIR"].includes(k)))process.exit(1);process.stdout.write('{"contract":"agentlab.pi-live-context-canary.v1","public_suffix_excluded":true,"private_thinking_excluded":true}\n')`)
+	value, err := runLiveCanaryBridge(LiveCanarySpec{NodePath: node, SDKRoot: "/sdk", ExtensionPath: "/skill/extension.ts", BinaryPath: "/skill/bin/agentlab", ProviderCredentialEnv: "PROVIDER_TOKEN", CredentialHandle: "AGENTLAB_CANARY_CREDENTIAL", Identity: liveCanaryIdentity()}, bridge)
 	if err != nil || value.Validate() != nil {
 		t.Fatalf("live canary bridge = %#v, %v", value, err)
 	}
 }
 
 func TestLiveCanaryRejectsUnbundledArtifactAndNonOffCompaction(t *testing.T) {
-	value := LiveCanarySpec{NodePath: "/node", SDKRoot: "/sdk", ExtensionPath: "/skill/extension.ts", BinaryPath: "/other/agentlab", Identity: liveCanaryIdentity()}
+	value := LiveCanarySpec{NodePath: "/node", SDKRoot: "/sdk", ExtensionPath: "/skill/extension.ts", BinaryPath: "/other/agentlab", ProviderCredentialEnv: "PROVIDER_TOKEN", CredentialHandle: "AGENTLAB_CANARY_CREDENTIAL", Identity: liveCanaryIdentity()}
 	if value.validate() == nil {
 		t.Fatal("live canary accepted an unbundled binary")
 	}
@@ -30,6 +31,18 @@ func TestLiveCanaryRejectsUnbundledArtifactAndNonOffCompaction(t *testing.T) {
 	value.Identity.CompactionPolicy = "auto"
 	if value.validate() == nil {
 		t.Fatal("live canary accepted an uncontrolled compaction policy")
+	}
+}
+
+func TestLiveCanaryBridgeRejectsMissingCredentialHandle(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("Node is not installed")
+	}
+	t.Setenv("AMBIENT_PROVIDER_TOKEN", "must-not-be-used")
+	value, err := runLiveCanaryBridge(LiveCanarySpec{NodePath: node, SDKRoot: "/sdk", ExtensionPath: "/skill/extension.ts", BinaryPath: "/skill/bin/agentlab", ProviderCredentialEnv: "PROVIDER_TOKEN", CredentialHandle: "MISSING_PROVIDER_CREDENTIAL", Identity: liveCanaryIdentity()}, []byte(`process.stdout.write('{}')`))
+	if err == nil || value != (LiveCanaryReceipt{}) {
+		t.Fatal("live canary used an ambient provider credential")
 	}
 }
 

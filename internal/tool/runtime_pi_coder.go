@@ -42,7 +42,7 @@ func (value PiLaunch) Validate() error {
 		}
 	}
 	for key, handle := range value.SecretEnvironmentHandles {
-		if !environmentName(key) || reserved[key] || handle == "" || len(handle) > 256 {
+		if !environmentName(key) || reserved[key] || !environmentName(handle) || len(handle) > 256 {
 			return errors.New("Pi secret environment is invalid")
 		}
 		if _, exists := value.PublicEnvironment[key]; exists {

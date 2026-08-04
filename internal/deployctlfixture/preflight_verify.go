@@ -44,6 +44,10 @@ func (value Preflight) verifyRuntime() error {
 		if err != nil {
 			return errors.New("deployctl Worker runtime profile is absent")
 		}
+		coderProfile, err := host.Profile("coder-repair")
+		if err != nil || profile.WorkerLaunch == nil || coderProfile.CoderLaunch == nil {
+			return errors.New("deployctl Coder runtime profile is absent")
+		}
 		discovered, err := piadapter.VerifyRuntimeIdentity(profile.Identity)
 		if err != nil || !reflect.DeepEqual(discovered, identity) {
 			return errors.New("deployctl runtime identity differs from live canary")
@@ -51,6 +55,9 @@ func (value Preflight) verifyRuntime() error {
 		supervisor, err := tool.LoadPiSupervisorPlan(value.supervisorPlanPath)
 		if err != nil || supervisor.Binding.Root != value.EvaluatedRoot || supervisor.Binding.PreparationID != value.PreparationID || supervisor.Binding.ExperimentID != value.ExperimentID || supervisor.Binding.RuntimePlanPath != value.runtimePlanPath || supervisor.Launch.RuntimeRoot != filepath.Join(value.hostRoot, "supervisor-runtime") || supervisor.SessionPath != filepath.Join(value.hostRoot, "supervisor-runtime", "session.jsonl") || !reflect.DeepEqual(supervisor.Identity, profile.Identity) {
 			return errors.New("deployctl Supervisor runtime plan differs from preflight")
+		}
+		if !verifyRuntimeCredentialIsolation(profile.WorkerLaunch.Launch, *coderProfile.CoderLaunch, supervisor.Launch) {
+			return errors.New("deployctl provider credential profiles are not isolated")
 		}
 		binding, err := loadRuntimeBinding(artifact.NewStore(filepath.Join(value.EvaluatedRoot, "artifacts")), value.Inputs.WorkerRuntime)
 		if err != nil || binding.Adapter != value.LiveCanary || binding.CandidateExecutable != value.CandidateExecutable {

@@ -131,6 +131,25 @@ func TestPiWorkerProfileHasNoAttachedOrGenericCommandFallback(t *testing.T) {
 	}
 }
 
+func TestPiLaunchRequiresExplicitValidSecretHandles(t *testing.T) {
+	launch := *testCoderLaunch(t)
+	launch.SecretEnvironmentHandles = map[string]string{"PROVIDER_TOKEN": "not-a-valid-environment-name"}
+	if launch.Validate() == nil {
+		t.Fatal("Pi launch accepted an invalid secret handle")
+	}
+	t.Setenv("PROVIDER_TOKEN", "ambient-provider-credential")
+	launch.SecretEnvironmentHandles = map[string]string{"PROVIDER_TOKEN": "MISSING_HOST_CREDENTIAL"}
+	if _, err := launch.environment(launch.RuntimeRoot); err == nil {
+		t.Fatal("Pi launch fell back to the ambient provider credential")
+	}
+	t.Setenv("HOST_PROVIDER_CREDENTIAL", "host-provided-credential")
+	launch.SecretEnvironmentHandles = map[string]string{"PROVIDER_TOKEN": "HOST_PROVIDER_CREDENTIAL"}
+	environment, err := launch.environment(launch.RuntimeRoot)
+	if err != nil || !strings.Contains(strings.Join(environment, "\x00"), "PROVIDER_TOKEN=host-provided-credential") {
+		t.Fatalf("Pi launch credential environment = %q, %v", environment, err)
+	}
+}
+
 func testRef() artifact.Ref {
 	return artifact.Ref{Scope: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Algorithm: "sha256", Digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Size: 1}
 }

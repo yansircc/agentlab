@@ -23,11 +23,13 @@ var liveCanaryBridge []byte
 // LiveCanarySpec is Host-only. Its paths and provider configuration never
 // cross a Supervisor tool boundary or enter an evaluated receipt.
 type LiveCanarySpec struct {
-	NodePath      string
-	SDKRoot       string
-	ExtensionPath string
-	BinaryPath    string
-	Identity      AdapterIdentity
+	NodePath              string
+	SDKRoot               string
+	ExtensionPath         string
+	BinaryPath            string
+	ProviderCredentialEnv string
+	CredentialHandle      string
+	Identity              AdapterIdentity
 }
 
 // LiveCanaryReceipt deliberately contains no model text, session locator, or
@@ -60,7 +62,7 @@ func RunLiveCanary(spec LiveCanarySpec) (LiveCanaryReceipt, error) {
 }
 
 func (spec LiveCanarySpec) validate() error {
-	if spec.Identity.Validate() != nil || spec.Identity.CompactionPolicy != "off" {
+	if spec.Identity.Validate() != nil || spec.Identity.CompactionPolicy != "off" || !environmentName(spec.ProviderCredentialEnv) || !environmentName(spec.CredentialHandle) {
 		return errors.New("Pi live context canary configuration is invalid")
 	}
 	for _, path := range []string{spec.NodePath, spec.SDKRoot, spec.ExtensionPath, spec.BinaryPath} {
@@ -75,6 +77,10 @@ func (spec LiveCanarySpec) validate() error {
 }
 
 func runLiveCanaryBridge(spec LiveCanarySpec, bridge []byte) (LiveCanaryReceipt, error) {
+	credential, exists := os.LookupEnv(spec.CredentialHandle)
+	if !exists || credential == "" {
+		return LiveCanaryReceipt{}, errors.New("Pi live context canary credential is unavailable")
+	}
 	root, err := os.MkdirTemp("", "agentlab-pi-live-canary-")
 	if err != nil {
 		return LiveCanaryReceipt{}, err
@@ -103,6 +109,12 @@ func runLiveCanaryBridge(spec LiveCanarySpec, bridge []byte) (LiveCanaryReceipt,
 	defer cancel()
 	command := exec.CommandContext(ctx, spec.NodePath, bridgePath)
 	command.Stdin = bytes.NewReader(request)
+	command.Env = []string{
+		spec.ProviderCredentialEnv + "=" + credential,
+		"HOME=" + root,
+		"PI_CODING_AGENT_DIR=" + root,
+		"PI_CODING_AGENT_SESSION_DIR=" + root,
+	}
 	output, err := command.Output()
 	if err != nil || ctx.Err() != nil {
 		return LiveCanaryReceipt{}, errors.New("Pi live context canary execution failed")
@@ -112,4 +124,16 @@ func runLiveCanaryBridge(spec LiveCanarySpec, bridge []byte) (LiveCanaryReceipt,
 		return LiveCanaryReceipt{}, errors.New("Pi live context canary receipt is invalid")
 	}
 	return receipt, nil
+}
+
+func environmentName(value string) bool {
+	if value == "" {
+		return false
+	}
+	for index, item := range value {
+		if !(item == '_' || item >= 'A' && item <= 'Z' || item >= 'a' && item <= 'z' || index > 0 && item >= '0' && item <= '9') {
+			return false
+		}
+	}
+	return true
 }

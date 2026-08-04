@@ -297,17 +297,21 @@ func acceptancePreflight(args []string) (any, error) {
 	model := set.String("model", "", "final Pi model")
 	thinking := set.String("thinking", "", "final Pi thinking policy")
 	compaction := set.String("compaction", "", "final Pi compaction policy")
+	credentialEnv := set.String("provider-credential-env", "", "provider credential environment key")
+	workerCredential := set.String("worker-credential-handle", "", "Host environment handle for Worker provider credential")
+	coderCredential := set.String("coder-credential-handle", "", "Host environment handle for Coder provider credential")
+	supervisorCredential := set.String("supervisor-credential-handle", "", "Host environment handle for Supervisor provider credential")
 	if err := set.Parse(args); err != nil {
 		return nil, err
 	}
-	if *evaluatedRoot == "" || *auditRoot == "" || *hostRoot == "" || *skillRoot == "" || *sdkRoot == "" || *nodePath == "" || *provider == "" || *model == "" || *thinking == "" || *compaction == "" || set.NArg() != 0 {
-		return nil, errors.New("acceptance preflight requires fresh roots and exact bundled Pi runtime identity")
+	if *evaluatedRoot == "" || *auditRoot == "" || *hostRoot == "" || *skillRoot == "" || *sdkRoot == "" || *nodePath == "" || *provider == "" || *model == "" || *thinking == "" || *compaction == "" || *credentialEnv == "" || *workerCredential == "" || *coderCredential == "" || *supervisorCredential == "" || set.NArg() != 0 {
+		return nil, errors.New("acceptance preflight requires fresh roots, exact bundled Pi runtime identity, and distinct Host credential handles")
 	}
 	value, err := deployctlfixture.ProvisionPreflight(deployctlfixture.PreflightSpec{EvaluatedRoot: *evaluatedRoot, AuditRoot: *auditRoot})
 	if err != nil {
 		return nil, err
 	}
-	value, err = value.BindRuntime(deployctlfixture.RuntimeSpec{HostRoot: *hostRoot, SkillRoot: *skillRoot, SDKRoot: *sdkRoot, NodePath: *nodePath, Provider: *provider, Model: *model, ThinkingPolicy: *thinking, CompactionPolicy: *compaction})
+	value, err = value.BindRuntime(deployctlfixture.RuntimeSpec{HostRoot: *hostRoot, SkillRoot: *skillRoot, SDKRoot: *sdkRoot, NodePath: *nodePath, Provider: *provider, Model: *model, ThinkingPolicy: *thinking, CompactionPolicy: *compaction, ProviderCredentialEnv: *credentialEnv, WorkerCredentialHandle: *workerCredential, CoderCredentialHandle: *coderCredential, SupervisorCredentialHandle: *supervisorCredential})
 	if err != nil {
 		return nil, err
 	}
