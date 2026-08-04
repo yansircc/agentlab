@@ -60,8 +60,9 @@ type acceptanceAuditFindingRequest struct {
 }
 
 type acceptanceRecursiveGateRequest struct {
-	CandidateID string `json:"candidate_id"`
-	GateID      string `json:"gate_id"`
+	CandidateID string       `json:"candidate_id"`
+	GateID      string       `json:"gate_id"`
+	Heldout     artifact.Ref `json:"heldout"`
 }
 
 // The audit commands are Host/Codex-only. Unlike provider tools, they reopen
@@ -132,9 +133,7 @@ func acceptanceRecursiveGate(args []string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return metaaudit.Evaluate(preflight.EvaluatedRoot, preflight.AuditRoot, metaaudit.RecursiveSpec{
-		AuditID: preflight.AuditID, ExperimentID: preflight.ExperimentID, CandidateID: request.CandidateID, GateID: request.GateID,
-	})
+	return preflight.EvaluateRecursiveGate(request.CandidateID, request.GateID, request.Heldout)
 }
 
 func acceptanceSupervisorStart(args []string) (any, error) {

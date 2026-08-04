@@ -1,14 +1,17 @@
 package deployctlfixture
 
 import (
+	"bytes"
 	cryptorand "crypto/rand"
 	"encoding/hex"
 	"errors"
 	"path/filepath"
+	"strings"
 
 	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/experiment"
 	"github.com/yansircc/agentlab/internal/run"
+	"github.com/yansircc/agentlab/internal/strictjson"
 	"github.com/yansircc/agentlab/internal/tool"
 )
 
@@ -74,6 +77,32 @@ func (value Preflight) VerifyHeldoutPreparedRun(preparedRef artifact.Ref) (artif
 		Contract: heldoutVerificationContract, Prepared: preparedRef, Candidate: prepared.Inputs.Candidate, Trial: trial,
 		ExitCode: command.ExitCode, TerminalSuccess: command.TerminalSuccess(), Oracle: oracle,
 	})
+}
+
+// VerifyHeldoutArtifact admits only the Host-produced post-seal evidence that
+// belongs to the exact candidate closing a recursive gate. It is deliberately
+// not a Worker-run projection and cannot supply comparison repetitions.
+func VerifyHeldoutArtifact(store artifact.Store, ref, candidate artifact.Ref) error {
+	if !ref.Valid() || !candidate.Valid() {
+		return errors.New("deployctl held-out verification is invalid")
+	}
+	data, err := store.Read(ref)
+	if err != nil {
+		return err
+	}
+	canonical, err := artifact.CanonicalJSON(data)
+	if err != nil || !bytes.Equal(data, canonical) {
+		return errors.New("deployctl held-out verification is not canonical")
+	}
+	var value HeldoutVerification
+	if strictjson.Decode(data, &value) != nil || value.Contract != heldoutVerificationContract || value.Candidate != candidate || !value.Prepared.Valid() || value.Trial.Contract != heldoutContract || value.Trial.Candidate != candidate || !strings.HasPrefix(value.Trial.Target, "heldout-") || !validTarget(value.Trial.Target) || value.Trial.Reset.Contract != resetContract || value.Trial.Reset.CatalogDigest == "" || value.Trial.Reset.StateDigest == "" || value.ExitCode != 0 || !value.TerminalSuccess || value.Oracle.Target != value.Trial.Target || value.Oracle.Release != "release-a" || !value.Oracle.Pass() {
+		return errors.New("deployctl held-out verification is invalid")
+	}
+	prepared, err := experiment.LoadPreparedRun(store, value.Prepared)
+	if err != nil || prepared.Inputs.Candidate != candidate {
+		return errors.New("deployctl held-out verification differs from prepared candidate")
+	}
+	return nil
 }
 
 func heldoutNonce() (string, error) {

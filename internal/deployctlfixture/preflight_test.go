@@ -243,6 +243,24 @@ func TestBindRuntimeBuildsAHostPrivateExactProfilePlan(t *testing.T) {
 	if err := json.Unmarshal(heldoutData, &heldout); err != nil || heldout.Contract != heldoutVerificationContract || heldout.Prepared != preparedRef || heldout.Candidate != prepared.Inputs.Candidate || !heldout.TerminalSuccess || !heldout.Oracle.Pass() || heldout.Oracle.DefaultTargetReadCount != 0 {
 		t.Fatalf("held-out verification = %#v, %v", heldout, err)
 	}
+	if err := VerifyHeldoutArtifact(store, heldoutRef, prepared.Inputs.Candidate); err != nil {
+		t.Fatalf("exact held-out verification was rejected: %v", err)
+	}
+	if err := VerifyHeldoutArtifact(store, heldoutRef, value.Candidate); err == nil {
+		t.Fatal("held-out verification was reused for another candidate")
+	}
+	heldout.TerminalSuccess = false
+	invalidData, err := json.Marshal(heldout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invalidHeldout, err := store.PutCanonicalJSON(invalidData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyHeldoutArtifact(store, invalidHeldout, prepared.Inputs.Candidate); err == nil {
+		t.Fatal("failed held-out verification was accepted")
+	}
 	audit, err := metaaudit.Open(value.AuditRoot, value.AuditID)
 	if err != nil || audit.MarkIntervened() != nil {
 		t.Fatalf("advance audit lifecycle: %v", err)

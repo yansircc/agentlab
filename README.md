@@ -128,8 +128,10 @@ session. Neither command is a provider tool or an acceptance claim.
 `acceptance audit-*` and `acceptance recursive-gate` are Host/Codex-only
 commands. They reopen the Host-private locator to read the disjoint audit root,
 record a coverage review or adverse finding, seal the audit, and evaluate the
-final recursive gate. They are not provider tools and cannot be addressed by
-the Supervisor, Worker, or Coder.
+final recursive gate. A passing deployctl recursive gate also requires the
+post-seal held-out receipt for its exact candidate; that receipt remains
+objective mutation-B evidence, not a Worker trial. These commands are not
+provider tools and cannot be addressed by the Supervisor, Worker, or Coder.
 
 ## Contributing and security
 
