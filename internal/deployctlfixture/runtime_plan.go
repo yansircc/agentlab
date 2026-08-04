@@ -214,7 +214,7 @@ func runtimeProfiles(value Preflight, spec RuntimeSpec, credentials runtimeCrede
 	worker := tool.PiRuntimeProfile{
 		Ref: "baseline-worker", ExperimentID: value.ExperimentID, RunID: value.BaselineRunID, Role: effect.WorkerStart, SessionPath: filepath.Join(workerRuntime, "session.jsonl"),
 		Identity: piadapter.IdentityConfig{SDKRoot: spec.SDKRoot, ContextFilterPath: filepath.Join(spec.SkillRoot, "extension.ts"), AdapterDigest: identity.AdapterDigest, Provider: spec.Provider, Model: spec.Model, ThinkingPolicy: spec.ThinkingPolicy, CompactionPolicy: spec.CompactionPolicy},
-		Policy:   policy, WorkerLaunch: &tool.PiWorkerLaunch{Launch: tool.PiLaunch{NodePath: spec.NodePath, RuntimeRoot: workerRuntime, ReadOnlyRoots: []string{spec.SDKRoot}, SecretEnvironmentHandles: credentials.workerEnvironment(), AllowNetwork: true}, FixtureRoot: value.Fixture.Root(), DeployctlExecutable: filepath.Join(value.EvaluatedRoot, "baseline-candidate", "bin", "deployctl"), CandidateExecutable: value.CandidateExecutable, WorkerInput: value.WorkerInput},
+		Policy:   policy, WorkerLaunch: &tool.PiWorkerLaunch{Launch: tool.PiLaunch{NodePath: spec.NodePath, RuntimeRoot: workerRuntime, ReadOnlyRoots: []string{spec.SDKRoot}, SecretEnvironmentHandles: credentials.workerEnvironment(), AllowNetwork: true}, FixtureRoot: value.Fixture.Root(), DeployctlExecutable: filepath.Join(value.EvaluatedRoot, "baseline-candidate", "bin", "deployctl"), CandidateExecutable: value.CandidateExecutable, WorkerInput: value.WorkerInput, HostOracle: tool.HostOracleDeployctl},
 	}
 	coder := tool.PiRuntimeProfile{
 		Ref: "coder-repair", ExperimentID: value.ExperimentID, RunID: coderRunID, Role: effect.CoderStart, SessionPath: filepath.Join(coderRuntime, "session.jsonl"),

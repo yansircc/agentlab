@@ -1,7 +1,10 @@
 package tool
 
 import (
+	"encoding/json"
+	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -128,6 +131,59 @@ func TestPiWorkerProfileHasNoAttachedOrGenericCommandFallback(t *testing.T) {
 	command := strings.Join(piWorkerCommand(testIdentity(t), "/node", "/runtime/session.jsonl", "/runtime", "/skill/extension.ts", "/runtime/tools.ts", "task"), "\x00")
 	if !strings.Contains(command, "/skill/extension.ts") || strings.Count(command, "--extension") != 2 || !strings.Contains(command, "--no-builtin-tools") || !strings.Contains(command, "deployctl_help,deployctl_deploy,deployctl_status,deployctl_receipt") || strings.Contains(command, ",bash") {
 		t.Fatalf("Worker command widened authority: %q", command)
+	}
+}
+
+func TestPiWorkerLaunchRejectsUnknownHostOracle(t *testing.T) {
+	launch := testWorkerLaunch(t)
+	launch.HostOracle = HostOracleKind("unbounded-provider-command")
+	if launch.Validate() == nil {
+		t.Fatal("Worker launch accepted an unknown Host oracle")
+	}
+}
+
+func TestHostWorkerOracleInvokesExactHostOnlyProducer(t *testing.T) {
+	binary := filepath.Join(t.TempDir(), "agentlab")
+	if err := os.WriteFile(binary, []byte("exact bundled binary"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	evidence := run.EvidenceRef{ExperimentID: "exp", RunID: "worker", Sequence: 3}
+	data, err := json.Marshal(struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			RunID    string          `json:"run_id"`
+			Evidence run.EvidenceRef `json:"evidence"`
+		} `json:"data"`
+	}{
+		OK: true,
+		Data: struct {
+			RunID    string          `json:"run_id"`
+			Evidence run.EvidenceRef `json:"evidence"`
+		}{RunID: "worker", Evidence: evidence},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	planPath := filepath.Join(t.TempDir(), "host", "pi-runtime-plan.json")
+	oracle := newHostWorkerOracleWithCommand(planPath, func() (string, error) {
+		return binary, nil
+	}, func(gotBinary, directory string, args []string) ([]byte, error) {
+		called = true
+		if gotBinary != binary || directory != filepath.Dir(planPath) || !reflect.DeepEqual(args, []string{"acceptance", "worker-oracle", "-host-root", directory, "-run-id", "worker"}) {
+			t.Fatalf("Host oracle invocation = %q in %q with %q", gotBinary, directory, args)
+		}
+		return data, nil
+	})
+	if err := oracle(HostOracleDeployctl, "worker", executableDigest(binary)); err != nil || !called {
+		t.Fatalf("Host oracle = %v, called = %v", err, called)
+	}
+	called = false
+	if err := oracle(HostOracleKind("unbounded"), "worker", executableDigest(binary)); err == nil || called {
+		t.Fatalf("Host oracle accepted an unbound producer: %v, called = %v", err, called)
+	}
+	if err := oracle(HostOracleDeployctl, "worker", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"); err == nil {
+		t.Fatal("Host oracle accepted a different executable identity")
 	}
 }
 

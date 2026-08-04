@@ -25,6 +25,7 @@ func LoadPiRuntimeHost(path string) (*PiRuntimeHost, error) {
 		return nil, err
 	}
 	host.planPath = path
+	host.hostOracle = newHostWorkerOracle(path)
 	return host, nil
 }
 

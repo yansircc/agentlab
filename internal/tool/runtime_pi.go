@@ -36,6 +36,7 @@ type PiRuntimeHost struct {
 	profiles        map[string]PiRuntimeProfile
 	preparedWorkers map[string]PiPreparedWorkerRuntime
 	planPath        string
+	hostOracle      hostWorkerOracle
 }
 
 // PiPollResult exposes only the Host-authored Coder completion receipt after
@@ -153,7 +154,7 @@ func (h *PiRuntimeHost) Start(binding Binding, intent effect.Intent, ref string)
 		if err != nil {
 			return nil, err
 		}
-		return startPiWorker(binding, op, intent, profile)
+		return startPiWorker(binding, op, intent, profile, h.hostOracle)
 	}
 	profile, err = h.profile(binding, intent.RunID, ref)
 	if err != nil || intent.Kind != profile.Role {

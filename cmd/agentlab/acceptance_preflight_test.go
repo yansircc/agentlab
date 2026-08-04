@@ -38,6 +38,15 @@ func TestCLIAcceptancePrepareBaselineRejectsRawCandidateInput(t *testing.T) {
 	}
 }
 
+func TestCLIAcceptanceWorkerOracleRejectsProviderFields(t *testing.T) {
+	request := writeJSONFile(t, t.TempDir(), "worker-oracle.json", map[string]any{
+		"run_id": "baseline-worker", "candidate": map[string]any{}, "root": "/provider-selected",
+	})
+	if _, err := dispatch([]string{"acceptance", "worker-oracle", "-host-root", t.TempDir(), "-run-id", "baseline-worker", "-request", request}); err == nil {
+		t.Fatal("Host Worker oracle accepted a provider-selected request")
+	}
+}
+
 func TestCLIAcceptanceHeldoutRejectsRawCandidateInput(t *testing.T) {
 	request := writeJSONFile(t, t.TempDir(), "heldout.json", map[string]any{
 		"prepared": map[string]any{}, "candidate": map[string]any{},

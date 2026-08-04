@@ -77,7 +77,7 @@ func assertNoLocator(t *testing.T, value any) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, banned := range []string{"root", "request_path", "stream_path", "session_path", "executable_path", "raw_transcript", "audit_root"} {
+	for _, banned := range []string{"root", "request_path", "stream_path", "session_path", "executable_path", "raw_transcript", "audit_root", "host_oracle"} {
 		if string(data) == banned || containsJSONKey(value, banned) {
 			t.Fatalf("schema exposes %q: %s", banned, data)
 		}

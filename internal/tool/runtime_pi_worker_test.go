@@ -4,13 +4,124 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
+	piadapter "github.com/yansircc/agentlab/internal/adapter/pi"
 	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/effect"
 	"github.com/yansircc/agentlab/internal/experiment"
 	"github.com/yansircc/agentlab/internal/preparation"
 	"github.com/yansircc/agentlab/internal/run"
 )
+
+func TestFinalizePiWorkerRecordsHostOracleOnlyForNormalUnstoppedExit(t *testing.T) {
+	tests := []struct {
+		name    string
+		kind    HostOracleKind
+		code    int
+		stopped bool
+		called  bool
+	}{
+		{name: "enabled", kind: HostOracleDeployctl, called: true},
+		{name: "no hook", kind: HostOracleNone},
+		{name: "failed process", kind: HostOracleDeployctl, code: 1},
+		{name: "durably stopped", kind: HostOracleDeployctl, stopped: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			binding, op := workerFinalizeFixture(t)
+			var err error
+			if op == nil {
+				t.Fatal("fresh Worker operation is absent")
+			}
+			session := filepath.Join(t.TempDir(), "session.jsonl")
+			if err = os.WriteFile(session, []byte(`{"type":"session","version":3,"id":"worker-session"}`+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			policy := run.StopPolicy{FirstEventTimeout: time.Second, SoftIdleTimeout: 2 * time.Second, HardIdleTimeout: 3 * time.Second}
+			if _, err = piadapter.Begin(op, session, policy, nil); err != nil {
+				t.Fatal(err)
+			}
+			if test.stopped {
+				if _, err = op.RequestStop("material failure"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			raw, err := binding.store().Put([]byte("Host objective oracle"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			called := false
+			finalize := finalizePiWorker(op, session, test.kind, "worker-finalize", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", func(kind HostOracleKind, runID, digest string) error {
+				called = true
+				if kind != HostOracleDeployctl || runID != "worker-finalize" || digest == "" {
+					t.Fatal("Host oracle callback received an invalid binding")
+				}
+				_, err := op.RecordHostOracleEvidence(raw)
+				return err
+			})
+			if err := finalize(test.code); err != nil {
+				t.Fatal(err)
+			}
+			if called != test.called {
+				t.Fatalf("Host oracle called = %v, want %v", called, test.called)
+			}
+			items, err := op.OracleEvidence()
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantItems := 0
+			if test.called {
+				wantItems = 1
+			}
+			if len(items) != wantItems {
+				t.Fatalf("Host oracle evidence = %#v", items)
+			}
+		})
+	}
+}
+
+func workerFinalizeFixture(t *testing.T) (Binding, *run.Operation) {
+	t.Helper()
+	binding, experimentOp, _, _ := workerPromptFixture(t)
+	manifest, _, err := experimentOp.RunManifest("worker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := binding.store()
+	fixture, err := store.Put([]byte("finalize-fixture"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseline, err := store.Put([]byte("finalize-baseline"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resetEvidence, err := store.Put([]byte("finalize-reset-evidence"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reset, err := experiment.RecordFixtureReset(store, experiment.FixtureResetProof{
+		Contract: experiment.FixtureResetContract, RunID: "worker-finalize", Fixture: fixture, Baseline: baseline, Evidence: []artifact.Ref{resetEvidence},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inputs := manifest.RunInputs
+	inputs.Fixture, inputs.FixtureReset = fixture, reset
+	prepared, err := experiment.RecordPreparedRun(store, experiment.PreparedRun{Contract: experiment.PreparedRunContract, RunID: "worker-finalize", Inputs: inputs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := experimentOp.BindPreparedRun("worker-finalize", experiment.NewFreshOrigin(), prepared); err != nil {
+		t.Fatal(err)
+	}
+	op, err := run.Open(binding.Root, binding.ExperimentID, "worker-finalize")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return binding, op
+}
 
 func TestWorkerPromptFreshRunContainsOnlySealedWorkerInput(t *testing.T) {
 	binding, _, _, launch := workerPromptFixture(t)

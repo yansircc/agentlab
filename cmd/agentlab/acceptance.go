@@ -8,6 +8,7 @@ import (
 	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/deployctlfixture"
 	"github.com/yansircc/agentlab/internal/metaaudit"
+	"github.com/yansircc/agentlab/internal/run"
 )
 
 // acceptanceCommand is Host-only orchestration. It is intentionally absent
@@ -15,7 +16,7 @@ import (
 // effects after this preflight has bound their Host inputs.
 func acceptanceCommand(args []string) (any, error) {
 	if len(args) == 0 {
-		return nil, errors.New("usage: agentlab acceptance <provision|preflight|supervisor-start|supervisor-status|prepare-baseline|prepare-run|verify-heldout|audit-status|audit-review|audit-finding|audit-intervened|audit-seal|recursive-gate>")
+		return nil, errors.New("usage: agentlab acceptance <provision|preflight|supervisor-start|supervisor-status|prepare-baseline|prepare-run|worker-oracle|verify-heldout|audit-status|audit-review|audit-finding|audit-intervened|audit-seal|recursive-gate>")
 	}
 	switch args[0] {
 	case "provision":
@@ -30,6 +31,8 @@ func acceptanceCommand(args []string) (any, error) {
 		return acceptancePrepareRun(args[1:])
 	case "prepare-baseline":
 		return acceptancePrepareBaseline(args[1:])
+	case "worker-oracle":
+		return acceptanceWorkerOracle(args[1:])
 	case "verify-heldout":
 		return acceptanceVerifyHeldout(args[1:])
 	case "audit-status":
@@ -285,6 +288,31 @@ func acceptancePrepareRun(args []string) (any, error) {
 	return acceptancePreparedRunProjection{RunID: request.RunID, Prepared: prepared}, nil
 }
 
+// acceptanceWorkerOracle is the Host-only producer invoked by the managed
+// Worker lifecycle. The run id selects no inputs: the immutable manifest and
+// Host-private runtime plan already bind every oracle observation.
+func acceptanceWorkerOracle(args []string) (any, error) {
+	set := flag.NewFlagSet("acceptance worker-oracle", flag.ContinueOnError)
+	set.SetOutput(os.Stderr)
+	hostRoot := set.String("host-root", "", "existing Host-private runtime root")
+	runID := set.String("run-id", "", "active Worker run id")
+	if err := set.Parse(args); err != nil {
+		return nil, err
+	}
+	if *hostRoot == "" || *runID == "" || set.NArg() != 0 {
+		return nil, errors.New("acceptance worker-oracle requires Host root and Worker run id")
+	}
+	preflight, err := deployctlfixture.LoadRuntimePreflight(*hostRoot)
+	if err != nil {
+		return nil, err
+	}
+	evidence, err := preflight.RecordWorkerOracle(*runID)
+	if err != nil {
+		return nil, err
+	}
+	return acceptanceWorkerOracleProjection{RunID: *runID, Evidence: evidence}, nil
+}
+
 func acceptanceProvision(args []string) (any, error) {
 	set := flag.NewFlagSet("acceptance provision", flag.ContinueOnError)
 	set.SetOutput(os.Stderr)
@@ -358,6 +386,11 @@ type acceptancePreflightProjection struct {
 type acceptancePreparedRunProjection struct {
 	RunID    string       `json:"run_id"`
 	Prepared artifact.Ref `json:"prepared"`
+}
+
+type acceptanceWorkerOracleProjection struct {
+	RunID    string          `json:"run_id"`
+	Evidence run.EvidenceRef `json:"evidence"`
 }
 
 type acceptanceHeldoutProjection struct {

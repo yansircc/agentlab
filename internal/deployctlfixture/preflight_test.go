@@ -163,7 +163,7 @@ func TestBindRuntimeBuildsAHostPrivateExactProfilePlan(t *testing.T) {
 	if err != nil || supervisor.Binding.Root != value.EvaluatedRoot || supervisor.Binding.PreparationID != value.PreparationID || supervisor.Binding.ExperimentID != value.ExperimentID || supervisor.Binding.RuntimePlanPath != filepath.Join(spec.HostRoot, "pi-runtime-plan.json") || supervisor.Identity != profile.Identity || supervisor.Launch.RuntimeRoot != filepath.Join(spec.HostRoot, "supervisor-runtime") || supervisor.SessionPath != filepath.Join(spec.HostRoot, "supervisor-runtime", "session.jsonl") {
 		t.Fatalf("Supervisor plan = %#v, %v", supervisor, err)
 	}
-	if profile.WorkerLaunch == nil {
+	if profile.WorkerLaunch == nil || profile.WorkerLaunch.HostOracle != tool.HostOracleDeployctl {
 		t.Fatal("baseline Worker profile omitted launch binding")
 	}
 	coderProfile, err := host.Profile("coder-repair")
@@ -243,8 +243,13 @@ func TestBindRuntimeBuildsAHostPrivateExactProfilePlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	candidateProfile, err := host.PreparedWorker(runtimeBinding.WorkerProfile)
-	if err != nil || candidateProfile.RunID != prepared.RunID || candidateProfile.WorkerLaunch.FixtureRoot == value.Fixture.Root() || candidateProfile.WorkerLaunch.CandidateExecutable != runtimeBinding.CandidateExecutable || candidateProfile.WorkerRuntime != prepared.Inputs.WorkerRuntime || candidateProfile.Forked != nil {
+	if err != nil || candidateProfile.RunID != prepared.RunID || candidateProfile.WorkerLaunch.FixtureRoot == value.Fixture.Root() || candidateProfile.WorkerLaunch.CandidateExecutable != runtimeBinding.CandidateExecutable || candidateProfile.WorkerLaunch.HostOracle != tool.HostOracleDeployctl || candidateProfile.WorkerRuntime != prepared.Inputs.WorkerRuntime || candidateProfile.Forked != nil {
 		t.Fatalf("candidate Host prepared runtime = %#v, %v", candidateProfile, err)
+	}
+	tamperedProfile := candidateProfile
+	tamperedProfile.WorkerLaunch.HostOracle = tool.HostOracleNone
+	if err := tool.AppendPiPreparedWorkerRuntime(value.runtimePlanPath, tamperedProfile); err == nil {
+		t.Fatal("candidate Worker runtime removed its Host oracle hook")
 	}
 	if _, err := host.Profile(runtimeBinding.WorkerProfile); err == nil {
 		t.Fatal("prepared Worker runtime was exposed as a fresh static profile")

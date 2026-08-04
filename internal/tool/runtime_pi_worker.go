@@ -16,15 +16,16 @@ import (
 // PiWorkerLaunch grants only the public fixture CLI to an owned Worker.
 // It deliberately has no shell or generic executable capability.
 type PiWorkerLaunch struct {
-	Launch              PiLaunch     `json:"launch"`
-	FixtureRoot         string       `json:"fixture_root"`
-	DeployctlExecutable string       `json:"deployctl_executable"`
-	CandidateExecutable artifact.Ref `json:"candidate_executable"`
-	WorkerInput         artifact.Ref `json:"worker_input"`
+	Launch              PiLaunch       `json:"launch"`
+	FixtureRoot         string         `json:"fixture_root"`
+	DeployctlExecutable string         `json:"deployctl_executable"`
+	CandidateExecutable artifact.Ref   `json:"candidate_executable"`
+	WorkerInput         artifact.Ref   `json:"worker_input"`
+	HostOracle          HostOracleKind `json:"host_oracle,omitempty"`
 }
 
 func (value PiWorkerLaunch) Validate() error {
-	if value.Launch.Validate() != nil || len(value.Launch.AllowedExecutables) != 0 || !filepath.IsAbs(value.FixtureRoot) || !filepath.IsAbs(value.DeployctlExecutable) || !value.CandidateExecutable.Valid() || !value.WorkerInput.Valid() || overlaps(value.FixtureRoot, value.Launch.RuntimeRoot) {
+	if value.Launch.Validate() != nil || len(value.Launch.AllowedExecutables) != 0 || !filepath.IsAbs(value.FixtureRoot) || !filepath.IsAbs(value.DeployctlExecutable) || !value.CandidateExecutable.Valid() || !value.WorkerInput.Valid() || !value.HostOracle.Valid() || overlaps(value.FixtureRoot, value.Launch.RuntimeRoot) {
 		return errors.New("worker launch is invalid")
 	}
 	for _, root := range value.Launch.ReadOnlyRoots {
@@ -40,8 +41,11 @@ func (value PiWorkerLaunch) clone() PiWorkerLaunch {
 	return value
 }
 
-func startPiWorker(binding Binding, operation *run.Operation, intent effect.Intent, profile PiRuntimeProfile) (any, error) {
+func startPiWorker(binding Binding, operation *run.Operation, intent effect.Intent, profile PiRuntimeProfile, hostOracle hostWorkerOracle) (any, error) {
 	launch := *profile.WorkerLaunch
+	if launch.HostOracle != HostOracleNone && hostOracle == nil {
+		return nil, errors.New("Host Worker oracle is unavailable")
+	}
 	prompt, err := workerPrompt(binding, intent.RunID, launch)
 	if err != nil || prepareWorkerRuntime(launch.Launch.RuntimeRoot, profile.SessionPath, profile.resumeExistingSession) != nil {
 		return nil, errors.New("worker runtime is invalid")
@@ -71,10 +75,27 @@ func startPiWorker(binding Binding, operation *run.Operation, intent effect.Inte
 	if err != nil {
 		return nil, err
 	}
-	return piadapter.BeginManagedEffect(operation, intent, session, profile.Policy, command, environment, sandbox.Workspace(), nil, func(int) error {
-		_, err := piadapter.Poll(operation, session)
-		return err
-	})
+	return piadapter.BeginManagedEffect(operation, intent, session, profile.Policy, command, environment, sandbox.Workspace(), nil, finalizePiWorker(operation, session, launch.HostOracle, intent.RunID, profile.Identity.AdapterDigest, hostOracle))
+}
+
+// finalizePiWorker records the complete public session before the Host takes
+// its objective fixture observation. The managed runner invokes this callback
+// before it writes the terminal event, so the Host evidence is the single
+// oracle fact for a successfully exited, non-stopped Worker run.
+func finalizePiWorker(operation *run.Operation, session string, kind HostOracleKind, runID, binaryDigest string, hostOracle hostWorkerOracle) func(int) error {
+	return func(code int) error {
+		polled, err := piadapter.Poll(operation, session)
+		if err != nil {
+			return err
+		}
+		if code != 0 || polled.Stopped || kind == HostOracleNone {
+			return nil
+		}
+		if hostOracle == nil {
+			return errors.New("Host Worker oracle is unavailable")
+		}
+		return hostOracle(kind, runID, binaryDigest)
+	}
 }
 
 func prepareWorkerRuntime(root, session string, resume bool) error {
