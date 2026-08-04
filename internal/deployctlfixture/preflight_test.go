@@ -184,6 +184,18 @@ func TestBindRuntimeBuildsAHostPrivateExactProfilePlan(t *testing.T) {
 	if err := VerifyBuild(store, runtimeBinding.CandidateExecutable, prepared.Inputs.Candidate, candidateProfile.WorkerLaunch.DeployctlExecutable); err != nil {
 		t.Fatalf("candidate executable differs from prepared snapshot: %v", err)
 	}
+	heldoutRef, err := value.VerifyHeldoutPreparedRun(preparedRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	heldoutData, err := store.Read(heldoutRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var heldout HeldoutVerification
+	if err := json.Unmarshal(heldoutData, &heldout); err != nil || heldout.Contract != heldoutVerificationContract || heldout.Prepared != preparedRef || heldout.Candidate != prepared.Inputs.Candidate || !heldout.TerminalSuccess || !heldout.Oracle.Pass() || heldout.Oracle.DefaultTargetReadCount != 0 {
+		t.Fatalf("held-out verification = %#v, %v", heldout, err)
+	}
 	audit, err := metaaudit.Open(value.AuditRoot, value.AuditID)
 	if err != nil || audit.MarkIntervened() != nil {
 		t.Fatalf("advance audit lifecycle: %v", err)

@@ -28,3 +28,12 @@ func TestCLIAcceptancePrepareRunRejectsRawCandidateInput(t *testing.T) {
 		t.Fatal("Host producer command accepted a raw candidate input")
 	}
 }
+
+func TestCLIAcceptanceHeldoutRejectsRawCandidateInput(t *testing.T) {
+	request := writeJSONFile(t, t.TempDir(), "heldout.json", map[string]any{
+		"prepared": map[string]any{}, "candidate": map[string]any{},
+	})
+	if _, err := dispatch([]string{"acceptance", "verify-heldout", "-host-root", t.TempDir(), "-request", request}); err == nil {
+		t.Fatal("held-out Host check accepted a raw candidate input")
+	}
+}

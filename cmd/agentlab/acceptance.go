@@ -14,7 +14,7 @@ import (
 // effects after this preflight has bound their Host inputs.
 func acceptanceCommand(args []string) (any, error) {
 	if len(args) == 0 {
-		return nil, errors.New("usage: agentlab acceptance <provision|preflight|prepare-run>")
+		return nil, errors.New("usage: agentlab acceptance <provision|preflight|prepare-run|verify-heldout>")
 	}
 	switch args[0] {
 	case "provision":
@@ -23,9 +23,41 @@ func acceptanceCommand(args []string) (any, error) {
 		return acceptancePreflight(args[1:])
 	case "prepare-run":
 		return acceptancePrepareRun(args[1:])
+	case "verify-heldout":
+		return acceptanceVerifyHeldout(args[1:])
 	default:
 		return nil, errors.New("unknown acceptance command")
 	}
+}
+
+type acceptanceVerifyHeldoutRequest struct {
+	Prepared artifact.Ref `json:"prepared"`
+}
+
+func acceptanceVerifyHeldout(args []string) (any, error) {
+	set := flag.NewFlagSet("acceptance verify-heldout", flag.ContinueOnError)
+	set.SetOutput(os.Stderr)
+	hostRoot := set.String("host-root", "", "existing Host-private runtime root")
+	requestPath := set.String("request", "-", "Host JSON request path or - for stdin")
+	if err := set.Parse(args); err != nil {
+		return nil, err
+	}
+	if *hostRoot == "" || set.NArg() != 0 {
+		return nil, errors.New("acceptance verify-heldout requires Host root and prepared run")
+	}
+	var request acceptanceVerifyHeldoutRequest
+	if err := readRequest(*requestPath, &request); err != nil {
+		return nil, err
+	}
+	preflight, err := deployctlfixture.LoadRuntimePreflight(*hostRoot)
+	if err != nil {
+		return nil, err
+	}
+	verification, err := preflight.VerifyHeldoutPreparedRun(request.Prepared)
+	if err != nil {
+		return nil, err
+	}
+	return acceptanceHeldoutProjection{Verification: verification}, nil
 }
 
 type acceptancePrepareRunRequest struct {
@@ -131,4 +163,8 @@ type acceptancePreflightProjection struct {
 type acceptancePreparedRunProjection struct {
 	RunID    string       `json:"run_id"`
 	Prepared artifact.Ref `json:"prepared"`
+}
+
+type acceptanceHeldoutProjection struct {
+	Verification artifact.Ref `json:"verification"`
 }
