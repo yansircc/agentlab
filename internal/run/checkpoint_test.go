@@ -46,7 +46,11 @@ func TestRuntimeCheckpointRemainsAdmissibleAfterDurableStop(t *testing.T) {
 	if _, err := op.RequestStopEffect(effect.Intent{ID: "stop", RunID: "checkpoint-after-stop", Kind: effect.Stop, Payload: ref}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := op.RecordRuntimeCheckpoint(RuntimeCheckpointSpec{Adapter: "test", Session: []byte("session"), OpaqueState: []byte("opaque"), PublicPrefix: []byte("public-prefix")}); err != nil {
+	checkpoint, err := op.RecordRuntimeCheckpoint(RuntimeCheckpointSpec{Adapter: "test", Session: []byte("session"), OpaqueState: []byte("opaque"), PublicPrefix: []byte("public-prefix")})
+	if err != nil {
 		t.Fatalf("checkpoint after durable stop: %v", err)
+	}
+	if owned, err := op.HasRuntimeCheckpoint(checkpoint.Checkpoint); err != nil || !owned {
+		t.Fatalf("replayed checkpoint after durable stop = %t, %v", owned, err)
 	}
 }

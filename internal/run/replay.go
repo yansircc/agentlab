@@ -101,7 +101,7 @@ func (s *replayState) apply(record ledger.Record) error {
 
 func (s *replayState) checkpoint(record ledger.Record) error {
 	var value runtimeCheckpointRecorded
-	if s.exit != nil || s.stopRequested || s.started == nil || s.started.Adapter == nil || json.Unmarshal(record.Data, &value) != nil || !validRef(value.Checkpoint) || !validRef(value.PublicPrefix) {
+	if s.exit != nil || s.started == nil || s.started.Adapter == nil || json.Unmarshal(record.Data, &value) != nil || !validRef(value.Checkpoint) || !validRef(value.PublicPrefix) {
 		return invalid(record, "invalid runtime checkpoint")
 	}
 	if _, exists := s.runtimeCheckpoints[value.Checkpoint]; exists {
