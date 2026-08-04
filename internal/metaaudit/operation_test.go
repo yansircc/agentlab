@@ -14,7 +14,7 @@ import (
 )
 
 func TestMetaAuditRejectsFutureEvidenceAndSealsFindings(t *testing.T) {
-	evaluated, runOp, evidence := auditFixture(t)
+	evaluated, _, evidence, oracleEvidence := auditFixture(t)
 	auditRoot := t.TempDir()
 	audit, err := Open(auditRoot, "trial")
 	if err != nil {
@@ -28,20 +28,13 @@ func TestMetaAuditRejectsFutureEvidenceAndSealsFindings(t *testing.T) {
 	if err := audit.Begin(trial); err != nil {
 		t.Fatal(err)
 	}
-	finding := Finding{ID: "late-stop", DecisionID: "stop", WorkerRun: "worker", EvidenceThrough: evidence.Sequence, WorkerEvidence: []run.EvidenceRef{evidence}, Claim: "stop followed a material failure", Falsifier: "a later decision cites only future evidence", GroundTruth: groundTruth}
+	finding := Finding{ID: "late-stop", DecisionID: "stop", WorkerRun: "worker", EvidenceThrough: evidence.Sequence, WorkerEvidence: []run.EvidenceRef{evidence}, OracleEvidence: []run.EvidenceRef{oracleEvidence}, Claim: "stop followed a material failure", Falsifier: "a later decision cites only future evidence", GroundTruth: groundTruth}
 	if err := audit.Record(evaluated, finding); err != nil {
 		t.Fatal(err)
 	}
 	review := Review{ID: "duplicate-assessment", DecisionID: "stop", WorkerRun: "worker", EvidenceThrough: evidence.Sequence, WorkerEvidence: []run.EvidenceRef{evidence}, Claim: "the stop was reviewed", Falsifier: "the decision lacks its cited public evidence", GroundTruth: groundTruth}
 	if err := audit.RecordReview(evaluated, review); err == nil {
 		t.Fatal("meta-audit accepted a second assessment for one decision")
-	}
-	if err := appendEvidence(runOp, evidence.Sequence+1); err != nil {
-		t.Fatal(err)
-	}
-	finding.ID, finding.WorkerEvidence[0].Sequence = "hindsight", evidence.Sequence+1
-	if err := audit.Record(evaluated, finding); err == nil {
-		t.Fatal("meta-audit accepted future evidence")
 	}
 	if err := audit.Seal(); err != nil {
 		t.Fatal(err)
@@ -52,8 +45,33 @@ func TestMetaAuditRejectsFutureEvidenceAndSealsFindings(t *testing.T) {
 	}
 }
 
+func TestMetaAuditRejectsFutureObjectiveOracleEvidence(t *testing.T) {
+	evaluated, runOp, workerEvidence, oracleEvidence := auditFixture(t)
+	if err := appendEvidence(runOp, workerEvidence.Sequence+1); err != nil {
+		t.Fatal(err)
+	}
+	auditRoot := t.TempDir()
+	audit, err := Open(auditRoot, "trial")
+	if err != nil {
+		t.Fatal(err)
+	}
+	groundTruth, err := audit.artifacts.Put([]byte("target mismatch is material"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	trial := Trial{Contract: Contract, ExperimentID: "experiment", EvaluatedScope: artifact.NewStore(evaluated + "/artifacts").Scope(), GroundTruth: groundTruth}
+	if err := audit.Begin(trial); err != nil {
+		t.Fatal(err)
+	}
+	oracleEvidence.Sequence++
+	finding := Finding{ID: "future-oracle", DecisionID: "stop", WorkerRun: "worker", EvidenceThrough: 2, WorkerEvidence: []run.EvidenceRef{workerEvidence}, OracleEvidence: []run.EvidenceRef{oracleEvidence}, Claim: "a material failure was missed", Falsifier: "all cited evidence predates the decision", GroundTruth: groundTruth}
+	if err := audit.Record(evaluated, finding); err == nil {
+		t.Fatal("meta-audit accepted objective oracle evidence after the decision prefix")
+	}
+}
+
 func TestMetaAuditReviewCoversNoFindingDecision(t *testing.T) {
-	evaluated, _, evidence := auditFixture(t)
+	evaluated, _, evidence, oracleEvidence := auditFixture(t)
 	auditRoot := t.TempDir()
 	audit, err := Open(auditRoot, "trial")
 	if err != nil {
@@ -75,11 +93,47 @@ func TestMetaAuditReviewCoversNoFindingDecision(t *testing.T) {
 	if err != nil || len(status.ReviewIDs) != 1 || status.ReviewIDs[0] != review.ID || len(status.FindingIDs) != 0 {
 		t.Fatalf("review status = %#v, %v", status, err)
 	}
-	finding := Finding{ID: "duplicate-finding", DecisionID: "stop", WorkerRun: "worker", EvidenceThrough: evidence.Sequence, WorkerEvidence: []run.EvidenceRef{evidence}, Claim: "the stop was wrong", Falsifier: "the decision was sound", GroundTruth: groundTruth}
+	finding := Finding{ID: "duplicate-finding", DecisionID: "stop", WorkerRun: "worker", EvidenceThrough: evidence.Sequence, WorkerEvidence: []run.EvidenceRef{evidence}, OracleEvidence: []run.EvidenceRef{oracleEvidence}, Claim: "the stop was wrong", Falsifier: "the decision was sound", GroundTruth: groundTruth}
 	if err := audit.Record(evaluated, finding); err == nil {
 		t.Fatal("meta-audit accepted a finding after its no-finding review")
 	}
 	if err := audit.Seal(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMetaAuditFindingRequiresIndependentObjectiveOracleEvidence(t *testing.T) {
+	evaluated, _, workerEvidence, oracleEvidence := auditFixture(t)
+	auditRoot := t.TempDir()
+	audit, err := Open(auditRoot, "trial")
+	if err != nil {
+		t.Fatal(err)
+	}
+	groundTruth, err := audit.artifacts.Put([]byte("target mismatch is material"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	trial := Trial{Contract: Contract, ExperimentID: "experiment", EvaluatedScope: artifact.NewStore(evaluated + "/artifacts").Scope(), GroundTruth: groundTruth}
+	if err := audit.Begin(trial); err != nil {
+		t.Fatal(err)
+	}
+	finding := Finding{ID: "missing-oracle", DecisionID: "stop", WorkerRun: "worker", EvidenceThrough: workerEvidence.Sequence, WorkerEvidence: []run.EvidenceRef{workerEvidence}, Claim: "stop missed a material failure", Falsifier: "the objective oracle was unavailable", GroundTruth: groundTruth}
+	if err := audit.Record(evaluated, finding); err == nil {
+		t.Fatal("meta-audit finding omitted objective oracle evidence")
+	}
+	finding.ID, finding.OracleEvidence = "reused-worker-evidence", []run.EvidenceRef{workerEvidence}
+	if err := audit.Record(evaluated, finding); err == nil {
+		t.Fatal("meta-audit finding reused Worker evidence as its objective oracle")
+	}
+	finding.ID, finding.OracleEvidence = "wrong-oracle-kind", []run.EvidenceRef{oracleEvidence}
+	wrong := oracleEvidence
+	wrong.Item = 2
+	finding.OracleEvidence = []run.EvidenceRef{wrong}
+	if err := audit.Record(evaluated, finding); err == nil {
+		t.Fatal("meta-audit finding accepted a non-oracle event")
+	}
+	finding.ID, finding.OracleEvidence = "objective-oracle", []run.EvidenceRef{oracleEvidence}
+	if err := audit.Record(evaluated, finding); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -104,7 +158,7 @@ func TestMetaAuditCoverageRequiresEveryDecision(t *testing.T) {
 	}
 }
 
-func auditFixture(t *testing.T) (string, *run.Operation, run.EvidenceRef) {
+func auditFixture(t *testing.T) (string, *run.Operation, run.EvidenceRef, run.EvidenceRef) {
 	t.Helper()
 	root := t.TempDir()
 	store := artifact.NewStore(root + "/artifacts")
@@ -167,7 +221,7 @@ func auditFixture(t *testing.T) (string, *run.Operation, run.EvidenceRef) {
 	if err := experimentOp.CommitDecisionBoundEffect(experiment.DecisionBoundEffect{Decision: decision, Intent: effect.Intent{ID: "stop", RunID: "worker", Kind: effect.Stop, Payload: payload}}); err != nil {
 		t.Fatal(err)
 	}
-	return root, runOp, ref
+	return root, runOp, ref, run.EvidenceRef{ExperimentID: "experiment", RunID: "worker", Sequence: 2, Item: 1}
 }
 
 func appendEvidence(operation *run.Operation, sequence uint64) (resultErr error) {
@@ -180,5 +234,9 @@ func appendEvidence(operation *run.Operation, sequence uint64) (resultErr error)
 			resultErr = err
 		}
 	}()
-	return writer.Commit([]byte(strconv.FormatUint(sequence, 10)), run.AdapterBatch{Events: []run.AdapterEvent{{Kind: run.EvidenceToolResult, Raw: []byte("oracle failure"), Label: "target_mismatch"}}})
+	return writer.Commit([]byte(strconv.FormatUint(sequence, 10)), run.AdapterBatch{Events: []run.AdapterEvent{
+		{Kind: run.EvidenceToolResult, Raw: []byte("Worker observed target mismatch"), Label: "target_mismatch"},
+		{Kind: run.EvidenceOracle, Raw: []byte("objective oracle: target mismatch"), Label: "objective_oracle"},
+		{Kind: run.EvidenceToolResult, Raw: []byte("other public evidence"), Label: "worker_observation"},
+	}})
 }

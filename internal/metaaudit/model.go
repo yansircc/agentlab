@@ -10,7 +10,7 @@ import (
 	"github.com/yansircc/agentlab/internal/run"
 )
 
-const Contract = "agentlab.meta-audit.v1"
+const Contract = "agentlab.meta-audit.v2"
 
 var idPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 
@@ -27,6 +27,7 @@ type Finding struct {
 	WorkerRun       string            `json:"worker_run"`
 	EvidenceThrough uint64            `json:"evidence_through"`
 	WorkerEvidence  []run.EvidenceRef `json:"worker_evidence"`
+	OracleEvidence  []run.EvidenceRef `json:"oracle_evidence"`
 	Claim           string            `json:"claim"`
 	Falsifier       string            `json:"falsifier"`
 	GroundTruth     artifact.Ref      `json:"ground_truth"`
@@ -54,13 +55,19 @@ func (value Trial) Validate() error {
 }
 
 func (value Finding) Validate() error {
-	if !idPattern.MatchString(value.ID) || !idPattern.MatchString(value.DecisionID) || !idPattern.MatchString(value.WorkerRun) || value.EvidenceThrough == 0 || len(value.WorkerEvidence) == 0 || len(value.WorkerEvidence) > 100 || value.Claim == "" || len(value.Claim) > 4096 || value.Falsifier == "" || len(value.Falsifier) > 4096 || !value.GroundTruth.Valid() {
+	if !idPattern.MatchString(value.ID) || !idPattern.MatchString(value.DecisionID) || !idPattern.MatchString(value.WorkerRun) || value.EvidenceThrough == 0 || len(value.WorkerEvidence) == 0 || len(value.WorkerEvidence) > 100 || len(value.OracleEvidence) == 0 || len(value.OracleEvidence) > 100 || value.Claim == "" || len(value.Claim) > 4096 || value.Falsifier == "" || len(value.Falsifier) > 4096 || !value.GroundTruth.Valid() {
 		return errors.New("meta-audit finding is invalid")
 	}
 	seen := map[run.EvidenceRef]bool{}
 	for _, ref := range value.WorkerEvidence {
 		if ref.ExperimentID == "" || ref.RunID == "" || ref.Sequence == 0 || ref.Item < 0 || seen[ref] {
 			return errors.New("meta-audit evidence is invalid")
+		}
+		seen[ref] = true
+	}
+	for _, ref := range value.OracleEvidence {
+		if ref.ExperimentID == "" || ref.RunID == "" || ref.Sequence == 0 || ref.Item < 0 || seen[ref] {
+			return errors.New("meta-audit oracle evidence is invalid")
 		}
 		seen[ref] = true
 	}

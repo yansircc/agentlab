@@ -110,7 +110,10 @@ func verifyFinding(root string, trial Trial, value Finding) error {
 	if value.EvidenceThrough == 0 || len(value.WorkerEvidence) == 0 {
 		return errors.New("meta-audit evaluated root is invalid")
 	}
-	return verifyAssessment(root, trial, value.DecisionID, value.WorkerRun, value.EvidenceThrough, value.WorkerEvidence)
+	if err := verifyAssessment(root, trial, value.DecisionID, value.WorkerRun, value.EvidenceThrough, value.WorkerEvidence); err != nil {
+		return err
+	}
+	return verifyOracleEvidence(root, trial, value.WorkerRun, value.EvidenceThrough, value.OracleEvidence)
 }
 
 func verifyReview(root string, trial Trial, value Review) error {
@@ -145,6 +148,26 @@ func verifyAssessment(root string, trial Trial, decisionID, workerRun string, ev
 		}
 		if _, err := runOp.EvidenceAt(ref); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+func verifyOracleEvidence(root string, trial Trial, workerRun string, evidenceThrough uint64, evidence []run.EvidenceRef) error {
+	if len(evidence) == 0 {
+		return errors.New("meta-audit objective oracle evidence is absent")
+	}
+	runOp, err := run.Open(root, trial.ExperimentID, workerRun)
+	if err != nil {
+		return err
+	}
+	for _, ref := range evidence {
+		if ref.ExperimentID != trial.ExperimentID || ref.RunID != workerRun || ref.Sequence > evidenceThrough {
+			return errors.New("meta-audit oracle evidence uses another run or future evidence")
+		}
+		item, err := runOp.EvidenceAt(ref)
+		if err != nil || item.Kind != run.EvidenceOracle {
+			return errors.New("meta-audit objective oracle evidence is invalid")
 		}
 	}
 	return nil
