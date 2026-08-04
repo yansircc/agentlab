@@ -15,6 +15,7 @@ import (
 const (
 	eventBegun       = "meta_trial_begun"
 	eventFinding     = "meta_finding_recorded"
+	eventReview      = "meta_decision_reviewed"
 	eventIntervened  = "meta_intervened"
 	eventTrialSealed = "meta_trial_sealed"
 )
@@ -59,13 +60,31 @@ func (o *Operation) Record(evaluatedRoot string, value Finding) error {
 	if err != nil || state.trial == nil || state.sealed || value.Validate() != nil || value.GroundTruth != state.trial.GroundTruth {
 		return errors.New("meta-audit finding is invalid")
 	}
-	if state.findings[value.ID].ID != "" || artifact.NewStore(filepath.Join(evaluatedRoot, "artifacts")).Scope() != state.trial.EvaluatedScope {
+	if state.findings[value.ID].ID != "" || state.assesses(value.DecisionID) || artifact.NewStore(filepath.Join(evaluatedRoot, "artifacts")).Scope() != state.trial.EvaluatedScope {
 		return errors.New("meta-audit finding crosses capability roots")
 	}
 	if err := verifyFinding(evaluatedRoot, *state.trial, value); err != nil {
 		return err
 	}
 	_, err = o.ledger.Append(time.Now().UTC(), eventFinding, value)
+	return err
+}
+
+// RecordReview records a no-finding Codex assessment. Like a Finding, it is
+// evaluated-root read-only and can cite no evidence only for the one sealed
+// FreshOrigin bootstrap start decision.
+func (o *Operation) RecordReview(evaluatedRoot string, value Review) error {
+	state, err := o.current()
+	if err != nil || state.trial == nil || state.sealed || value.Validate() != nil || value.GroundTruth != state.trial.GroundTruth {
+		return errors.New("meta-audit review is invalid")
+	}
+	if state.reviews[value.ID].ID != "" || state.assesses(value.DecisionID) || artifact.NewStore(filepath.Join(evaluatedRoot, "artifacts")).Scope() != state.trial.EvaluatedScope {
+		return errors.New("meta-audit review crosses capability roots")
+	}
+	if err := verifyReview(evaluatedRoot, *state.trial, value); err != nil {
+		return err
+	}
+	_, err = o.ledger.Append(time.Now().UTC(), eventReview, value)
 	return err
 }
 
@@ -88,22 +107,39 @@ func (o *Operation) Seal() error {
 }
 
 func verifyFinding(root string, trial Trial, value Finding) error {
-	if !filepath.IsAbs(root) || value.WorkerRun == "" || value.EvidenceThrough == 0 {
+	if value.EvidenceThrough == 0 || len(value.WorkerEvidence) == 0 {
+		return errors.New("meta-audit evaluated root is invalid")
+	}
+	return verifyAssessment(root, trial, value.DecisionID, value.WorkerRun, value.EvidenceThrough, value.WorkerEvidence)
+}
+
+func verifyReview(root string, trial Trial, value Review) error {
+	return verifyAssessment(root, trial, value.DecisionID, value.WorkerRun, value.EvidenceThrough, value.WorkerEvidence)
+}
+
+func verifyAssessment(root string, trial Trial, decisionID, workerRun string, evidenceThrough uint64, evidence []run.EvidenceRef) error {
+	if !filepath.IsAbs(root) || workerRun == "" {
 		return errors.New("meta-audit evaluated root is invalid")
 	}
 	experimentOp, err := experiment.Open(root, trial.ExperimentID)
 	if err != nil {
 		return err
 	}
-	decision, err := experimentOp.SupervisorDecision(value.DecisionID)
-	if err != nil || decision.WorkerRun != value.WorkerRun || decision.EvidenceThrough != value.EvidenceThrough {
+	decision, err := experimentOp.SupervisorDecision(decisionID)
+	if err != nil || decision.WorkerRun != workerRun || decision.EvidenceThrough != evidenceThrough {
 		return errors.New("meta-audit decision does not match evidence prefix")
 	}
-	for _, ref := range value.WorkerEvidence {
-		if ref.ExperimentID != trial.ExperimentID || ref.RunID != value.WorkerRun || ref.Sequence > value.EvidenceThrough {
+	if evidenceThrough == 0 {
+		if decision.Action != experiment.DecisionWorkerStart || len(decision.Evidence) != 0 || len(evidence) != 0 {
+			return errors.New("meta-audit bootstrap review is invalid")
+		}
+		return nil
+	}
+	for _, ref := range evidence {
+		if ref.ExperimentID != trial.ExperimentID || ref.RunID != workerRun || ref.Sequence > evidenceThrough {
 			return errors.New("meta-audit finding uses hindsight evidence")
 		}
-		runOp, err := run.Open(root, trial.ExperimentID, value.WorkerRun)
+		runOp, err := run.Open(root, trial.ExperimentID, workerRun)
 		if err != nil {
 			return err
 		}

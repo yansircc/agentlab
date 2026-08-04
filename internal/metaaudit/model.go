@@ -32,6 +32,20 @@ type Finding struct {
 	GroundTruth     artifact.Ref      `json:"ground_truth"`
 }
 
+// Review records Codex's no-finding assessment of exactly one Supervisor
+// decision. It is separate from Finding so a sealed empty finding set cannot
+// masquerade as complete Meta-audit coverage.
+type Review struct {
+	ID              string            `json:"id"`
+	DecisionID      string            `json:"decision_id"`
+	WorkerRun       string            `json:"worker_run"`
+	EvidenceThrough uint64            `json:"evidence_through"`
+	WorkerEvidence  []run.EvidenceRef `json:"worker_evidence"`
+	Claim           string            `json:"claim"`
+	Falsifier       string            `json:"falsifier"`
+	GroundTruth     artifact.Ref      `json:"ground_truth"`
+}
+
 func (value Trial) Validate() error {
 	if value.Contract != Contract || !idPattern.MatchString(value.ExperimentID) || !digest(value.EvaluatedScope) || !value.GroundTruth.Valid() {
 		return errors.New("meta-audit trial is invalid")
@@ -47,6 +61,29 @@ func (value Finding) Validate() error {
 	for _, ref := range value.WorkerEvidence {
 		if ref.ExperimentID == "" || ref.RunID == "" || ref.Sequence == 0 || ref.Item < 0 || seen[ref] {
 			return errors.New("meta-audit evidence is invalid")
+		}
+		seen[ref] = true
+	}
+	return nil
+}
+
+func (value Review) Validate() error {
+	if !idPattern.MatchString(value.ID) || !idPattern.MatchString(value.DecisionID) || !idPattern.MatchString(value.WorkerRun) || len(value.WorkerEvidence) > 100 || value.Claim == "" || len(value.Claim) > 4096 || value.Falsifier == "" || len(value.Falsifier) > 4096 || !value.GroundTruth.Valid() {
+		return errors.New("meta-audit review is invalid")
+	}
+	if value.EvidenceThrough == 0 {
+		if len(value.WorkerEvidence) != 0 {
+			return errors.New("meta-audit bootstrap review has evidence")
+		}
+		return nil
+	}
+	if len(value.WorkerEvidence) == 0 {
+		return errors.New("meta-audit review evidence is absent")
+	}
+	seen := map[run.EvidenceRef]bool{}
+	for _, ref := range value.WorkerEvidence {
+		if ref.ExperimentID == "" || ref.RunID == "" || ref.Sequence == 0 || ref.Item < 0 || seen[ref] {
+			return errors.New("meta-audit review evidence is invalid")
 		}
 		seen[ref] = true
 	}

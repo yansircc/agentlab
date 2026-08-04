@@ -37,6 +37,14 @@ func Evaluate(evaluatedRoot, auditRoot string, spec RecursiveSpec) (RecursiveRes
 			return RecursiveResult{Verdict: gate.Block}, nil
 		}
 	}
+	if !state.clean() {
+		return RecursiveResult{Verdict: gate.Block}, nil
+	}
+	for _, review := range state.reviews {
+		if err := verifyReview(evaluatedRoot, *state.trial, review); err != nil {
+			return RecursiveResult{Verdict: gate.Block}, nil
+		}
+	}
 	experimentOp, err := experiment.Open(evaluatedRoot, spec.ExperimentID)
 	if err != nil {
 		return RecursiveResult{}, err
@@ -50,6 +58,13 @@ func Evaluate(evaluatedRoot, auditRoot string, spec RecursiveSpec) (RecursiveRes
 		return RecursiveResult{Verdict: gate.Block}, nil
 	}
 	if _, err := experimentOp.GateDecision(spec.GateID); err != nil {
+		return RecursiveResult{Verdict: gate.Block}, nil
+	}
+	status, err := experimentOp.Status()
+	if err != nil {
+		return RecursiveResult{}, err
+	}
+	if !state.covers(status.DecisionIDs) {
 		return RecursiveResult{Verdict: gate.Block}, nil
 	}
 	return RecursiveResult{Verdict: gate.Pass}, nil

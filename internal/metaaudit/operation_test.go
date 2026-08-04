@@ -32,6 +32,10 @@ func TestMetaAuditRejectsFutureEvidenceAndSealsFindings(t *testing.T) {
 	if err := audit.Record(evaluated, finding); err != nil {
 		t.Fatal(err)
 	}
+	review := Review{ID: "duplicate-assessment", DecisionID: "stop", WorkerRun: "worker", EvidenceThrough: evidence.Sequence, WorkerEvidence: []run.EvidenceRef{evidence}, Claim: "the stop was reviewed", Falsifier: "the decision lacks its cited public evidence", GroundTruth: groundTruth}
+	if err := audit.RecordReview(evaluated, review); err == nil {
+		t.Fatal("meta-audit accepted a second assessment for one decision")
+	}
 	if err := appendEvidence(runOp, evidence.Sequence+1); err != nil {
 		t.Fatal(err)
 	}
@@ -45,6 +49,58 @@ func TestMetaAuditRejectsFutureEvidenceAndSealsFindings(t *testing.T) {
 	finding.ID = "after-seal"
 	if err := audit.Record(evaluated, finding); err == nil {
 		t.Fatal("meta-audit accepted a post-seal finding")
+	}
+}
+
+func TestMetaAuditReviewCoversNoFindingDecision(t *testing.T) {
+	evaluated, _, evidence := auditFixture(t)
+	auditRoot := t.TempDir()
+	audit, err := Open(auditRoot, "trial")
+	if err != nil {
+		t.Fatal(err)
+	}
+	groundTruth, err := audit.artifacts.Put([]byte("target mismatch is material"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	trial := Trial{Contract: Contract, ExperimentID: "experiment", EvaluatedScope: artifact.NewStore(evaluated + "/artifacts").Scope(), GroundTruth: groundTruth}
+	if err := audit.Begin(trial); err != nil {
+		t.Fatal(err)
+	}
+	review := Review{ID: "stop-reviewed", DecisionID: "stop", WorkerRun: "worker", EvidenceThrough: evidence.Sequence, WorkerEvidence: []run.EvidenceRef{evidence}, Claim: "the stop was supported by the cited prefix", Falsifier: "a cited event is absent or newer than the decision", GroundTruth: groundTruth}
+	if err := audit.RecordReview(evaluated, review); err != nil {
+		t.Fatal(err)
+	}
+	status, err := audit.Status()
+	if err != nil || len(status.ReviewIDs) != 1 || status.ReviewIDs[0] != review.ID || len(status.FindingIDs) != 0 {
+		t.Fatalf("review status = %#v, %v", status, err)
+	}
+	finding := Finding{ID: "duplicate-finding", DecisionID: "stop", WorkerRun: "worker", EvidenceThrough: evidence.Sequence, WorkerEvidence: []run.EvidenceRef{evidence}, Claim: "the stop was wrong", Falsifier: "the decision was sound", GroundTruth: groundTruth}
+	if err := audit.Record(evaluated, finding); err == nil {
+		t.Fatal("meta-audit accepted a finding after its no-finding review")
+	}
+	if err := audit.Seal(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMetaAuditCoverageRequiresEveryDecision(t *testing.T) {
+	auditState := state{
+		findings: map[string]Finding{"finding": {ID: "finding", DecisionID: "stop"}},
+		reviews:  map[string]Review{"review": {ID: "review", DecisionID: "gate"}},
+	}
+	if !auditState.covers([]string{"stop", "gate"}) {
+		t.Fatal("finding and review did not cover their decisions")
+	}
+	if auditState.covers([]string{"stop", "checkpoint"}) {
+		t.Fatal("missing decision assessment was accepted")
+	}
+	if auditState.clean() {
+		t.Fatal("adverse meta finding was treated as a clean audit")
+	}
+	auditState = state{reviews: map[string]Review{"review": {ID: "review", DecisionID: "gate"}}}
+	if !auditState.clean() {
+		t.Fatal("no-finding review was treated as an adverse finding")
 	}
 }
 

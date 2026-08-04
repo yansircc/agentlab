@@ -10,12 +10,13 @@ import (
 type state struct {
 	trial      *Trial
 	findings   map[string]Finding
+	reviews    map[string]Review
 	intervened bool
 	sealed     bool
 }
 
 func (o *Operation) current() (state, error) {
-	result := state{findings: map[string]Finding{}}
+	result := state{findings: map[string]Finding{}, reviews: map[string]Review{}}
 	err := o.ledger.Visit(func(record ledger.Record) error {
 		if result.sealed {
 			return errors.New("meta-audit event after seal")
@@ -29,10 +30,16 @@ func (o *Operation) current() (state, error) {
 			result.trial = &value
 		case eventFinding:
 			var value Finding
-			if result.trial == nil || decode(record.Data, &value) != nil || value.Validate() != nil || value.GroundTruth != result.trial.GroundTruth || result.findings[value.ID].ID != "" {
+			if result.trial == nil || decode(record.Data, &value) != nil || value.Validate() != nil || value.GroundTruth != result.trial.GroundTruth || result.findings[value.ID].ID != "" || result.assesses(value.DecisionID) {
 				return errors.New("meta-audit finding event is invalid")
 			}
 			result.findings[value.ID] = value
+		case eventReview:
+			var value Review
+			if result.trial == nil || decode(record.Data, &value) != nil || value.Validate() != nil || value.GroundTruth != result.trial.GroundTruth || result.reviews[value.ID].ID != "" || result.assesses(value.DecisionID) {
+				return errors.New("meta-audit review event is invalid")
+			}
+			result.reviews[value.ID] = value
 		case eventIntervened:
 			if result.trial == nil || result.intervened || len(record.Data) != 2 || string(record.Data) != "{}" {
 				return errors.New("meta-audit intervention event is invalid")
@@ -54,6 +61,7 @@ func (o *Operation) current() (state, error) {
 type Status struct {
 	Trial      Trial    `json:"trial"`
 	FindingIDs []string `json:"finding_ids"`
+	ReviewIDs  []string `json:"review_ids"`
 	Intervened bool     `json:"intervened"`
 	Sealed     bool     `json:"sealed"`
 }
@@ -67,6 +75,35 @@ func (o *Operation) Status() (Status, error) {
 	for id := range state.findings {
 		result.FindingIDs = append(result.FindingIDs, id)
 	}
+	for id := range state.reviews {
+		result.ReviewIDs = append(result.ReviewIDs, id)
+	}
 	sort.Strings(result.FindingIDs)
+	sort.Strings(result.ReviewIDs)
 	return result, nil
 }
+
+func (s state) assesses(decisionID string) bool {
+	for _, value := range s.findings {
+		if value.DecisionID == decisionID {
+			return true
+		}
+	}
+	for _, value := range s.reviews {
+		if value.DecisionID == decisionID {
+			return true
+		}
+	}
+	return false
+}
+
+func (s state) covers(decisionIDs []string) bool {
+	for _, id := range decisionIDs {
+		if !s.assesses(id) {
+			return false
+		}
+	}
+	return true
+}
+
+func (s state) clean() bool { return len(s.findings) == 0 }
