@@ -150,6 +150,17 @@ func TestBindRuntimeBuildsAHostPrivateExactProfilePlan(t *testing.T) {
 	if _, err := value.PrepareRunFromCoderCompletion("candidate-wrong", wrongCompletion); err == nil {
 		t.Fatal("Host producer accepted a non-terminal Coder completion")
 	}
+	baselinePreparedRef, err := value.PrepareBaselineRun("baseline-repeat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	baselinePrepared, err := experiment.LoadPreparedRun(store, baselinePreparedRef)
+	if err != nil || baselinePrepared.RunID != "baseline-repeat" || baselinePrepared.Inputs.Candidate != value.Candidate || baselinePrepared.Inputs.WorkerRuntime == value.Inputs.WorkerRuntime || baselinePrepared.Inputs.Harness != value.Inputs.Harness || baselinePrepared.Inputs.Trial != value.Inputs.Trial || baselinePrepared.Inputs.Adapter != value.LiveCanary || baselinePrepared.Inputs.OracleSet != value.Inputs.OracleSet || baselinePrepared.Inputs.Fixture != value.Inputs.Fixture || baselinePrepared.Inputs.EvidencePolicy != value.Inputs.EvidencePolicy || baselinePrepared.Inputs.StopPolicy != value.Inputs.StopPolicy || baselinePrepared.Inputs.Environment != value.Inputs.Environment {
+		t.Fatalf("baseline repetition inputs = %#v, %v", baselinePrepared, err)
+	}
+	if _, err := value.PrepareBaselineRun("baseline-repeat"); err == nil {
+		t.Fatal("Host producer rebound a baseline repetition")
+	}
 	preparedRef, err := value.PrepareRunFromCoderCompletion("candidate-worker", completion)
 	if err != nil {
 		t.Fatal(err)

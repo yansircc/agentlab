@@ -53,7 +53,7 @@ agentlab compare record|show
 agentlab gate record|show
 agentlab inspect
 agentlab tool schemas|invoke
-agentlab acceptance provision|preflight
+agentlab acceptance provision|preflight|prepare-baseline|prepare-run|verify-heldout
 ```
 
 Mutation commands accept strict JSON requests. Secrets are referenced by environment-variable handles, never accepted as CLI values, and resolved values are redacted before evidence persistence.
@@ -104,6 +104,15 @@ AdapterIdentity ref; tokens, session paths, and model output are deleted.
 Pi 0.83.0's CLI cannot bind a non-off compaction policy, so preflight rejects
 one rather than claiming it tested a different configuration. This establishes
 only the Stage 0 context-semantic gate, not a Stage 1–7 acceptance result.
+
+After preflight, the Host may issue an additional clean baseline repetition
+with `acceptance prepare-baseline`, or a repaired-candidate run from an exact
+terminal Coder completion with `acceptance prepare-run`. Both requests accept
+only an opaque Host-owned reference (and a new run id); they never accept raw
+candidate bytes or individual manifest inputs. Each isolated run receives its
+own Host profile and executable receipt. `acceptance verify-heldout` creates a
+post-seal target and records objective oracle evidence only; it is not a
+Worker trial or autonomous-acceptance claim.
 
 ## Contributing and security
 

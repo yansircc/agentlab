@@ -14,7 +14,7 @@ import (
 // effects after this preflight has bound their Host inputs.
 func acceptanceCommand(args []string) (any, error) {
 	if len(args) == 0 {
-		return nil, errors.New("usage: agentlab acceptance <provision|preflight|prepare-run|verify-heldout>")
+		return nil, errors.New("usage: agentlab acceptance <provision|preflight|prepare-baseline|prepare-run|verify-heldout>")
 	}
 	switch args[0] {
 	case "provision":
@@ -23,6 +23,8 @@ func acceptanceCommand(args []string) (any, error) {
 		return acceptancePreflight(args[1:])
 	case "prepare-run":
 		return acceptancePrepareRun(args[1:])
+	case "prepare-baseline":
+		return acceptancePrepareBaseline(args[1:])
 	case "verify-heldout":
 		return acceptanceVerifyHeldout(args[1:])
 	default:
@@ -63,6 +65,38 @@ func acceptanceVerifyHeldout(args []string) (any, error) {
 type acceptancePrepareRunRequest struct {
 	RunID      string       `json:"run_id"`
 	Completion artifact.Ref `json:"completion"`
+}
+
+type acceptancePrepareBaselineRequest struct {
+	RunID string `json:"run_id"`
+}
+
+// acceptancePrepareBaseline is Host-only repetition setup. The request names
+// a future run but cannot select a candidate or any manifest input.
+func acceptancePrepareBaseline(args []string) (any, error) {
+	set := flag.NewFlagSet("acceptance prepare-baseline", flag.ContinueOnError)
+	set.SetOutput(os.Stderr)
+	hostRoot := set.String("host-root", "", "existing Host-private runtime root")
+	requestPath := set.String("request", "-", "Host JSON request path or - for stdin")
+	if err := set.Parse(args); err != nil {
+		return nil, err
+	}
+	if *hostRoot == "" || set.NArg() != 0 {
+		return nil, errors.New("acceptance prepare-baseline requires Host root and run id")
+	}
+	var request acceptancePrepareBaselineRequest
+	if err := readRequest(*requestPath, &request); err != nil {
+		return nil, err
+	}
+	preflight, err := deployctlfixture.LoadRuntimePreflight(*hostRoot)
+	if err != nil {
+		return nil, err
+	}
+	prepared, err := preflight.PrepareBaselineRun(request.RunID)
+	if err != nil {
+		return nil, err
+	}
+	return acceptancePreparedRunProjection{RunID: request.RunID, Prepared: prepared}, nil
 }
 
 // acceptancePrepareRun is Host-only continuation after a terminal Coder run.

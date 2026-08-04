@@ -29,6 +29,15 @@ func TestCLIAcceptancePrepareRunRejectsRawCandidateInput(t *testing.T) {
 	}
 }
 
+func TestCLIAcceptancePrepareBaselineRejectsRawCandidateInput(t *testing.T) {
+	request := writeJSONFile(t, t.TempDir(), "prepare-baseline.json", map[string]any{
+		"run_id": "baseline-repeat", "candidate": map[string]any{},
+	})
+	if _, err := dispatch([]string{"acceptance", "prepare-baseline", "-host-root", t.TempDir(), "-request", request}); err == nil {
+		t.Fatal("baseline Host producer accepted a raw candidate input")
+	}
+}
+
 func TestCLIAcceptanceHeldoutRejectsRawCandidateInput(t *testing.T) {
 	request := writeJSONFile(t, t.TempDir(), "heldout.json", map[string]any{
 		"prepared": map[string]any{}, "candidate": map[string]any{},

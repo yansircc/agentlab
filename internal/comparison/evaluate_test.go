@@ -89,7 +89,6 @@ func TestEveryControlledInputChangeInvalidatesComparison(t *testing.T) {
 		"fixture baseline": func(value *RunIdentity) { value.FixtureBaseline = testRef("changed-baseline") },
 		"evidence policy":  func(value *RunIdentity) { value.EvidencePolicy = testRef("changed-evidence") },
 		"stop policy":      func(value *RunIdentity) { value.StopPolicy = testRef("changed-stop") },
-		"worker runtime":   func(value *RunIdentity) { value.WorkerRuntime = testRef("changed-runtime") },
 		"environment":      func(value *RunIdentity) { value.Environment = testRef("changed-environment") },
 	}
 	for name, mutate := range mutations {
@@ -104,6 +103,20 @@ func TestEveryControlledInputChangeInvalidatesComparison(t *testing.T) {
 				t.Fatalf("controlled input mutation = %#v, %v", result, err)
 			}
 		})
+	}
+}
+
+func TestComparisonAllowsHostBoundRuntimeForEachIsolatedRun(t *testing.T) {
+	candidate := testRef("c")
+	manifests := testManifests(candidate)
+	for _, id := range []string{"b1", "b2", "c1", "c2"} {
+		value := manifests[id]
+		value.WorkerRuntime = testRef("runtime-" + id)
+		manifests[id] = value
+	}
+	result, err := Evaluate(testObservation(), manifests, candidate)
+	if err != nil || result.Verdict != SupportedImprovement {
+		t.Fatalf("candidate-bound runtimes = %#v, %v", result, err)
 	}
 }
 

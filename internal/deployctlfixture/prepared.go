@@ -15,12 +15,34 @@ import (
 
 var preparedRunID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 
+// PrepareBaselineRun is the Host producer for an additional clean baseline
+// repetition. It has no caller-supplied candidate: the baseline candidate is
+// recovered from the Host-verified preflight and bound into one complete
+// PreparedRun with its own fixture, executable, and runtime profile.
+func (value Preflight) PrepareBaselineRun(runID string) (artifact.Ref, error) {
+	return value.prepareFreshRun(runID, value.Candidate)
+}
+
 // PrepareRunFromCoderCompletion is the Host producer for a future Worker
 // manifest. It derives the candidate solely from the exact terminal Coder
 // completion, then issues one complete PreparedRun artifact. It never accepts
 // provider-supplied RunInputs or candidate refs.
 func (value Preflight) PrepareRunFromCoderCompletion(runID string, completionRef artifact.Ref) (artifact.Ref, error) {
-	if !preparedRunID.MatchString(runID) || runID == baselineRunID || runID == coderRunID || !completionRef.Valid() {
+	if !completionRef.Valid() {
+		return artifact.Ref{}, errors.New("deployctl prepared run request is invalid")
+	}
+	completion, err := value.terminalCoderCompletion(completionRef)
+	if err != nil {
+		return artifact.Ref{}, err
+	}
+	return value.prepareFreshRun(runID, completion.Candidate)
+}
+
+// prepareFreshRun owns all changeable run inputs. Its candidate is reachable
+// only from a Host-verified preflight baseline or terminal Coder completion;
+// the provider boundary never supplies it or any individual RunInputs field.
+func (value Preflight) prepareFreshRun(runID string, candidate artifact.Ref) (artifact.Ref, error) {
+	if !preparedRunID.MatchString(runID) || runID == baselineRunID || runID == coderRunID || !candidate.Valid() {
 		return artifact.Ref{}, errors.New("deployctl prepared run request is invalid")
 	}
 	if err := value.verifyRuntime(); err != nil {
@@ -32,10 +54,6 @@ func (value Preflight) PrepareRunFromCoderCompletion(runID string, completionRef
 	}
 	defer lease.Release()
 
-	completion, err := value.terminalCoderCompletion(completionRef)
-	if err != nil {
-		return artifact.Ref{}, err
-	}
 	op, err := experiment.Open(value.EvaluatedRoot, value.ExperimentID)
 	if err != nil {
 		return artifact.Ref{}, err
@@ -61,7 +79,7 @@ func (value Preflight) PrepareRunFromCoderCompletion(runID string, completionRef
 	store := artifact.NewStore(filepath.Join(value.EvaluatedRoot, "artifacts"))
 	workspace := filepath.Join(value.hostRoot, "candidate-workspace-"+runID)
 	executable := filepath.Join(workspace, "bin", "deployctl")
-	candidateExecutable, err := BuildCandidate(store, completion.Candidate, workspace, executable)
+	candidateExecutable, err := BuildCandidate(store, candidate, workspace, executable)
 	if err != nil {
 		return artifact.Ref{}, err
 	}
@@ -79,7 +97,7 @@ func (value Preflight) PrepareRunFromCoderCompletion(runID string, completionRef
 	if err != nil {
 		return artifact.Ref{}, err
 	}
-	inputs, _, err := preflightInputs(store, runID, reset, completion.Candidate, value.LiveCanary, runtime)
+	inputs, _, err := preflightInputs(store, runID, reset, candidate, value.LiveCanary, runtime)
 	if err != nil {
 		return artifact.Ref{}, err
 	}

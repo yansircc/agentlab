@@ -95,7 +95,11 @@ func validateControlledInputs(baseline, candidate []RunIdentity, candidateArtifa
 		}
 	}
 	for _, current := range all[1:] {
-		if current.WorkerInput != stable.WorkerInput || current.Harness != stable.Harness || current.Adapter != stable.Adapter || current.OracleSet != stable.OracleSet || current.Fixture != stable.Fixture || current.FixtureBaseline != stable.FixtureBaseline || current.EvidencePolicy != stable.EvidencePolicy || current.StopPolicy != stable.StopPolicy || current.WorkerRuntime != stable.WorkerRuntime || current.Environment != stable.Environment {
+		// WorkerRuntime binds the exact Host profile and executable for one
+		// isolated run. It necessarily changes with its candidate, fixture,
+		// session, and run id, so PreparedRun is its single owner rather than
+		// a cross-run equality check. Adapter and Environment remain controls.
+		if current.WorkerInput != stable.WorkerInput || current.Harness != stable.Harness || current.Adapter != stable.Adapter || current.OracleSet != stable.OracleSet || current.Fixture != stable.Fixture || current.FixtureBaseline != stable.FixtureBaseline || current.EvidencePolicy != stable.EvidencePolicy || current.StopPolicy != stable.StopPolicy || current.Environment != stable.Environment {
 			reasons = append(reasons, "controlled run inputs differ")
 			break
 		}
