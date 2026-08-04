@@ -61,6 +61,7 @@ type state struct {
 	candidates        map[string]diagnosis.RepairCandidate
 	candidateOrder    []string
 	interventions     map[artifact.Ref]Intervention
+	interventionOwner map[artifact.Ref]string
 	interventionOrder []artifact.Ref
 	runs              map[string]runBinding
 	runOrder          []string

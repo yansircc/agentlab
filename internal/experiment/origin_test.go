@@ -56,10 +56,11 @@ func TestSpliceOriginRejectsUnownedFacts(t *testing.T) {
 	op, _ := Open(root, "unowned-exp")
 	_, _ = op.Begin("unowned-prep")
 	_, evidence, checkpoint, prefix := spliceParent(t, op, root, "parent")
-	_, _, foreignCheckpoint, _ := spliceParent(t, op, root, "other")
+	_, otherEvidence, foreignCheckpoint, _ := spliceParent(t, op, root, "other")
 	fake := artifact.Ref{Scope: op.artifacts.Scope(), Algorithm: "sha256", Digest: strings.Repeat("a", 64), Size: 1}
 	intervention := fake
 	unrecorded := putTestArtifact(t, op, "unrecorded intervention")
+	foreignIntervention := recordTestIntervention(t, op, otherEvidence, "reobserve other public contract")
 	cases := []struct {
 		name   string
 		runID  string
@@ -72,6 +73,7 @@ func TestSpliceOriginRejectsUnownedFacts(t *testing.T) {
 		{"missing public prefix", "missing-prefix", testSpliceOrigin(t, "parent", evidence, checkpoint, fake, nil)},
 		{"missing intervention", "missing-intervention", testSpliceOrigin(t, "parent", evidence, checkpoint, prefix, &intervention)},
 		{"unrecorded intervention", "unrecorded-intervention", testSpliceOrigin(t, "parent", evidence, checkpoint, prefix, &unrecorded)},
+		{"intervention from another run", "foreign-intervention", testSpliceOrigin(t, "parent", evidence, checkpoint, prefix, &foreignIntervention)},
 	}
 	for _, test := range cases {
 		prepared, err := RecordPreparedRun(op.artifacts, PreparedRun{Contract: PreparedRunContract, RunID: test.runID, Inputs: testRunInputs(t, op, test.runID, test.name)})

@@ -8,6 +8,7 @@ func (s *state) decisionIntervention(record ledger.Record) error {
 		return invalid(record, "invalid decision-bound intervention")
 	}
 	s.interventions[value.Artifact] = value.Intervention
+	s.interventionOwner[value.Artifact] = value.Decision.ID
 	s.interventionOrder = append(s.interventionOrder, value.Artifact)
 	s.addDecision(value.Decision)
 	return nil

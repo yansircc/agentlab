@@ -103,7 +103,9 @@ func (o *Operation) Intervention(ref artifact.Ref) (Intervention, error) {
 		return Intervention{}, err
 	}
 	want, ok := current.interventions[ref]
-	if !ok {
+	decisionID, hasOwner := current.interventionOwner[ref]
+	decision := current.decisions[decisionID]
+	if !ok || !hasOwner || decision.ID != decisionID || decision.Action != DecisionIntervention {
 		return Intervention{}, errors.New("intervention is not experiment-owned")
 	}
 	value, err := LoadIntervention(o.artifacts, ref)
