@@ -106,6 +106,21 @@ func (o *Operation) bindCandidate(id, diagnosisID, coderRunID string, completion
 }
 
 func (o *Operation) coderCompletion(runID string, receipt artifact.Ref) (run.CoderCompletion, error) {
+	completion, err := o.coderTerminalCompletion(runID, receipt)
+	if err != nil {
+		return run.CoderCompletion{}, err
+	}
+	current, err := o.current()
+	if err != nil {
+		return run.CoderCompletion{}, err
+	}
+	if _, err := o.coderStartForCompletion(current, runID, completion); err != nil {
+		return run.CoderCompletion{}, errors.New("candidate completion is not decision-bound")
+	}
+	return completion, nil
+}
+
+func (o *Operation) coderTerminalCompletion(runID string, receipt artifact.Ref) (run.CoderCompletion, error) {
 	if !idPattern.MatchString(runID) || !receipt.Valid() {
 		return run.CoderCompletion{}, errors.New("coder completion reference is invalid")
 	}
@@ -117,9 +132,6 @@ func (o *Operation) coderCompletion(runID string, receipt artifact.Ref) (run.Cod
 	if err != nil || actual != receipt {
 		return run.CoderCompletion{}, errors.New("candidate completion is not owned by Coder run")
 	}
-	if _, err := o.CoderStartForCompletion(runID, completion); err != nil {
-		return run.CoderCompletion{}, errors.New("candidate completion is not decision-bound")
-	}
 	return completion, nil
 }
 
@@ -127,7 +139,7 @@ func (o *Operation) validateCandidateCompletion(current state, candidate diagnos
 	if current.runs[candidate.CoderRun].RunID == "" {
 		return errors.New("candidate Coder run is not experiment-bound")
 	}
-	completion, err := o.coderCompletion(candidate.CoderRun, candidate.Completion)
+	completion, err := o.coderTerminalCompletion(candidate.CoderRun, candidate.Completion)
 	if err != nil || completion.Candidate != candidate.Artifact || completion.Profile.SourceSnapshot != current.begun.Source || current.handoffs[completion.Profile.Handoff].Artifact != completion.Profile.Handoff {
 		return errors.New("candidate completion differs from experiment authority")
 	}

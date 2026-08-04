@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/yansircc/agentlab/internal/artifact"
+	"github.com/yansircc/agentlab/internal/effect"
 	"github.com/yansircc/agentlab/internal/run"
 )
 
@@ -104,17 +105,75 @@ func TestRunOriginCycleIsRejected(t *testing.T) {
 	}
 }
 
+func TestSpliceOriginRequiresPriorDecisionBoundCheckpointReceipt(t *testing.T) {
+	root := t.TempDir()
+	sealPreparation(t, root, "checkpoint-prep")
+	op, _ := Open(root, "checkpoint-exp")
+	_, _ = op.Begin("checkpoint-prep")
+	bindTestRun(t, op, "parent")
+	parent := attachedRunWithEvidence(t, root, op.id, "parent")
+	evidence := run.EvidenceRef{ExperimentID: op.id, RunID: "parent", Sequence: 2, Item: 0}
+	payload, err := op.artifacts.Put([]byte("checkpoint payload"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	intent := effect.Intent{ID: "checkpoint-parent", RunID: "parent", Kind: effect.Checkpoint, Payload: payload}
+	checkpoint, err := parent.RecordRuntimeCheckpoint(intent, run.RuntimeCheckpointSpec{Adapter: "test", Session: []byte("parent-session"), OpaqueState: []byte("parent-opaque"), PublicPrefix: []byte("parent-prefix")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt := []byte("checkpoint receipt")
+	if err := parent.RecordEffectObservation(intent, receipt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := parent.SettleEffect(intent, receipt); err != nil {
+		t.Fatal(err)
+	}
+	origin := testSpliceOrigin(t, "parent", evidence, checkpoint.Checkpoint, checkpoint.PublicPrefix, nil)
+	prepared, err := RecordPreparedRun(op.artifacts, PreparedRun{Contract: PreparedRunContract, RunID: "child", Inputs: testRunInputs(t, op, "child", "child")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := op.BindPreparedRun("child", origin, prepared); err == nil {
+		t.Fatal("splice origin accepted a checkpoint with no decision-bound effect")
+	}
+	decision := SupervisorDecision{ID: intent.ID, WorkerRun: "parent", EvidenceThrough: evidence.Sequence, Claim: "preserve the public prefix", Action: DecisionCheckpoint, Evidence: []run.EvidenceRef{evidence}, Falsifier: "the checkpoint is not required"}
+	if err := op.CommitDecisionBoundEffect(DecisionBoundEffect{Decision: decision, Intent: intent}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := op.BindPreparedRun("child", origin, prepared); err == nil {
+		t.Fatal("splice origin accepted a retroactive checkpoint decision")
+	}
+}
+
 func spliceParent(t *testing.T, op *Operation, root, runID string) (*run.Operation, run.EvidenceRef, artifact.Ref, artifact.Ref) {
 	t.Helper()
 	bindTestRun(t, op, runID)
 	parent := attachedRunWithEvidence(t, root, op.id, runID)
-	checkpoint, err := parent.RecordRuntimeCheckpoint(run.RuntimeCheckpointSpec{
+	evidence := run.EvidenceRef{ExperimentID: op.id, RunID: runID, Sequence: 2, Item: 0}
+	payload, err := op.artifacts.Put([]byte(runID + " checkpoint payload"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	intent := effect.Intent{ID: "checkpoint-" + runID, RunID: runID, Kind: effect.Checkpoint, Payload: payload}
+	decision := SupervisorDecision{ID: intent.ID, WorkerRun: runID, EvidenceThrough: evidence.Sequence, Claim: "preserve this public checkpoint", Action: DecisionCheckpoint, Evidence: []run.EvidenceRef{evidence}, Falsifier: "checkpoint is not required"}
+	if err := op.CommitDecisionBoundEffect(DecisionBoundEffect{Decision: decision, Intent: intent}); err != nil {
+		t.Fatal(err)
+	}
+	checkpoint, err := parent.RecordRuntimeCheckpoint(intent, run.RuntimeCheckpointSpec{
 		Adapter: "test", Session: []byte(runID + "-session"), OpaqueState: []byte(runID + "-opaque"), PublicPrefix: []byte(runID + "-public-prefix"),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return parent, run.EvidenceRef{ExperimentID: op.id, RunID: runID, Sequence: 2, Item: 0}, checkpoint.Checkpoint, checkpoint.PublicPrefix
+	receipt := []byte(runID + " checkpoint receipt")
+	if err := parent.RecordEffectObservation(intent, receipt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := parent.SettleEffect(intent, receipt); err != nil {
+		t.Fatal(err)
+	}
+	return parent, evidence, checkpoint.Checkpoint, checkpoint.PublicPrefix
 }
 
 func testSpliceOrigin(t *testing.T, parent string, evidence run.EvidenceRef, checkpoint, prefix artifact.Ref, intervention *artifact.Ref) RunOrigin {

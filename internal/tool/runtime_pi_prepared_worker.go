@@ -53,7 +53,7 @@ func (value PiPreparedWorkerRuntime) Validate() error {
 }
 
 func (value PiForkedWorkerBinding) Validate() error {
-	if value.ParentRun == "" || value.ParentRuntimeRef == "" || !value.ChildManifest.Valid() || value.ForkReceipt.Validate() != nil || value.ForkReceipt.Kind != effect.Fork || value.Forked.Validate() != nil {
+	if value.ParentRun == "" || value.ParentRuntimeRef == "" || !value.ChildManifest.Valid() || value.ForkReceipt.Validate() != nil || value.ForkReceipt.Kind != effect.Fork || value.Forked.Validate() != nil || value.Forked.Intent.ID != value.ForkReceipt.IntentID || value.Forked.Intent.Kind != value.ForkReceipt.Kind {
 		return errors.New("forked Worker runtime binding is invalid")
 	}
 	return nil
@@ -135,6 +135,19 @@ func (h *PiRuntimeHost) reconcileForkedPreparedWorker(binding Binding, template 
 	stored, _, receipt, err := parentOp.ForkReceipt(forked.ForkReceipt.IntentID)
 	if err != nil || receipt != forked.ForkReceipt || stored != forked.Forked {
 		return PiRuntimeProfile{}, errors.New("forked Worker receipt differs from Host binding")
+	}
+	experimentOp, err := binding.experiment()
+	if err != nil {
+		return PiRuntimeProfile{}, err
+	}
+	bound, err := experimentOp.DecisionBoundEffect(forked.ForkReceipt.IntentID)
+	if err != nil || bound.Intent != forked.Forked.Intent || bound.Decision.Action != experiment.DecisionFork || bound.Decision.WorkerRun != origin.ParentRun {
+		return PiRuntimeProfile{}, errors.New("forked Worker receipt has no decision-bound fork")
+	}
+	decisionAt, err := experimentOp.DecisionBoundEffectTime(forked.ForkReceipt.IntentID)
+	forkAt, forkErr := parentOp.SessionForkedTime(forked.Forked.ChildSession)
+	if err != nil || forkErr != nil || decisionAt.After(forkAt) {
+		return PiRuntimeProfile{}, errors.New("forked Worker receipt precedes its decision-bound fork")
 	}
 	reconciled, err := piadapter.ReconcileForkedSession(parentOp, forked.ForkReceipt.IntentID, piadapter.ForkSpec{
 		SDKRoot: parent.Identity.SDKRoot, ContextFilterPath: parent.Identity.ContextFilterPath,

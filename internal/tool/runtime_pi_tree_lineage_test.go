@@ -60,10 +60,7 @@ func TestPiRuntimeTreeRetainsParentEvidenceForSplicedPublicPrefix(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	checkpoint, err := parentRun.RecordRuntimeCheckpoint(run.RuntimeCheckpointSpec{Adapter: "test", Session: []byte("parent-session"), OpaqueState: []byte("opaque"), PublicPrefix: []byte("public-prefix")})
-	if err != nil {
-		t.Fatal(err)
-	}
+	checkpoint := recordDecisionBoundTestCheckpoint(t, binding, parentRun, parentEvidence, "checkpoint-worker-tree", run.RuntimeCheckpointSpec{Adapter: "test", Session: []byte("parent-session"), OpaqueState: []byte("opaque"), PublicPrefix: []byte("public-prefix")})
 	experimentOp, err := experiment.Open(root, "exp")
 	if err != nil {
 		t.Fatal(err)

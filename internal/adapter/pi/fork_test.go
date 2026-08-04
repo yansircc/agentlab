@@ -64,7 +64,12 @@ func TestForkReconcilesOneUnknownSDKChildWithoutRetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	checkpoint, err := Checkpoint(operation, parentPath, parent.Entries[1].Locator, evidence, parent.Entries[1].PrefixDigest, identity)
+	checkpointPayload, err := artifact.NewStore(filepath.Join(root, "artifacts")).Put([]byte("checkpoint payload"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpointIntent := effect.Intent{ID: "checkpoint-1", RunID: "parent-run", Kind: effect.Checkpoint, Payload: checkpointPayload}
+	checkpoint, err := Checkpoint(operation, checkpointIntent, parentPath, parent.Entries[1].Locator, evidence, parent.Entries[1].PrefixDigest, identity)
 	if err != nil {
 		t.Fatal(err)
 	}

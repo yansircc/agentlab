@@ -350,11 +350,15 @@ func (h *workflowRuntime) Checkpoint(binding Binding, intent effect.Intent, ref 
 	if err != nil {
 		return nil, err
 	}
-	result, err := op.RecordRuntimeCheckpoint(run.RuntimeCheckpointSpec{Adapter: "workflow", Session: []byte("baseline-session"), OpaqueState: []byte("baseline-state"), PublicPrefix: []byte("baseline-public-prefix")})
+	result, err := op.RecordRuntimeCheckpoint(intent, run.RuntimeCheckpointSpec{Adapter: "workflow", Session: []byte("baseline-session"), OpaqueState: []byte("baseline-state"), PublicPrefix: []byte("baseline-public-prefix")})
 	if err != nil {
 		return nil, err
 	}
-	if _, err := op.SettleEffect(intent, []byte("workflow checkpoint receipt")); err != nil {
+	evidence := []byte("workflow checkpoint receipt")
+	if err := op.RecordEffectObservation(intent, evidence); err != nil {
+		return nil, err
+	}
+	if _, err := op.SettleEffect(intent, evidence); err != nil {
 		return nil, err
 	}
 	return result, nil
@@ -377,11 +381,18 @@ func (h *workflowRuntime) Fork(binding Binding, intent effect.Intent, ref, child
 	if err != nil {
 		return nil, err
 	}
-	result, err := op.RecordSessionForked(run.SessionForkSpec{ExpectedCheckpoint: checkpoint, ChildSession: []byte("child-session"), ObservedPrefix: prefixData, AdapterIdentity: []byte("workflow-adapter")})
+	result, err := op.RecordSessionForked(intent, run.SessionForkSpec{ExpectedCheckpoint: checkpoint, ChildSession: []byte("child-session"), ObservedPrefix: prefixData, AdapterIdentity: []byte("workflow-adapter")})
 	if err != nil {
 		return nil, err
 	}
-	if _, err := op.SettleEffect(intent, []byte("workflow fork receipt")); err != nil {
+	evidence, err := json.Marshal(result)
+	if err != nil {
+		return nil, err
+	}
+	if err := op.RecordEffectObservation(intent, evidence); err != nil {
+		return nil, err
+	}
+	if _, err := op.SettleEffect(intent, evidence); err != nil {
 		return nil, err
 	}
 	return result, nil

@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yansircc/agentlab/internal/artifact"
+	"github.com/yansircc/agentlab/internal/effect"
 	"github.com/yansircc/agentlab/internal/run"
 )
 
@@ -54,13 +56,18 @@ func TestCheckpointBindsPublicPrefixToAttachedPiSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Checkpoint(op, session, tree.Entries[1].Locator, wrongEvidence, tree.Entries[1].PrefixDigest, testAdapterIdentity()); err == nil {
+	payload, err := artifact.NewStore(filepath.Join(root, "artifacts")).Put([]byte("checkpoint payload"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	intent := effect.Intent{ID: "checkpoint-1", RunID: "checkpoint-run", Kind: effect.Checkpoint, Payload: payload}
+	if _, err := Checkpoint(op, intent, session, tree.Entries[1].Locator, wrongEvidence, tree.Entries[1].PrefixDigest, testAdapterIdentity()); err == nil {
 		t.Fatal("checkpoint accepted evidence for another public entry")
 	}
-	if _, err := Checkpoint(op, session, tree.Entries[1].Locator, evidence, strings.Repeat("0", 64), testAdapterIdentity()); err == nil {
+	if _, err := Checkpoint(op, intent, session, tree.Entries[1].Locator, evidence, strings.Repeat("0", 64), testAdapterIdentity()); err == nil {
 		t.Fatal("checkpoint accepted a prefix different from the durable selection")
 	}
-	result, err := Checkpoint(op, session, tree.Entries[1].Locator, evidence, tree.Entries[1].PrefixDigest, testAdapterIdentity())
+	result, err := Checkpoint(op, intent, session, tree.Entries[1].Locator, evidence, tree.Entries[1].PrefixDigest, testAdapterIdentity())
 	if err != nil {
 		t.Fatal(err)
 	}

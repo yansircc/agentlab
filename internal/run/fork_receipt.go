@@ -16,7 +16,7 @@ func (o *Operation) ForkReceipt(intentID string) (SessionForked, []byte, effect.
 		return SessionForked{}, nil, effect.Receipt{}, err
 	}
 	receipt, exists := state.effectReceipts[intentID]
-	if !exists || receipt.Kind != effect.Fork {
+	if !exists || receipt.IntentID != intentID || receipt.Kind != effect.Fork {
 		return SessionForked{}, nil, effect.Receipt{}, errors.New("fork effect receipt is unavailable")
 	}
 	evidence, err := o.artifacts.Read(receipt.Evidence)
@@ -24,7 +24,7 @@ func (o *Operation) ForkReceipt(intentID string) (SessionForked, []byte, effect.
 		return SessionForked{}, nil, effect.Receipt{}, err
 	}
 	var forked SessionForked
-	if strictjson.Decode(evidence, &forked) != nil || forked.Validate() != nil {
+	if strictjson.Decode(evidence, &forked) != nil || forked.Validate() != nil || forked.Intent.ID != intentID || forked.Intent.RunID != o.runID {
 		return SessionForked{}, nil, effect.Receipt{}, errors.New("fork effect receipt is invalid")
 	}
 	if recorded, exists := state.sessionForks[forked.ChildSession]; !exists || recorded != forked {

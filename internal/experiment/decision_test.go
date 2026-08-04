@@ -115,7 +115,11 @@ func TestDecisionBoundEffectRejectsHindsightAndMismatchedReceipt(t *testing.T) {
 	}
 	mismatch := value.Intent
 	mismatch.Kind = effect.Checkpoint
-	if _, err := runOperation.SettleEffect(mismatch, []byte("wrong effect")); err != nil {
+	evidence := []byte("wrong effect")
+	if err := runOperation.RecordEffectObservation(mismatch, evidence); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runOperation.SettleEffect(mismatch, evidence); err != nil {
 		t.Fatal(err)
 	}
 	settlement, err := operation.EffectSettlement()

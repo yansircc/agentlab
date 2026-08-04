@@ -1,6 +1,7 @@
 package run
 
 import (
+	"bytes"
 	"errors"
 	"path/filepath"
 	"time"
@@ -29,6 +30,12 @@ func (o *Operation) SettleEffect(intent effect.Intent, evidence []byte) (effect.
 	}
 	if _, err := o.ReadEffectPayload(intent); err != nil {
 		return effect.Receipt{}, err
+	}
+	if intent.Kind == effect.Checkpoint || intent.Kind == effect.Fork {
+		observation, observed, err := o.EffectObservation(intent)
+		if err != nil || !observed || !bytes.Equal(observation, evidence) {
+			return effect.Receipt{}, errors.New("runtime effect receipt has no matching prior observation")
+		}
 	}
 	ref, err := o.artifacts.Put(evidence)
 	if err != nil {

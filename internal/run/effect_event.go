@@ -11,8 +11,9 @@ const (
 )
 
 type runtimeCheckpointRecorded struct {
-	Checkpoint   artifact.Ref `json:"checkpoint"`
-	PublicPrefix artifact.Ref `json:"public_prefix"`
+	Checkpoint   artifact.Ref  `json:"checkpoint"`
+	PublicPrefix artifact.Ref  `json:"public_prefix"`
+	Intent       effect.Intent `json:"intent"`
 }
 
 type effectReceiptRecorded struct {

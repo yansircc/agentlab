@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/yansircc/agentlab/internal/artifact"
+	"github.com/yansircc/agentlab/internal/effect"
 	"github.com/yansircc/agentlab/internal/experiment"
 	"github.com/yansircc/agentlab/internal/preparation"
 	"github.com/yansircc/agentlab/internal/run"
@@ -33,12 +34,9 @@ func TestWorkerPromptAppendsExactOwnedSpliceIntervention(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	checkpoint, err := parent.RecordRuntimeCheckpoint(run.RuntimeCheckpointSpec{
+	checkpoint := recordDecisionBoundTestCheckpoint(t, binding, parent, parentEvidence, "checkpoint-worker", run.RuntimeCheckpointSpec{
 		Adapter: "test", Session: []byte("parent-session"), OpaqueState: []byte("parent-state"), PublicPrefix: []byte("parent-public-prefix"),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	text := "The public deployment contract changed. Re-observe target, status, and receipt before continuing."
 	intervention, err := experimentOp.RecordInterventionWithDecision(experiment.DecisionBoundIntervention{
 		Decision: experiment.SupervisorDecision{
@@ -101,6 +99,35 @@ func TestWorkerPromptAppendsExactOwnedSpliceIntervention(t *testing.T) {
 	if prompt != want {
 		t.Fatalf("splice Worker prompt = %q, want %q", prompt, want)
 	}
+}
+
+func recordDecisionBoundTestCheckpoint(t *testing.T, binding Binding, parent *run.Operation, evidence run.EvidenceRef, id string, spec run.RuntimeCheckpointSpec) run.RuntimeCheckpointRecord {
+	t.Helper()
+	experimentOp, err := binding.experiment()
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := binding.store().Put([]byte(id + " payload"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	intent := effect.Intent{ID: id, RunID: evidence.RunID, Kind: effect.Checkpoint, Payload: payload}
+	decision := experiment.SupervisorDecision{ID: id, WorkerRun: evidence.RunID, EvidenceThrough: evidence.Sequence, Claim: "preserve the selected public checkpoint", Action: experiment.DecisionCheckpoint, Evidence: []run.EvidenceRef{evidence}, Falsifier: "the checkpoint is not admissible"}
+	if err := experimentOp.CommitDecisionBoundEffect(experiment.DecisionBoundEffect{Decision: decision, Intent: intent}); err != nil {
+		t.Fatal(err)
+	}
+	checkpoint, err := parent.RecordRuntimeCheckpoint(intent, spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt := []byte(id + " receipt")
+	if err := parent.RecordEffectObservation(intent, receipt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := parent.SettleEffect(intent, receipt); err != nil {
+		t.Fatal(err)
+	}
+	return checkpoint
 }
 
 func workerPromptFixture(t *testing.T) (Binding, *experiment.Operation, run.EvidenceRef, PiWorkerLaunch) {

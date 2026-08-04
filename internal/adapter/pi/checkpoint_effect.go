@@ -81,7 +81,7 @@ func CheckpointEffect(operation *run.Operation, intent effect.Intent, spec Check
 	if !created {
 		return reconcileCheckpointEffect(operation, intent)
 	}
-	checkpoint, err := Checkpoint(operation, spec.SessionPath, payload.EntryLocator, payload.Evidence, payload.PrefixDigest, payload.Identity)
+	checkpoint, err := Checkpoint(operation, intent, spec.SessionPath, payload.EntryLocator, payload.Evidence, payload.PrefixDigest, payload.Identity)
 	if err != nil {
 		return CheckpointEffectResult{}, err
 	}

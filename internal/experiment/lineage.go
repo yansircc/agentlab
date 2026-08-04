@@ -1,6 +1,7 @@
 package experiment
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 
@@ -127,9 +128,30 @@ func (o *Operation) validateSpliceOrigin(runID string, value SpliceOriginSpec, c
 			return fmt.Errorf("splice reason evidence is unavailable: %w", err)
 		}
 	}
-	prefix, err := parent.RuntimeCheckpointPublicPrefix(value.RuntimeCheckpoint)
+	checkpoint, prefix, err := parent.LoadRuntimeCheckpoint(value.RuntimeCheckpoint)
 	if err != nil || prefix != value.PublicPrefix {
 		return errors.New("splice checkpoint does not belong to parent run")
+	}
+	bound, exists := current.effects[checkpoint.Intent.ID]
+	if !exists || bound.Intent != checkpoint.Intent || bound.Decision.Action != DecisionCheckpoint || bound.Decision.WorkerRun != value.ParentRun {
+		return errors.New("splice checkpoint has no decision-bound effect")
+	}
+	decisionAt, err := o.decisionBoundEffectTime(checkpoint.Intent.ID)
+	checkpointAt, checkpointErr := parent.RuntimeCheckpointTime(value.RuntimeCheckpoint)
+	if err != nil || checkpointErr != nil || decisionAt.After(checkpointAt) {
+		return errors.New("splice checkpoint precedes its decision-bound effect")
+	}
+	receipt, settled, err := parent.EffectReceipt(checkpoint.Intent.ID)
+	if err != nil || !settled || receipt.IntentID != checkpoint.Intent.ID || receipt.Kind != checkpoint.Intent.Kind {
+		return errors.New("splice checkpoint effect is not settled")
+	}
+	observation, observed, err := parent.EffectObservation(checkpoint.Intent)
+	if err != nil || !observed {
+		return errors.New("splice checkpoint has no effect observation")
+	}
+	evidence, err := o.artifacts.Read(receipt.Evidence)
+	if err != nil || !bytes.Equal(observation, evidence) {
+		return errors.New("splice checkpoint observation differs from receipt")
 	}
 	return nil
 }

@@ -2,8 +2,10 @@ package experiment
 
 import (
 	"errors"
+	"time"
 
 	"github.com/yansircc/agentlab/internal/effect"
+	"github.com/yansircc/agentlab/internal/ledger"
 	"github.com/yansircc/agentlab/internal/run"
 )
 
@@ -54,6 +56,42 @@ func (o *Operation) DecisionBoundEffect(id string) (DecisionBoundEffect, error) 
 		return DecisionBoundEffect{}, errors.New("decision-bound effect does not exist")
 	}
 	return value, nil
+}
+
+// DecisionBoundEffectTime returns the enclosing immutable experiment ledger
+// time. Runtime receipts use it to reject decisions appended after an effect.
+func (o *Operation) DecisionBoundEffectTime(id string) (time.Time, error) {
+	if _, err := o.DecisionBoundEffect(id); err != nil {
+		return time.Time{}, err
+	}
+	return o.decisionBoundEffectTime(id)
+}
+
+func (o *Operation) decisionBoundEffectTime(id string) (time.Time, error) {
+	var result time.Time
+	err := o.ledger.Visit(func(record ledger.Record) error {
+		if record.Kind != eventDecisionEffect {
+			return nil
+		}
+		var value DecisionBoundEffect
+		if decode(record.Data, &value) != nil || value.Validate() != nil {
+			return errors.New("decision-bound effect ledger record is invalid")
+		}
+		if value.Intent.ID == id {
+			if !result.IsZero() {
+				return errors.New("decision-bound effect has duplicate ledger records")
+			}
+			result = record.At
+		}
+		return nil
+	})
+	if err != nil || result.IsZero() {
+		if err == nil {
+			err = errors.New("decision-bound effect has no ledger record")
+		}
+		return time.Time{}, err
+	}
+	return result, nil
 }
 
 func (o *Operation) validateDecisionEvidence(value SupervisorDecision) error {

@@ -34,7 +34,7 @@ func (o *Operation) LoadRuntimeCheckpoint(ref artifact.Ref) (RuntimeCheckpoint, 
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return RuntimeCheckpoint{}, artifact.Ref{}, errors.New("runtime checkpoint artifact has trailing input")
 	}
-	if value.PrefixDigest != record.PublicPrefix.Digest {
+	if value.PrefixDigest != record.PublicPrefix.Digest || value.Intent != record.Intent || value.Intent.RunID != o.runID {
 		return RuntimeCheckpoint{}, artifact.Ref{}, errors.New("runtime checkpoint prefix digest differs from recorded prefix")
 	}
 	if _, err := o.artifacts.Read(record.PublicPrefix); err != nil {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 
+	"github.com/yansircc/agentlab/internal/effect"
 	"github.com/yansircc/agentlab/internal/run"
 )
 
@@ -16,8 +17,8 @@ type CheckpointResult struct {
 	PrefixDigest string                      `json:"prefix_digest"`
 }
 
-func Checkpoint(operation *run.Operation, sessionPath, entryLocator string, evidence run.EvidenceRef, expectedPrefix string, identity AdapterIdentity) (CheckpointResult, error) {
-	if err := identity.Validate(); err != nil || expectedPrefix == "" {
+func Checkpoint(operation *run.Operation, intent effect.Intent, sessionPath, entryLocator string, evidence run.EvidenceRef, expectedPrefix string, identity AdapterIdentity) (CheckpointResult, error) {
+	if err := identity.Validate(); err != nil || intent.Validate() != nil || intent.Kind != effect.Checkpoint || expectedPrefix == "" {
 		return CheckpointResult{}, errors.New("Pi checkpoint request is invalid")
 	}
 	evidenceItem, err := operation.EvidenceAt(evidence)
@@ -54,7 +55,7 @@ func Checkpoint(operation *run.Operation, sessionPath, entryLocator string, evid
 	if err != nil {
 		return CheckpointResult{}, err
 	}
-	record, err := operation.RecordRuntimeCheckpoint(run.RuntimeCheckpointSpec{
+	record, err := operation.RecordRuntimeCheckpoint(intent, run.RuntimeCheckpointSpec{
 		Adapter: adapterName, Session: session, OpaqueState: opaque, PublicPrefix: prefix,
 	})
 	if err != nil || record.PublicPrefix.Digest != digest {

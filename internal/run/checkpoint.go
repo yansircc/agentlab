@@ -8,18 +8,20 @@ import (
 	"time"
 
 	"github.com/yansircc/agentlab/internal/artifact"
+	"github.com/yansircc/agentlab/internal/effect"
 	"github.com/yansircc/agentlab/internal/transaction"
 )
 
-const RuntimeCheckpointContract = "agentlab.runtime-checkpoint.v1"
+const RuntimeCheckpointContract = "agentlab.runtime-checkpoint.v2"
 
 // RuntimeCheckpoint is the generic kernel receipt for an adapter-owned fork point.
 type RuntimeCheckpoint struct {
-	Contract     string       `json:"contract"`
-	Adapter      string       `json:"adapter"`
-	Session      artifact.Ref `json:"session"`
-	OpaqueState  artifact.Ref `json:"opaque_state"`
-	PrefixDigest string       `json:"prefix_digest"`
+	Contract     string        `json:"contract"`
+	Intent       effect.Intent `json:"intent"`
+	Adapter      string        `json:"adapter"`
+	Session      artifact.Ref  `json:"session"`
+	OpaqueState  artifact.Ref  `json:"opaque_state"`
+	PrefixDigest string        `json:"prefix_digest"`
 }
 
 type RuntimeCheckpointSpec struct {
@@ -32,10 +34,11 @@ type RuntimeCheckpointSpec struct {
 type RuntimeCheckpointRecord struct {
 	Checkpoint   artifact.Ref
 	PublicPrefix artifact.Ref
+	Intent       effect.Intent
 }
 
 func (c RuntimeCheckpoint) Validate() error {
-	if c.Contract != RuntimeCheckpointContract || c.Adapter == "" || len(c.Adapter) > 128 || !validRef(c.Session) || !validRef(c.OpaqueState) || len(c.PrefixDigest) != 64 {
+	if c.Contract != RuntimeCheckpointContract || c.Intent.Validate() != nil || c.Intent.Kind != effect.Checkpoint || c.Adapter == "" || len(c.Adapter) > 128 || !validRef(c.Session) || !validRef(c.OpaqueState) || len(c.PrefixDigest) != 64 {
 		return errors.New("runtime checkpoint is invalid")
 	}
 	if _, err := hex.DecodeString(c.PrefixDigest); err != nil {
@@ -51,8 +54,11 @@ func (s RuntimeCheckpointSpec) Validate() error {
 	return nil
 }
 
-func (o *Operation) RecordRuntimeCheckpoint(spec RuntimeCheckpointSpec) (result RuntimeCheckpointRecord, resultErr error) {
-	if err := spec.Validate(); err != nil {
+func (o *Operation) RecordRuntimeCheckpoint(intent effect.Intent, spec RuntimeCheckpointSpec) (result RuntimeCheckpointRecord, resultErr error) {
+	if spec.Validate() != nil || intent.Validate() != nil || intent.RunID != o.runID || intent.Kind != effect.Checkpoint {
+		return RuntimeCheckpointRecord{}, errors.New("runtime checkpoint effect is invalid")
+	}
+	if _, err := o.ReadEffectPayload(intent); err != nil {
 		return RuntimeCheckpointRecord{}, err
 	}
 	lease, err := transaction.Acquire(filepath.Join(o.dir, "producer.lock"))
@@ -84,7 +90,7 @@ func (o *Operation) RecordRuntimeCheckpoint(spec RuntimeCheckpointSpec) (result 
 	if err != nil {
 		return RuntimeCheckpointRecord{}, err
 	}
-	value := RuntimeCheckpoint{Contract: RuntimeCheckpointContract, Adapter: spec.Adapter, Session: session, OpaqueState: opaque, PrefixDigest: prefix.Digest}
+	value := RuntimeCheckpoint{Contract: RuntimeCheckpointContract, Intent: intent, Adapter: spec.Adapter, Session: session, OpaqueState: opaque, PrefixDigest: prefix.Digest}
 	data, err := json.Marshal(value)
 	if err != nil {
 		return RuntimeCheckpointRecord{}, err
@@ -94,15 +100,15 @@ func (o *Operation) RecordRuntimeCheckpoint(spec RuntimeCheckpointSpec) (result 
 		return RuntimeCheckpointRecord{}, err
 	}
 	if existing, ok := state.runtimeCheckpoints[ref]; ok {
-		if existing.PublicPrefix != prefix {
+		if existing.PublicPrefix != prefix || existing.Intent != intent {
 			return RuntimeCheckpointRecord{}, errors.New("runtime checkpoint prefix identity changed")
 		}
-		return RuntimeCheckpointRecord{Checkpoint: ref, PublicPrefix: prefix}, nil
+		return RuntimeCheckpointRecord{Checkpoint: ref, PublicPrefix: prefix, Intent: intent}, nil
 	}
-	if _, err := o.appendEvent(time.Now().UTC(), eventRuntimeCheckpoint, runtimeCheckpointRecorded{Checkpoint: ref, PublicPrefix: prefix}); err != nil {
+	if _, err := o.appendEvent(time.Now().UTC(), eventRuntimeCheckpoint, runtimeCheckpointRecorded{Checkpoint: ref, PublicPrefix: prefix, Intent: intent}); err != nil {
 		return RuntimeCheckpointRecord{}, err
 	}
-	return RuntimeCheckpointRecord{Checkpoint: ref, PublicPrefix: prefix}, nil
+	return RuntimeCheckpointRecord{Checkpoint: ref, PublicPrefix: prefix, Intent: intent}, nil
 }
 
 func (o *Operation) HasRuntimeCheckpoint(ref artifact.Ref) (bool, error) {

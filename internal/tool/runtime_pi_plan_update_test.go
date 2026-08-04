@@ -130,6 +130,6 @@ func testForkedWorkerBinding() PiForkedWorkerBinding {
 	return PiForkedWorkerBinding{
 		ParentRun: "parent-run", ParentRuntimeRef: "parent-runtime", ChildManifest: ref,
 		ForkReceipt: effect.Receipt{IntentID: "fork", Kind: effect.Fork, Evidence: ref},
-		Forked:      run.SessionForked{ExpectedCheckpoint: ref, ParentSession: ref, ChildSession: ref, ObservedPrefix: ref, AdapterIdentity: ref},
+		Forked:      run.SessionForked{Intent: effect.Intent{ID: "fork", RunID: "parent-run", Kind: effect.Fork, Payload: ref}, ExpectedCheckpoint: ref, ParentSession: ref, ChildSession: ref, ObservedPrefix: ref, AdapterIdentity: ref},
 	}
 }

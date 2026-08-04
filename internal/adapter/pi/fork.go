@@ -144,12 +144,15 @@ func Fork(operation *run.Operation, intent effect.Intent, spec ForkSpec) (ForkRe
 	if err != nil {
 		return ForkResult{}, err
 	}
-	forked, err := operation.RecordSessionForked(run.SessionForkSpec{ExpectedCheckpoint: payload.Checkpoint, ChildSession: childSession, ObservedPrefix: childPrefix, AdapterIdentity: identity})
+	forked, err := operation.RecordSessionForked(intent, run.SessionForkSpec{ExpectedCheckpoint: payload.Checkpoint, ChildSession: childSession, ObservedPrefix: childPrefix, AdapterIdentity: identity})
 	if err != nil {
 		return ForkResult{}, err
 	}
 	evidence, err := json.Marshal(forked)
 	if err != nil {
+		return ForkResult{}, err
+	}
+	if err := operation.RecordEffectObservation(intent, evidence); err != nil {
 		return ForkResult{}, err
 	}
 	receipt, err := operation.SettleEffect(intent, evidence)
