@@ -28,7 +28,10 @@ Public Worker input, observable run evidence, source-backed diagnosis, and exact
 - Canonical JSON now emits decimal integers when the exact value fits `int64`, so canonical domain artifacts remain typed-decodable while arbitrary large numbers retain exact exponent form.
 - File notification is not state. A fresh operation reconstructs current status from ledger replay with no wakeup delivery.
 - Secret redaction is deterministic and longest-first, closing prefix-overlap leakage in owned workers and command/HTTP oracles.
-- Every Go file is below 200 lines; lifecycle, adapter writing, helper processes, and test fixtures have separate modules.
+- Lifecycle, adapter writing, helper processes, and test fixtures have separate modules.
+- Runtime-tree entries are public only after their opaque adapter source has one
+  durable `EvidenceRef`; unpolled entries and partial JSONL tails fail closed,
+  and a splice prefix retains its parent-run evidence ref.
 
 ## Controlled Recursive Preflight (Not Final Acceptance)
 

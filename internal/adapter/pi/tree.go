@@ -14,6 +14,14 @@ func ReadPublicTree(path string) (PublicTree, error) {
 		return PublicTree{}, err
 	}
 	defer f.Close()
+	info, err := f.Stat()
+	if err != nil || info.Size() == 0 {
+		return PublicTree{}, ErrInvalidSession
+	}
+	last := []byte{0}
+	if _, err := f.ReadAt(last, info.Size()-1); err != nil || last[0] != '\n' {
+		return PublicTree{}, ErrInvalidSession
+	}
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 0, 64*1024), maxLineBytes)
 	if !scanner.Scan() {
@@ -76,6 +84,7 @@ func (t *PublicTree) append(data []byte) error {
 			return ErrInvalidSession
 		}
 		entry.PrefixDigest = sha256Digest(prefix)
+		entry.sourceLocator = publicSourceLocator(t.sessionID, record.ID)
 		entry.StructurallyForkable = node.valid && len(pending) == 0
 		node.entry = &entry
 		t.Entries = append(t.Entries, entry)

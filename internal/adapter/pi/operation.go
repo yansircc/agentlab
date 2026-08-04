@@ -151,7 +151,7 @@ func (s *operationSink) Commit(next Cursor, batch Batch) error {
 	for _, item := range batch.Events {
 		input.Events = append(input.Events, run.AdapterEvent{
 			Kind: run.EvidenceKind(item.Kind), CorrelationID: item.CorrelationID, Raw: item.Raw,
-			Label: item.Label, CompactText: item.CompactText,
+			SourceLocator: item.SourceLocator, Label: item.Label, CompactText: item.CompactText,
 		})
 	}
 	for _, item := range batch.Exclusions {

@@ -23,8 +23,47 @@ type EvidenceItem struct {
 	Kind          EvidenceKind `json:"kind"`
 	Label         string       `json:"label"`
 	CorrelationID string       `json:"correlation_id,omitempty"`
+	SourceLocator string       `json:"source_locator,omitempty"`
 	Raw           artifact.Ref `json:"raw,omitempty"`
 	CompactText   string       `json:"compact_text,omitempty"`
+}
+
+var ErrEvidenceSourceAbsent = errors.New("evidence source locator is absent")
+
+// EvidenceForSourceLocator resolves the one durable admission for an opaque
+// adapter-owned public source. A source may not be synthesized from a live
+// session: absent and ambiguous mappings are both rejected.
+func (o *Operation) EvidenceForSourceLocator(locator string) (EvidenceRef, error) {
+	if !validSourceLocator(locator) {
+		return EvidenceRef{}, errors.New("evidence source locator is invalid")
+	}
+	if _, err := o.currentState(); err != nil {
+		return EvidenceRef{}, err
+	}
+	var result EvidenceRef
+	err := o.ledger.Visit(func(record ledger.Record) error {
+		items, err := projectEvidence(o.experimentID, o.runID, record)
+		if err != nil {
+			return err
+		}
+		for _, item := range items {
+			if item.SourceLocator != locator {
+				continue
+			}
+			if result != (EvidenceRef{}) {
+				return errors.New("evidence source locator is ambiguous")
+			}
+			result = item.Ref
+		}
+		return nil
+	})
+	if err != nil {
+		return EvidenceRef{}, err
+	}
+	if result == (EvidenceRef{}) {
+		return EvidenceRef{}, ErrEvidenceSourceAbsent
+	}
+	return result, nil
 }
 
 func (o *Operation) EvidenceAt(ref EvidenceRef) (EvidenceItem, error) {
@@ -88,7 +127,7 @@ func projectAdapterEvidence(base EvidenceItem, data []byte) ([]EvidenceItem, err
 	for _, value := range batch.Admissions {
 		item := base
 		item.Ref.Item = len(items)
-		item.Kind, item.Label, item.CorrelationID = value.Kind, value.Label, value.CorrelationID
+		item.Kind, item.Label, item.CorrelationID, item.SourceLocator = value.Kind, value.Label, value.CorrelationID, value.SourceLocator
 		item.Raw, item.CompactText = value.Raw, value.CompactText
 		items = append(items, item)
 	}

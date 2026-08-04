@@ -71,6 +71,11 @@ agentlab_compare
 
 Their input is strict JSON on stdin. The Host, not the model, binds the AgentLab root, preparation, experiment, runtime profile, executable, session locator, and capability profile. Tool schemas and their decoder reject root, request-file, stream/session, executable, raw-transcript, and audit-root locators.
 
+`agentlab_inspect(scope=runtime_tree)` returns only bounded public Pi entries.
+Each returned entry carries the exact durable `EvidenceRef` that admitted that
+public source; an entry that has not been polled into the ledger is rejected.
+Inherited splice-prefix entries retain their parent-run evidence identity.
+
 ## Bundled Supervisor artifact
 
 With Pi `0.83.0` available as `pi`, build the locally reviewable artifact:

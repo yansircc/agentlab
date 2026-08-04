@@ -180,6 +180,7 @@ type stopEvent struct {
 type adapterAdmission struct {
 	Kind          EvidenceKind `json:"kind"`
 	CorrelationID string       `json:"correlation_id,omitempty"`
+	SourceLocator string       `json:"source_locator,omitempty"`
 	Raw           artifact.Ref `json:"raw"`
 	Label         string       `json:"label"`
 	CompactText   string       `json:"compact_text,omitempty"`

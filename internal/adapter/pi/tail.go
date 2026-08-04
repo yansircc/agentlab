@@ -22,7 +22,7 @@ func readTail(source io.Reader, cursor Cursor, sink Sink) (Cursor, error) {
 		line, err := reader.ReadSlice('\n')
 		switch {
 		case err == nil:
-			batch, translateErr := translate(line[:len(line)-1])
+			batch, translateErr := translateWithSession(cursor.SessionID, line[:len(line)-1])
 			if translateErr != nil {
 				return cursor, translateErr
 			}

@@ -42,20 +42,37 @@ func (w *AdapterWriter) Commit(nextCursor []byte, input AdapterBatch) error {
 	if len(input.Events)+len(input.Exclusions) > 1000 {
 		return errors.New("adapter batch exceeds evidence bound")
 	}
+	state, err := w.operation.currentState()
+	if err != nil {
+		return err
+	}
+	sources := make(map[string]bool, len(state.adapterSources)+len(input.Events))
+	for source := range state.adapterSources {
+		sources[source] = true
+	}
+	for _, item := range input.Events {
+		if item.SourceLocator == "" {
+			continue
+		}
+		if !validSourceLocator(item.SourceLocator) || sources[item.SourceLocator] {
+			return errors.New("adapter evidence source locator is invalid or duplicated")
+		}
+		sources[item.SourceLocator] = true
+	}
 	cursorRef, err := w.operation.artifacts.Put(nextCursor)
 	if err != nil {
 		return err
 	}
 	value := adapterBatch{Adapter: w.adapter, StreamID: w.streamID, Cursor: cursorRef}
 	for _, item := range input.Events {
-		if !item.Kind.valid() || item.Label == "" || len(item.Label) > 128 || len(item.CorrelationID) > 256 || len(item.CompactText) > 4096 {
+		if !item.Kind.valid() || item.Label == "" || len(item.Label) > 128 || len(item.CorrelationID) > 256 || len(item.CompactText) > 4096 || (item.SourceLocator != "" && !validSourceLocator(item.SourceLocator)) {
 			return errors.New("adapter event kind and label are required")
 		}
 		raw, err := w.operation.artifacts.Put(item.Raw)
 		if err != nil {
 			return err
 		}
-		value.Admissions = append(value.Admissions, adapterAdmission{Kind: item.Kind, CorrelationID: item.CorrelationID, Raw: raw, Label: item.Label, CompactText: item.CompactText})
+		value.Admissions = append(value.Admissions, adapterAdmission{Kind: item.Kind, CorrelationID: item.CorrelationID, SourceLocator: item.SourceLocator, Raw: raw, Label: item.Label, CompactText: item.CompactText})
 	}
 	for _, item := range input.Exclusions {
 		if item.Category == "" || len(item.Category) > 128 || item.Size < 0 {

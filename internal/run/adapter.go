@@ -40,6 +40,7 @@ type AdapterState struct {
 type AdapterEvent struct {
 	Kind          EvidenceKind
 	CorrelationID string
+	SourceLocator string
 	Raw           []byte
 	Label         string
 	CompactText   string

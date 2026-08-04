@@ -22,6 +22,7 @@ type Cursor struct {
 type Event struct {
 	Kind          string
 	CorrelationID string
+	SourceLocator string
 	Label         string
 	CompactText   string
 	Raw           []byte

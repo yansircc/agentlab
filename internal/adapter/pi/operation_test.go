@@ -72,6 +72,24 @@ func TestOperationPollPersistsCursorWithSanitizedBatch(t *testing.T) {
 	if third.BatchCount != 0 || third.EventCount != 0 || third.Offset != second.Offset {
 		t.Fatalf("duplicate poll = %#v", third)
 	}
+	tree, err := ReadPublicTree(session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range tree.Entries {
+		source, err := entry.EvidenceSource()
+		if err != nil {
+			t.Fatal(err)
+		}
+		ref, err := reopened.EvidenceForSourceLocator(source)
+		if err != nil {
+			t.Fatalf("public tree entry has no durable evidence: %#v, %v", entry, err)
+		}
+		item, err := reopened.EvidenceAt(ref)
+		if err != nil || item.SourceLocator != source {
+			t.Fatalf("public tree evidence = %#v, %#v, %v", ref, item, err)
+		}
+	}
 	records, err := reopened.Inspect(0, 10)
 	if err != nil {
 		t.Fatal(err)

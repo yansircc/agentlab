@@ -29,9 +29,23 @@ func TestPublicTreeExcludesThinkingAndClosesToolCausality(t *testing.T) {
 	if len(tree.Entries) != 4 || tree.Entries[1].StructurallyForkable || !tree.Entries[2].StructurallyForkable || !tree.Entries[3].StructurallyForkable {
 		t.Fatalf("forkable entries = %#v", tree.Entries)
 	}
+	if source, err := tree.Entries[1].EvidenceSource(); err != nil || source != opaqueLocator("public-entry", "assistant-1") {
+		t.Fatalf("assistant evidence source = %q, %v", source, err)
+	}
 	prefix, state, digest, err := tree.Checkpoint(tree.Entries[2].Locator)
 	if err != nil || digest != tree.Entries[2].PrefixDigest || sha256Digest(prefix) != digest || strings.Contains(string(prefix), secret) || strings.Contains(string(state), secret) {
 		t.Fatalf("checkpoint = %q, %q, %q, %v", prefix, state, digest, err)
+	}
+}
+
+func TestPublicTreeRejectsPartialFinalRecord(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	data := `{"type":"session","version":3,"id":"session-1"}` + "\n" + `{"type":"message","id":"user","parentId":null,"message":{"role":"user","content":"public"}}`
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadPublicTree(path); !errors.Is(err, ErrInvalidSession) {
+		t.Fatalf("partial final record = %v", err)
 	}
 }
 

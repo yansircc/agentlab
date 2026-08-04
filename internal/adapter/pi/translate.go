@@ -30,7 +30,9 @@ type contentBlock struct {
 	Arguments json.RawMessage `json:"arguments"`
 }
 
-func translate(line []byte) (Batch, error) {
+func translate(line []byte) (Batch, error) { return translateWithSession("", line) }
+
+func translateWithSession(sessionID string, line []byte) (Batch, error) {
 	var value entry
 	if json.Unmarshal(line, &value) != nil || value.Type == "" {
 		return Batch{}, fmt.Errorf("%w: malformed appended record", ErrInvalidSession)
@@ -47,40 +49,38 @@ func translate(line []byte) (Batch, error) {
 	}
 	switch msg.Role {
 	case "user":
-		return admitMessage("user_message", value.ID, msg.Content)
+		return admitMessage("user_message", value.ID, publicSourceLocator(sessionID, value.ID), msg.Content)
 	case "assistant":
-		return admitAssistant(value.ID, msg.Content, msg.StopReason)
+		return admitAssistant(value.ID, publicSourceLocator(sessionID, value.ID), msg.Content, msg.StopReason)
 	case "toolResult":
-		return admitToolResult(msg)
+		return admitToolResult(publicSourceLocator(sessionID, value.ID), msg)
 	default:
 		return Batch{Exclusions: []Exclusion{{Category: "pi_message_role_" + msg.Role, Size: len(line)}}}, nil
 	}
 }
 
-func admitMessage(kind, correlationID string, content json.RawMessage) (Batch, error) {
-	raw, err := json.Marshal(struct {
-		Content json.RawMessage `json:"content"`
-	}{content})
-	if err != nil {
-		return Batch{}, err
+func admitMessage(kind, correlationID, sourceLocator string, content json.RawMessage) (Batch, error) {
+	if !json.Valid(content) {
+		return Batch{}, ErrInvalidSession
 	}
-	return Batch{Events: []Event{{Kind: kind, CorrelationID: correlationID, Label: kind, CompactText: compact(content), Raw: raw}}}, nil
+	return Batch{Events: []Event{{Kind: kind, CorrelationID: correlationID, SourceLocator: sourceLocator, Label: kind, CompactText: compact(content), Raw: content}}}, nil
 }
 
-func admitToolResult(msg message) (Batch, error) {
+func admitToolResult(sourceLocator string, msg message) (Batch, error) {
 	if msg.ToolCallID == "" || msg.ToolName == "" {
 		return Batch{}, ErrInvalidSession
 	}
-	raw, err := json.Marshal(struct {
-		ToolCallID string          `json:"tool_call_id"`
-		ToolName   string          `json:"tool_name"`
-		IsError    bool            `json:"is_error"`
-		Content    json.RawMessage `json:"content"`
-	}{msg.ToolCallID, msg.ToolName, msg.IsError, msg.Content})
-	if err != nil {
-		return Batch{}, err
+	if !json.Valid(msg.Content) {
+		return Batch{}, ErrInvalidSession
 	}
-	return Batch{Events: []Event{{Kind: "tool_result", CorrelationID: msg.ToolCallID, Label: msg.ToolName, CompactText: compact(msg.Content), Raw: raw}}}, nil
+	return Batch{Events: []Event{{Kind: "tool_result", CorrelationID: msg.ToolCallID, SourceLocator: sourceLocator, Label: msg.ToolName, CompactText: compact(msg.Content), Raw: msg.Content}}}, nil
+}
+
+func publicSourceLocator(sessionID, entryID string) string {
+	if sessionID == "" || entryID == "" {
+		return ""
+	}
+	return opaqueLocator("public-entry", entryID)
 }
 
 func compact(value []byte) string {

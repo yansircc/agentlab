@@ -24,6 +24,7 @@ type replayState struct {
 	semanticProgress   SemanticProgress
 	firstEventTimedOut bool
 	adapterCursor      artifact.Ref
+	adapterSources     map[string]bool
 	stopRequested      bool
 	runtimeCheckpoints map[artifact.Ref]runtimeCheckpointRecorded
 	effectReceipts     map[string]effect.Receipt
@@ -42,7 +43,7 @@ func replayRun(records []ledger.Record) (replayState, error) {
 }
 
 func initialReplayState() replayState {
-	return replayState{closedStreams: map[string]bool{}, runtimeCheckpoints: map[artifact.Ref]runtimeCheckpointRecorded{}, effectReceipts: map[string]effect.Receipt{}, sessionForks: map[artifact.Ref]SessionForked{}, semanticProgress: ProgressUnknown}
+	return replayState{closedStreams: map[string]bool{}, adapterSources: map[string]bool{}, runtimeCheckpoints: map[artifact.Ref]runtimeCheckpointRecorded{}, effectReceipts: map[string]effect.Receipt{}, sessionForks: map[artifact.Ref]SessionForked{}, semanticProgress: ProgressUnknown}
 }
 
 func (s *replayState) apply(record ledger.Record) error {
@@ -157,8 +158,11 @@ func (s *replayState) adapter(record ledger.Record) error {
 		return invalid(record, "invalid adapter_batch")
 	}
 	for _, item := range value.Admissions {
-		if !item.Kind.valid() || item.Label == "" || !validRef(item.Raw) {
+		if !item.Kind.valid() || item.Label == "" || !validRef(item.Raw) || (item.SourceLocator != "" && (!validSourceLocator(item.SourceLocator) || s.adapterSources[item.SourceLocator])) {
 			return invalid(record, "invalid adapter admission")
+		}
+		if item.SourceLocator != "" {
+			s.adapterSources[item.SourceLocator] = true
 		}
 	}
 	for _, item := range value.Exclusions {

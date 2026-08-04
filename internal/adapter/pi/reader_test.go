@@ -87,6 +87,9 @@ func TestIncrementalReaderExcludesThinkingAndResumesAtDurableCursor(t *testing.T
 	if sink.batches[0].Events[1].CorrelationID != "call-1" {
 		t.Fatalf("tool correlation lost: %#v", sink.batches[0].Events[1])
 	}
+	if sink.batches[0].Events[0].SourceLocator != opaqueLocator("public-entry", "new") || sink.batches[0].Events[1].SourceLocator != "" {
+		t.Fatalf("public entry source binding = %#v", sink.batches[0].Events)
+	}
 
 	partial := `{"type":"message","id":"result","parentId":"new","timestamp":"2026-08-03T00:00:03Z","message":{"role":"toolResult","toolCallId":"call-1","toolName":"read","content":[{"type":"text","text":"ok"}],"isError":false}}`
 	appendBytes(t, path, []byte(partial))
@@ -105,6 +108,9 @@ func TestIncrementalReaderExcludesThinkingAndResumesAtDurableCursor(t *testing.T
 	}
 	if len(sink.batches) != 2 || sink.batches[1].Events[0].Kind != "tool_result" || sink.batches[1].Events[0].CorrelationID != "call-1" {
 		t.Fatalf("tool result was not recovered: %#v", sink.batches)
+	}
+	if sink.batches[1].Events[0].SourceLocator != opaqueLocator("public-entry", "result") {
+		t.Fatalf("tool result source binding = %#v", sink.batches[1].Events[0])
 	}
 	if _, err := ReadNew(path, cursor, sink); err != nil {
 		t.Fatal(err)

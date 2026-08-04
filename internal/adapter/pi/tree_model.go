@@ -85,6 +85,16 @@ type PublicEntry struct {
 	PublicText           string `json:"public_text"`
 	PrefixDigest         string `json:"prefix_digest"`
 	StructurallyForkable bool   `json:"structurally_forkable"`
+	sourceLocator        string
+}
+
+// EvidenceSource returns the adapter-owned opaque identity that was bound to
+// this public entry before it reached the run ledger.
+func (entry PublicEntry) EvidenceSource() (string, error) {
+	if entry.Locator == "" || entry.sourceLocator == "" {
+		return "", ErrInvalidSession
+	}
+	return entry.sourceLocator, nil
 }
 
 type treeNode struct {

@@ -6,10 +6,11 @@ import (
 
 	piadapter "github.com/yansircc/agentlab/internal/adapter/pi"
 	"github.com/yansircc/agentlab/internal/effect"
+	"github.com/yansircc/agentlab/internal/run"
 )
 
 const (
-	runtimeTreePageContract = "agentlab.pi-runtime-tree-page.v1"
+	runtimeTreePageContract = "agentlab.pi-runtime-tree-page.v2"
 	maxRuntimeTreePage      = 100
 	maxRuntimeTreeText      = 8192
 )
@@ -28,14 +29,15 @@ type PiRuntimeTreePage struct {
 }
 
 type PiRuntimeTreeEntry struct {
-	Locator              string `json:"locator"`
-	ParentLocator        string `json:"parent_locator,omitempty"`
-	Role                 string `json:"role"`
-	Kind                 string `json:"kind"`
-	PublicText           string `json:"public_text"`
-	PublicTextTruncated  bool   `json:"public_text_truncated,omitempty"`
-	PrefixDigest         string `json:"prefix_digest"`
-	StructurallyForkable bool   `json:"structurally_forkable"`
+	Evidence             run.EvidenceRef `json:"evidence_ref"`
+	Locator              string          `json:"locator"`
+	ParentLocator        string          `json:"parent_locator,omitempty"`
+	Role                 string          `json:"role"`
+	Kind                 string          `json:"kind"`
+	PublicText           string          `json:"public_text"`
+	PublicTextTruncated  bool            `json:"public_text_truncated,omitempty"`
+	PrefixDigest         string          `json:"prefix_digest"`
+	StructurallyForkable bool            `json:"structurally_forkable"`
 }
 
 // RuntimeTree reads the adapter-owned session selected by a Host profile. A
@@ -63,9 +65,13 @@ func (h *PiRuntimeHost) RuntimeTree(binding Binding, runID string, after uint64,
 		Entries: make([]PiRuntimeTreeEntry, 0, end-int(after)),
 	}
 	for _, entry := range tree.Entries[after:end] {
+		evidence, err := h.runtimeTreeEvidence(binding, runID, entry)
+		if err != nil {
+			return nil, errors.New("Pi Worker runtime tree evidence is unavailable")
+		}
 		text, truncated := boundedRuntimeTreeText(entry.PublicText)
 		page.Entries = append(page.Entries, PiRuntimeTreeEntry{
-			Locator: entry.Locator, ParentLocator: entry.ParentLocator, Role: entry.Role, Kind: entry.Kind,
+			Evidence: evidence, Locator: entry.Locator, ParentLocator: entry.ParentLocator, Role: entry.Role, Kind: entry.Kind,
 			PublicText: text, PublicTextTruncated: truncated, PrefixDigest: entry.PrefixDigest,
 			StructurallyForkable: entry.StructurallyForkable,
 		})
@@ -75,6 +81,40 @@ func (h *PiRuntimeHost) RuntimeTree(binding Binding, runID string, after uint64,
 		page.NextAfter = &next
 	}
 	return page, nil
+}
+
+func (h *PiRuntimeHost) runtimeTreeEvidence(binding Binding, runID string, entry piadapter.PublicEntry) (run.EvidenceRef, error) {
+	source, err := entry.EvidenceSource()
+	if err != nil {
+		return run.EvidenceRef{}, err
+	}
+	experimentOp, err := binding.experiment()
+	if err != nil {
+		return run.EvidenceRef{}, err
+	}
+	for current := runID; current != ""; {
+		op, err := run.Open(binding.Root, binding.ExperimentID, current)
+		if err != nil {
+			return run.EvidenceRef{}, err
+		}
+		evidence, err := op.EvidenceForSourceLocator(source)
+		if err == nil {
+			return evidence, nil
+		}
+		if !errors.Is(err, run.ErrEvidenceSourceAbsent) {
+			return run.EvidenceRef{}, err
+		}
+		manifest, _, err := experimentOp.RunManifest(current)
+		if err != nil {
+			return run.EvidenceRef{}, err
+		}
+		splice, ok := manifest.Origin.Splice()
+		if !ok {
+			return run.EvidenceRef{}, errors.New("runtime entry is not durably admitted")
+		}
+		current = splice.ParentRun
+	}
+	return run.EvidenceRef{}, errors.New("runtime entry is not durably admitted")
 }
 
 func (h *PiRuntimeHost) workerProfileForRun(binding Binding, runID string) (string, PiRuntimeProfile, error) {
