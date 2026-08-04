@@ -32,6 +32,7 @@ func TestDecodeAcceptsOnlyClosedFourToolOperations(t *testing.T) {
 func TestDecodeRejectsLocatorsAndIllegalProducts(t *testing.T) {
 	tests := []struct{ tool, input string }{
 		{ApplyTool, `{"action":"begin_preparation","root":"/state"}`},
+		{ApplyTool, `{"action":"bind_run","inputs":{}}`},
 		{RunTool, `{"action":"start","request_path":"/tmp/request.json"}`},
 		{RunTool, `{"action":"poll","run_id":"r","stream_path":"/tmp/session"}`},
 		{InspectTool, `{"scope":"run","after":0,"limit":1}`},

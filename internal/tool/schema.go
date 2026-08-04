@@ -51,7 +51,7 @@ func applySchema() map[string]any {
 		"source_snapshot":  opaque("Host-issued immutable source-snapshot artifact ref."),
 		"public_artifacts": map[string]any{"type": "array", "items": opaque("Host-issued public artifact ref.")},
 		"fact":             opaque("Repository fact."), "decision": opaque("Supervisor decision."), "resolution": opaque("Preparation resolution."), "assay": opaque("Leakage assay."), "challenge": opaque("Challenge."),
-		"binding": opaque("Decision-bound run binding."), "origin": opaque("Closed run origin."), "inputs": opaque("Run inputs of immutable artifact refs."), "value": opaque("Closed decision-bound domain value."),
+		"binding": opaque("Decision-bound run binding."), "origin": opaque("Closed run origin."), "prepared": opaque("Host-issued complete run-input artifact."), "value": opaque("Closed decision-bound domain value."),
 		"finding_ids": map[string]any{"type": "array", "items": text("Finding id.")},
 	}, "action")
 }

@@ -1,12 +1,15 @@
 package tool
 
-import "github.com/yansircc/agentlab/internal/experiment"
+import (
+	"github.com/yansircc/agentlab/internal/artifact"
+	"github.com/yansircc/agentlab/internal/experiment"
+)
 
 type bindRun struct {
-	Action  string                             `json:"action"`
-	Binding experiment.DecisionBoundRunBinding `json:"binding"`
-	Origin  experiment.RunOrigin               `json:"origin"`
-	Inputs  experiment.RunInputs               `json:"inputs"`
+	Action   string                             `json:"action"`
+	Binding  experiment.DecisionBoundRunBinding `json:"binding"`
+	Origin   experiment.RunOrigin               `json:"origin"`
+	Prepared artifact.Ref                       `json:"prepared"`
 }
 
 func (bindRun) toolName() string { return ApplyTool }
@@ -17,7 +20,7 @@ func (value bindRun) execute(binding Binding) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return op.BindRunWithDecision(value.Binding, value.Origin, value.Inputs)
+	return op.BindPreparedRunWithDecision(value.Binding, value.Origin, value.Prepared)
 }
 
 type recordFinding struct {
