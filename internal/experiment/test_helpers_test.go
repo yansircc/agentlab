@@ -174,7 +174,12 @@ func completeComparisonWorker(t *testing.T, operation *Operation, runID string, 
 			t.Fatal(err)
 		}
 		var writer *run.AdapterWriter
-		writerDeadline := time.Now().Add(time.Second)
+		// A healthy managed Worker reaches its accepted terminal shortly after the
+		// process exits, but the durable event appends run under -race on shared CI
+		// runners; a one-second poll is too tight there. Five seconds still fails
+		// fast for a genuinely broken terminal path while tolerating slow-but-
+		// correct hosts.
+		writerDeadline := time.Now().Add(5 * time.Second)
 		for time.Now().Before(writerDeadline) {
 			writer, _, err = worker.AcquireAdapterWriter("comparison-test")
 			if err == nil {
@@ -197,7 +202,7 @@ func completeComparisonWorker(t *testing.T, operation *Operation, runID string, 
 			t.Fatal(err)
 		}
 	}
-	terminalDeadline := time.Now().Add(time.Second)
+	terminalDeadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(terminalDeadline) {
 		accepted, err := worker.TerminalAccepted()
 		if err != nil {
@@ -284,7 +289,9 @@ func completeCandidateWithStart(t *testing.T, operation *Operation, runID string
 	if err := coder.VerifyStartEffect(intent); err != nil {
 		t.Fatalf("verify Coder start effect: %v", err)
 	}
-	deadline := time.Now().Add(time.Second)
+	// The Coder completion receipt is admitted by the same durable managed
+	// completion path; keep the same CI-load headroom as the Worker poll above.
+	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		receipt, _, err := coder.CoderCompletionReceipt()
 		if err == nil {
