@@ -1,0 +1,22 @@
+name: Probe
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  userns:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - run: |
+          echo "== plain unshare =="
+          unshare --user --map-root-user --mount --pid --fork -- /usr/bin/sh -c 'echo NS_OK' && echo UNPRIVILEGED_NS_AVAILABLE || echo UNPRIVILEGED_NS_BLOCKED
+          echo "== sudo unshare =="
+          sudo -n unshare --mount --pid --fork -- /usr/bin/sh -c 'echo NS_OK' && echo PRIVILEGED_NS_AVAILABLE || echo PRIVILEGED_NS_BLOCKED
+          echo "== coder tests verbose =="
+          go test -count=1 -v ./internal/coder -run 'TestLinuxSandbox' 2>&1 | grep -E 'SKIP|PASS|FAIL|namespace' | head -20
