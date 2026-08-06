@@ -21,9 +21,10 @@ tests are never described as live acceptance.
    Worker, Coder, and Supervisor provider credentials. Values come from the
    authorized provider (e.g. `pi auth print-api-key --model <model>`).
    Example: `AGENTLAB_WORKER_TOKEN`, `AGENTLAB_CODER_TOKEN`,
-   `AGENTLAB_SUPERVISOR_TOKEN` with `PROVIDER_TOKEN=$...` set in the Host
-   environment where each Pi role runs. All three must be distinct and
-   non-empty. Provider spend authorization must be obtained first.
+   `AGENTLAB_SUPERVISOR_TOKEN` set in the Host environment where each Pi
+   role runs; all three must be distinct and non-empty, and the provider
+   credential env key must match the provider's convention (DeepSeek uses
+   `DEEPSEEK_API_KEY`). Provider spend authorization must be obtained first.
 4. **Exact provider/model/policy values** (provider, model, thinking,
    compaction) chosen and frozen before `preflight`.
 
@@ -66,11 +67,15 @@ agentlab acceptance preflight \
   --node "$(readlink -f "$(which node)")" \
   --provider "$PROVIDER" --model "$MODEL" \
   --thinking "$THINKING" --compaction "$COMPACTION" \
-  --provider-credential-env PROVIDER_TOKEN \
+  --provider-credential-env DEEPSEEK_API_KEY \
   --worker-credential-handle AGENTLAB_WORKER_TOKEN \
   --coder-credential-handle AGENTLAB_CODER_TOKEN \
   --supervisor-credential-handle AGENTLAB_SUPERVISOR_TOKEN
 ```
+
+The Host environment must export the credential at the provider's env key
+(`DEEPSEEK_API_KEY` for DeepSeek) and at the three handles; the canary step
+invokes the exact selected model before any Worker or Coder trial.
 
 Record the projection: `preparation_id`, `experiment_id`, `baseline_run_id`,
 `audit_id`, `worker_input`, `candidate`, `candidate_executable`.
