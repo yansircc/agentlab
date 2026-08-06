@@ -20,3 +20,12 @@ jobs:
           sudo -n unshare --mount --pid --fork -- /usr/bin/sh -c 'echo NS_OK' && echo PRIVILEGED_NS_AVAILABLE || echo PRIVILEGED_NS_BLOCKED
           echo "== coder tests verbose =="
           go test -count=1 -v ./internal/coder -run 'TestLinuxSandbox' 2>&1 | grep -E 'SKIP|PASS|FAIL|namespace' | head -20
+  userns-root:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: |
+          echo "== root full sandbox prefix (with --user) =="
+          sudo -n unshare --user --map-root-user --mount --pid --fork -- /usr/bin/sh -c 'echo NS_OK' && echo ROOT_USERNS_AVAILABLE || echo ROOT_USERNS_BLOCKED
+          echo "== root pid+mount only =="
+          sudo -n unshare --mount --pid --fork -- /usr/bin/sh -c 'echo NS_OK' && echo ROOT_MOUNT_PID_AVAILABLE || echo ROOT_MOUNT_PID_BLOCKED
