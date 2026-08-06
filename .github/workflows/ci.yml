@@ -19,3 +19,82 @@ jobs:
       - run: go test -race -count=1 ./...
       - run: go vet ./...
       - run: test -z "$(gofmt -l $(find cmd internal -type f -name '*.go'))"
+
+  # Real Linux sandbox verification. The GitHub runner user cannot write
+  # /proc/self/uid_map, so the sandbox namespace tests must run as root;
+  # root can create the user+mount+pid namespace (probe: ROOT_USERNS_AVAILABLE).
+  # This job FAILS if the namespace tests skip, so a silent regression cannot
+  # hide behind an unavailable namespace.
+  sandbox-ns:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Install the pinned Pi SDK
+        run: npm install -g @earendil-works/pi-coding-agent@0.83.0
+      - name: Run the Linux sandbox namespace tests as root
+        run: |
+          sudo -n env PATH="$PATH" HOME=/root GOPATH=/root/go GOCACHE=/tmp/go-cache \
+            go test -count=1 -v ./internal/coder -run 'TestLinuxSandbox' 2>&1 | tee /tmp/sandbox-test.log
+          grep -E '^(=== RUN|--- (PASS|FAIL|SKIP))' /tmp/sandbox-test.log
+          if grep -q -- '--- SKIP: TestLinuxSandboxRunsAllowedNodeAndExcludesSiblingRoot' /tmp/sandbox-test.log \
+             || grep -q -- '--- SKIP: TestLinuxSandboxRunsPinnedPiFromReadOnlySDK' /tmp/sandbox-test.log; then
+            echo "::error::Linux sandbox namespace tests skipped; they must run as root on this host"
+            exit 1
+          fi
+
+  # Live acceptance scaffold per docs/acceptance-runbook.md. It skips cleanly
+  # until the three distinct Host credential handles are configured as secrets
+  # and provider spend is authorized; then it builds the pinned runtime and
+  # runs the preflight step, which binds the exact identity and exercises the
+  # live Pi canary before any Worker or Coder trial.
+  acceptance-live:
+    runs-on: ubuntu-latest
+    needs: test
+    env:
+      AGENTLAB_WORKER_TOKEN: ${{ secrets.AGENTLAB_WORKER_TOKEN }}
+      AGENTLAB_CODER_TOKEN: ${{ secrets.AGENTLAB_CODER_TOKEN }}
+      AGENTLAB_SUPERVISOR_TOKEN: ${{ secrets.AGENTLAB_SUPERVISOR_TOKEN }}
+      AGENTLAB_PROVIDER: ${{ secrets.AGENTLAB_PROVIDER }}
+      AGENTLAB_MODEL: ${{ secrets.AGENTLAB_MODEL }}
+      AGENTLAB_THINKING: ${{ secrets.AGENTLAB_THINKING }}
+      AGENTLAB_COMPACTION: ${{ secrets.AGENTLAB_COMPACTION }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Install the pinned Pi SDK
+        run: npm install -g @earendil-works/pi-coding-agent@0.83.0
+      - name: Require authorized Host credentials and exact policy values
+        run: |
+          if [ -z "$AGENTLAB_WORKER_TOKEN" ] || [ -z "$AGENTLAB_CODER_TOKEN" ] || [ -z "$AGENTLAB_SUPERVISOR_TOKEN" ] \
+             || [ -z "$AGENTLAB_PROVIDER" ] || [ -z "$AGENTLAB_MODEL" ] || [ -z "$AGENTLAB_THINKING" ] || [ -z "$AGENTLAB_COMPACTION" ]; then
+            echo "::notice::live acceptance skipped: configure AGENTLAB_WORKER_TOKEN/CODER/SUPERVISOR/PROVIDER/MODEL/THINKING/COMPACTION secrets and authorize provider spend"
+            exit 0
+          fi
+          echo "credential handles and policy are configured"
+      - name: Build the pinned runtime and run preflight (live canary)
+        run: |
+          if [ -z "$AGENTLAB_WORKER_TOKEN" ]; then exit 0; fi
+          make skill
+          go build -o /tmp/agentlab ./cmd/agentlab
+          SDK_ROOT=$(dirname "$(dirname "$(readlink -f "$(which pi)")")")
+          NODE=$(readlink -f "$(which node)")
+          rm -rf /tmp/agentlab-eval /tmp/agentlab-audit /tmp/agentlab-host
+          export PROVIDER_TOKEN="$AGENTLAB_WORKER_TOKEN" \
+            AGENTLAB_WORKER_TOKEN AGENTLAB_CODER_TOKEN AGENTLAB_SUPERVISOR_TOKEN
+          /tmp/agentlab acceptance preflight \
+            --evaluated-root /tmp/agentlab-eval --audit-root /tmp/agentlab-audit \
+            --host-root /tmp/agentlab-host \
+            --skill-root "$PWD/dist/skill" --sdk-root "$SDK_ROOT" --node "$NODE" \
+            --provider "$AGENTLAB_PROVIDER" --model "$AGENTLAB_MODEL" \
+            --thinking "$AGENTLAB_THINKING" --compaction "$AGENTLAB_COMPACTION" \
+            --provider-credential-env PROVIDER_TOKEN \
+            --worker-credential-handle AGENTLAB_WORKER_TOKEN \
+            --coder-credential-handle AGENTLAB_CODER_TOKEN \
+            --supervisor-credential-handle AGENTLAB_SUPERVISOR_TOKEN
+          echo "preflight passed; continue with docs/acceptance-runbook.md steps 3-7"

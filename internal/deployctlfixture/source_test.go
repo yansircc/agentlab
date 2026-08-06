@@ -15,6 +15,16 @@ func defaultReadingSource() []source.InputFile {
 	return replaceSource(BaselineSource(), "deploy.go", deploySource, defaultReadingDeploySource)
 }
 
+// specificRepairSource fixes only the target the Candidate observed during the
+// trial: it hard-codes the known target instead of honoring the requested
+// target. The Host's objective oracle and the post-seal held-out target must
+// reject it as non-generalizing, without it ever consulting the private
+// default-target source.
+func specificRepairSource() []source.InputFile {
+	inputs := replaceSource(BaselineSource(), "main.go", "deploy(root, catalog, selected, release)", "deploy(root, selected, release)")
+	return replaceSource(inputs, "deploy.go", deploySource, specificRepairDeploySource)
+}
+
 func replaceSource(inputs []source.InputFile, path, old, replacement string) []source.InputFile {
 	result := append([]source.InputFile(nil), inputs...)
 	for index := range result {
@@ -65,6 +75,30 @@ type DeploymentReceipt struct { Target string ` + "`json:\"target\"`" + `; Relea
 func deploy(root string, catalog TargetCatalog, target DeploymentTarget, release string) error {
 	if _, err := defaultTarget(root, catalog); err != nil { return err }
 	if err := os.WriteFile(filepath.Join(root, "state", target.Name+".txt"), []byte(release), 0600); err != nil { return err }
+	data, err := json.Marshal(DeploymentReceipt{Target: target.Name, Release: release})
+	if err != nil { return err }
+	return os.WriteFile(filepath.Join(root, "receipts", "latest.json"), data, 0600)
+}
+
+func status(root string, target DeploymentTarget) error { data, err := os.ReadFile(filepath.Join(root, "state", target.Name+".txt")); if err != nil { return err }; fmt.Printf("%s=%s\n", target.Name, string(data)); return nil }
+func receipt(root string) error { data, err := os.ReadFile(filepath.Join(root, "receipts", "latest.json")); if err != nil { return err }; fmt.Println(string(data)); return nil }
+`
+
+const specificRepairDeploySource = `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+)
+
+type DeploymentReceipt struct { Target string ` + "`json:\"target\"`" + `; Release string ` + "`json:\"release\"`" + ` }
+
+// The specific repair observed "staging" during the trial and hard-codes it.
+// It never reads the private default-target source.
+func deploy(root string, target DeploymentTarget, release string) error {
+	if err := os.WriteFile(filepath.Join(root, "state", "staging.txt"), []byte(release), 0600); err != nil { return err }
 	data, err := json.Marshal(DeploymentReceipt{Target: target.Name, Release: release})
 	if err != nil { return err }
 	return os.WriteFile(filepath.Join(root, "receipts", "latest.json"), data, 0600)
