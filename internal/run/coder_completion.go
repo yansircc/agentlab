@@ -3,14 +3,12 @@ package run
 import (
 	"encoding/json"
 	"errors"
-	"path/filepath"
 	"time"
 
 	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/ledger"
 	"github.com/yansircc/agentlab/internal/source"
 	"github.com/yansircc/agentlab/internal/strictjson"
-	"github.com/yansircc/agentlab/internal/transaction"
 )
 
 const (
@@ -46,7 +44,9 @@ func (o *Operation) RecordCoderCompletion(candidate artifact.Ref) (artifact.Ref,
 	if _, err := source.Load(o.artifacts, candidate); err != nil {
 		return artifact.Ref{}, errors.New("coder completion candidate is not a source snapshot")
 	}
-	lease, err := transaction.Acquire(filepath.Join(o.dir, "producer.lock"))
+	// The same live-writer wait as finishManaged: the Coder process can exit
+	// while the Host is still committing adapter evidence under the lease.
+	lease, err := acquireProducerLease(o.dir)
 	if err != nil {
 		return artifact.Ref{}, err
 	}

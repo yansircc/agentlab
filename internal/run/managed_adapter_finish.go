@@ -18,6 +18,29 @@ func (o *Operation) awaitManaged(command *exec.Cmd, finalize func(int) error) {
 	_ = o.finishManaged(code, err)
 }
 
+// acquireProducerLease records a durable terminal or completion fact. A
+// managed process can exit while the same Host is still committing adapter
+// evidence under the producer lease; the terminal fact must wait briefly for
+// that live writer instead of silently failing closed. The bound still fails
+// closed on a stale or stuck lease.
+func acquireProducerLease(dir string) (*transaction.Lease, error) {
+	path := filepath.Join(dir, "producer.lock")
+	const attempts = 750 // ~15s of 20ms backoff, far beyond any evidence commit
+	var err error
+	for attempt := 0; attempt < attempts; attempt++ {
+		var lease *transaction.Lease
+		lease, err = transaction.Acquire(path)
+		if err == nil {
+			return lease, nil
+		}
+		if !errors.Is(err, transaction.ErrLeaseHeld) {
+			return nil, err
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	return nil, err
+}
+
 func managedExitCode(waitErr error) (int, error) {
 	if waitErr == nil {
 		return 0, nil
@@ -30,7 +53,7 @@ func managedExitCode(waitErr error) (int, error) {
 }
 
 func (o *Operation) finishManaged(code int, completionErr error) error {
-	lease, err := transaction.Acquire(filepath.Join(o.dir, "producer.lock"))
+	lease, err := acquireProducerLease(o.dir)
 	if err != nil {
 		return err
 	}
