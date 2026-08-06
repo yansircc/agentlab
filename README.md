@@ -20,6 +20,8 @@ The source of truth is `events.jsonl` plus immutable artifacts. `result.json`, s
 
 - Go 1.26 or newer;
 - macOS or Linux. Worker process-group control uses Unix process semantics;
+  on Linux, isolated Coder roles additionally require `/usr/bin/unshare` with
+  unprivileged user and mount namespaces. There is no Host-filesystem fallback.
 - Pi is optional and needed only for `run attach` against Pi sessions.
 
 ## Install
@@ -53,7 +55,7 @@ agentlab compare record|show
 agentlab gate record|show
 agentlab inspect
 agentlab tool schemas|invoke
-agentlab acceptance provision|preflight|supervisor-start|supervisor-status|prepare-baseline|prepare-run|verify-heldout|audit-status|audit-review|audit-finding|audit-seal|recursive-gate
+agentlab acceptance provision|preflight|supervisor-start|supervisor-status|prepare-baseline|prepare-run|worker-oracle|verify-heldout|audit-status|audit-review|audit-finding|audit-seal|recursive-gate
 ```
 
 Mutation commands accept strict JSON requests. Secrets are referenced by environment-variable handles, never accepted as CLI values, and resolved values are redacted before evidence persistence.
@@ -118,6 +120,13 @@ candidate bytes or individual manifest inputs. Each isolated run receives its
 own Host profile and executable receipt. `acceptance verify-heldout` creates a
 post-seal target and records objective oracle evidence only; it is not a
 Worker trial or autonomous-acceptance claim.
+
+For a managed deployctl Worker, the Host lifecycle itself invokes the
+Host-only `acceptance worker-oracle` producer after a normal, non-stopped Pi
+exit and before the run terminal fact is recorded. Its closed runtime hook is
+not a provider-tool field or Worker/Supervisor input; the producer derives the
+one canonical oracle artifact from the bound manifest, Host profile, and
+fixture state.
 
 `acceptance supervisor-start` and `acceptance supervisor-status` are also
 Host-only. Preflight writes a private, write-once Pi Supervisor plan with the

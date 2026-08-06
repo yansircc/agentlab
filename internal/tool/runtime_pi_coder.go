@@ -35,7 +35,7 @@ func (value PiLaunch) Validate() error {
 			return errors.New("Pi launch path is invalid")
 		}
 	}
-	reserved := map[string]bool{"HOME": true, "PI_CODING_AGENT_DIR": true, "PI_CODING_AGENT_SESSION_DIR": true, "AGENTLAB_CONTEXT_FILTER_ONLY": true, "AGENTLAB_WORKER_FIXTURE": true, "AGENTLAB_WORKER_DEPLOYCTL": true}
+	reserved := map[string]bool{"HOME": true, "PATH": true, "TMPDIR": true, "PI_CODING_AGENT_DIR": true, "PI_CODING_AGENT_SESSION_DIR": true, "AGENTLAB_CONTEXT_FILTER_ONLY": true, "AGENTLAB_WORKER_FIXTURE": true, "AGENTLAB_WORKER_DEPLOYCTL": true}
 	for key, value := range value.PublicEnvironment {
 		if !environmentName(key) || reserved[key] || value == "" || len(value) > 65536 {
 			return errors.New("Pi public environment is invalid")
@@ -66,9 +66,13 @@ func startPiCoder(binding Binding, operation *run.Operation, intent effect.Inten
 	if err := preparePiRuntime(launch.RuntimeRoot, profile.SessionPath); err != nil {
 		return nil, err
 	}
+	identity, err := canonicalPiIdentity(profile.Identity)
+	if err != nil {
+		return nil, err
+	}
 	sandbox, err := coder.NewSandbox(coder.SandboxSpec{
 		Workspace: profile.CoderWorkspace, RuntimeRoot: launch.RuntimeRoot,
-		ReadOnlyRoots: uniquePaths(append(launch.ReadOnlyRoots, profile.Identity.SDKRoot)),
+		ReadOnlyRoots: uniquePaths(append(launch.ReadOnlyRoots, identity.SDKRoot)),
 		Executables:   uniquePaths(append([]string{launch.NodePath}, launch.AllowedExecutables...)), AllowNetwork: launch.AllowNetwork,
 	})
 	if err != nil {
@@ -90,7 +94,7 @@ func startPiCoder(binding Binding, operation *run.Operation, intent effect.Inten
 	if err != nil {
 		return nil, err
 	}
-	command, err := sandbox.Wrap(piCoderCommand(profile.Identity, launch.NodePath, session, sandbox.RuntimeRoot(), string(handoff)))
+	command, err := sandbox.Wrap(piCoderCommand(identity, launch.NodePath, session, sandbox.RuntimeRoot(), string(handoff)))
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +148,8 @@ func runtimeSession(root, session string) (string, error) {
 
 func (value PiLaunch) environment(runtimeRoot string) ([]string, error) {
 	values := cloneEnvironment(value.PublicEnvironment)
-	values["HOME"], values["PI_CODING_AGENT_DIR"], values["PI_CODING_AGENT_SESSION_DIR"] = runtimeRoot, runtimeRoot, runtimeRoot
+	values["HOME"], values["TMPDIR"], values["PATH"] = runtimeRoot, runtimeRoot, value.sandboxPath()
+	values["PI_CODING_AGENT_DIR"], values["PI_CODING_AGENT_SESSION_DIR"] = runtimeRoot, runtimeRoot
 	for key, handle := range value.SecretEnvironmentHandles {
 		secret, exists := os.LookupEnv(handle)
 		if !exists || secret == "" {
@@ -162,6 +167,37 @@ func (value PiLaunch) environment(runtimeRoot string) ([]string, error) {
 		result = append(result, key+"="+values[key])
 	}
 	return result, nil
+}
+
+// sandboxPath is Host-derived from the declared executable capability. It
+// never inherits the Host PATH, so a Pi bash tool can discover only commands
+// whose exact files the operating-system sandbox made reachable.
+func (value PiLaunch) sandboxPath() string {
+	directories := map[string]bool{"/bin": true}
+	for _, executable := range append([]string{value.NodePath}, value.AllowedExecutables...) {
+		if filepath.IsAbs(executable) {
+			directories[filepath.Dir(executable)] = true
+		}
+	}
+	result := make([]string, 0, len(directories))
+	for directory := range directories {
+		result = append(result, directory)
+	}
+	sort.Strings(result)
+	return strings.Join(result, string(os.PathListSeparator))
+}
+
+// canonicalPiIdentity resolves the SDK root to its real path so the mount
+// list and the Pi command agree inside the chroot. The Host may declare the
+// SDK through a symlink; mounting the resolved directory while launching the
+// unresolved path would make cli.js unreachable inside the sandbox.
+func canonicalPiIdentity(identity piadapter.IdentityConfig) (piadapter.IdentityConfig, error) {
+	resolved, err := filepath.EvalSymlinks(identity.SDKRoot)
+	if err != nil || !filepath.IsAbs(resolved) {
+		return identity, errors.New("Pi identity SDK root is invalid")
+	}
+	identity.SDKRoot = resolved
+	return identity, nil
 }
 
 func piCoderCommand(identity piadapter.IdentityConfig, node, session, runtimeRoot, handoff string) []string {

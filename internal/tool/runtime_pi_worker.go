@@ -54,9 +54,13 @@ func startPiWorker(binding Binding, operation *run.Operation, intent effect.Inte
 	if err != nil {
 		return nil, err
 	}
+	identity, err := canonicalPiIdentity(profile.Identity)
+	if err != nil {
+		return nil, err
+	}
 	sandbox, err := coder.NewSandbox(coder.SandboxSpec{
 		Workspace: launch.FixtureRoot, RuntimeRoot: launch.Launch.RuntimeRoot,
-		ReadOnlyRoots: uniquePaths(append(launch.Launch.ReadOnlyRoots, profile.Identity.SDKRoot, filepath.Dir(profile.Identity.ContextFilterPath))),
+		ReadOnlyRoots: uniquePaths(append(launch.Launch.ReadOnlyRoots, identity.SDKRoot, filepath.Dir(profile.Identity.ContextFilterPath))),
 		Executables:   uniquePaths([]string{launch.Launch.NodePath, launch.DeployctlExecutable}), AllowNetwork: launch.Launch.AllowNetwork,
 	})
 	if err != nil {
@@ -71,7 +75,7 @@ func startPiWorker(binding Binding, operation *run.Operation, intent effect.Inte
 		return nil, err
 	}
 	environment = append(environment, "AGENTLAB_CONTEXT_FILTER_ONLY=1", "AGENTLAB_WORKER_FIXTURE="+sandbox.Workspace(), "AGENTLAB_WORKER_DEPLOYCTL="+launch.DeployctlExecutable)
-	command, err := sandbox.Wrap(piWorkerCommand(profile.Identity, launch.Launch.NodePath, session, sandbox.RuntimeRoot(), profile.Identity.ContextFilterPath, extension, prompt))
+	command, err := sandbox.Wrap(piWorkerCommand(identity, launch.Launch.NodePath, session, sandbox.RuntimeRoot(), profile.Identity.ContextFilterPath, extension, prompt))
 	if err != nil {
 		return nil, err
 	}

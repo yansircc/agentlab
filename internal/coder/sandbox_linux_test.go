@@ -1,0 +1,403 @@
+//go:build linux
+
+package coder
+
+import (
+	"bytes"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestLinuxSandboxRunsAllowedNodeAndExcludesSiblingRoot(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("Node is not installed")
+	}
+	shell, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("sh is not installed")
+	}
+	requireLinuxNamespace(t)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.MkdirTemp(home, ".agentlab-coder-linux-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(root) })
+	workspace, runtimeRoot := filepath.Join(root, "workspace"), filepath.Join(root, "runtime")
+	publicRoot, auditRoot := filepath.Join(root, "public"), filepath.Join(root, "audit")
+	for _, path := range []string{workspace, runtimeRoot, publicRoot, auditRoot} {
+		if err := os.Mkdir(path, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "input.txt"), []byte("workspace"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(publicRoot, "public.txt"), []byte("public"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(auditRoot, "private.txt"), []byte("private"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sandbox, err := NewSandbox(SandboxSpec{Workspace: workspace, RuntimeRoot: runtimeRoot, ReadOnlyRoots: []string{publicRoot}, Executables: []string{node, shell}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sandbox.Wrap([]string{"/bin/cat", filepath.Join(auditRoot, "private.txt")}); err == nil {
+		t.Fatal("Linux sandbox accepted an undeclared command")
+	}
+	profile, err := os.ReadFile(filepath.Join(runtimeRoot, "agentlab-coder-linux-sandbox.sh"))
+	if err != nil || !strings.Contains(string(profile), publicRoot) || strings.Contains(string(profile), auditRoot) {
+		t.Fatalf("Linux sandbox profile = %q, %v", profile, err)
+	}
+	probe := `const fs=require("fs"),child=require("child_process");const [workspace,publicRoot,auditRoot]=process.argv.slice(1);if(fs.readFileSync(workspace+"/input.txt","utf8")!=="workspace")process.exit(10);if(fs.readFileSync(publicRoot+"/public.txt","utf8")!=="public")process.exit(11);const status=fs.readFileSync("/proc/self/status","utf8");if(!["CapPrm","CapEff","CapBnd"].every(key=>new RegExp("^"+key+":\\s+0+$","m").test(status)))process.exit(17);fs.writeFileSync(workspace+"/output.txt","written");child.execFileSync("/bin/sh",["-c","printf shell > \"$1/shell.txt\"","sh",workspace]);if(fs.readFileSync(workspace+"/shell.txt","utf8")!=="shell")process.exit(12);try{fs.writeFileSync(publicRoot+"/must-stay-read-only","x");process.exit(13)}catch(error){if(error.code!=="EROFS"&&error.code!=="EACCES"&&error.code!=="EPERM")process.exit(14)}try{fs.readFileSync(auditRoot+"/private.txt");process.exit(15)}catch(error){if(error.code!=="ENOENT"&&error.code!=="EACCES"&&error.code!=="EPERM")process.exit(16)}console.log("sandbox-ok")`
+	wrapped, err := sandbox.Wrap([]string{node, "-e", probe, workspace, publicRoot, auditRoot})
+	if err != nil || wrapped[0] != linuxUnshare || !containsString(wrapped, "--net") {
+		t.Fatalf("Linux sandbox command = %#v, %v", wrapped, err)
+	}
+	command := exec.Command(wrapped[0], wrapped[1:]...)
+	command.Dir = workspace
+	command.Env = []string{"HOME=" + runtimeRoot, "PATH=/usr/bin:/bin"}
+	output, err := command.CombinedOutput()
+	if err != nil || strings.TrimSpace(string(output)) != "sandbox-ok" {
+		t.Fatalf("Linux sandbox probe = %q, %v", output, err)
+	}
+	if data, err := os.ReadFile(filepath.Join(workspace, "output.txt")); err != nil || string(data) != "written" {
+		t.Fatalf("sandbox workspace write = %q, %v", data, err)
+	}
+}
+
+func TestLinuxSandboxRejectsTemporaryOrOverlappingAuthority(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.MkdirTemp(home, ".agentlab-coder-linux-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(root) })
+	workspace, runtimeRoot := filepath.Join(root, "workspace"), filepath.Join(root, "runtime")
+	for _, path := range []string{workspace, runtimeRoot} {
+		if err := os.Mkdir(path, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("Node is not installed")
+	}
+	if _, err := NewSandbox(SandboxSpec{Workspace: "/tmp/workspace", RuntimeRoot: runtimeRoot, ReadOnlyRoots: []string{root}, Executables: []string{node}}); err == nil {
+		t.Fatal("Linux sandbox accepted a temporary workspace")
+	}
+	if _, err := NewSandbox(SandboxSpec{Workspace: workspace, RuntimeRoot: workspace, ReadOnlyRoots: []string{root}, Executables: []string{node}}); err == nil {
+		t.Fatal("Linux sandbox accepted overlapping writable roots")
+	}
+}
+
+func TestLinuxSandboxRunsPinnedPiFromReadOnlySDK(t *testing.T) {
+	pi, err := exec.LookPath("pi")
+	if err != nil {
+		t.Skip("Pi is not installed")
+	}
+	entry, err := filepath.EvalSymlinks(pi)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("Node is not installed")
+	}
+	shell, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("sh is not installed")
+	}
+	requireLinuxNamespace(t)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.MkdirTemp(home, ".agentlab-coder-linux-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(root) })
+	workspace, runtimeRoot := filepath.Join(root, "workspace"), filepath.Join(root, "runtime")
+	for _, path := range []string{workspace, runtimeRoot} {
+		if err := os.Mkdir(path, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sdkRoot := filepath.Dir(filepath.Dir(entry))
+	sandbox, err := NewSandbox(SandboxSpec{Workspace: workspace, RuntimeRoot: runtimeRoot, ReadOnlyRoots: []string{sdkRoot}, Executables: []string{node, shell}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrapped, err := sandbox.Wrap([]string{node, entry, "--version"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command(wrapped[0], wrapped[1:]...)
+	command.Dir = workspace
+	command.Env = []string{"HOME=" + runtimeRoot, "PATH=/usr/bin:/bin"}
+	output, err := command.CombinedOutput()
+	if err != nil || strings.TrimSpace(string(output)) != "0.83.0" {
+		t.Fatalf("sandboxed Pi = %q, %v", output, err)
+	}
+	bashTool := filepath.Join(sdkRoot, "dist", "core", "tools", "bash.js")
+	probe := `const {createLocalBashOperations}=await import(process.argv[1]);let output="";const result=await createLocalBashOperations().exec("printf pi-shell-ok",process.cwd(),{onData:chunk=>output+=chunk});if(result.exitCode!==0||output!=="pi-shell-ok")process.exit(21);console.log("pi-bash-ok")`
+	wrapped, err = sandbox.Wrap([]string{node, "--input-type=module", "-e", probe, bashTool})
+	if err != nil {
+		t.Fatal(err)
+	}
+	command = exec.Command(wrapped[0], wrapped[1:]...)
+	command.Dir = workspace
+	command.Env = []string{"HOME=" + runtimeRoot, "TMPDIR=" + runtimeRoot, "PATH=/bin"}
+	output, err = command.CombinedOutput()
+	if err != nil || strings.TrimSpace(string(output)) != "pi-bash-ok" {
+		t.Fatalf("sandboxed Pi bash = %q, %v", output, err)
+	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
+func TestLinuxSandboxScriptMountModesAndNetwork(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.MkdirTemp(home, ".agentlab-coder-linux-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(root) })
+	workspace, runtimeRoot := filepath.Join(root, "workspace"), filepath.Join(root, "runtime")
+	publicRoot := filepath.Join(root, "public")
+	for _, path := range []string{workspace, runtimeRoot, publicRoot} {
+		if err := os.Mkdir(path, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("Node is not installed")
+	}
+	shell, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("sh is not installed")
+	}
+	runtimeOffline, runtimeOnline := filepath.Join(root, "runtime-offline"), filepath.Join(root, "runtime-online")
+	for _, path := range []string{runtimeOffline, runtimeOnline} {
+		if err := os.Mkdir(path, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	offline, err := NewSandbox(SandboxSpec{Workspace: workspace, RuntimeRoot: runtimeOffline, ReadOnlyRoots: []string{publicRoot}, Executables: []string{node, shell}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	script, err := os.ReadFile(filepath.Join(runtimeOffline, "agentlab-coder-linux-sandbox.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(string(script), "\n")
+	remount := func(path string) string {
+		for _, line := range lines {
+			if strings.Contains(line, "remount,bind") && strings.Contains(line, path) {
+				return line
+			}
+		}
+		return ""
+	}
+	if line := remount("/dev/null"); !strings.Contains(line, "rw,nosuid") || strings.Contains(line, "nodev") {
+		t.Fatalf("/dev/null remount = %q", line)
+	}
+	if line := remount(publicRoot); !strings.Contains(line, "ro,nosuid,nodev") {
+		t.Fatalf("read-only root remount = %q", line)
+	}
+	if !strings.Contains(string(script), "--bounding-set=-all --inh-caps=-all --ambient-caps=-all --nnp") {
+		t.Fatalf("sandbox script dropped capabilities: %s", script)
+	}
+	if strings.Contains(string(script), "/etc/hosts") {
+		t.Fatalf("offline sandbox exposed network files: %s", script)
+	}
+	wrapped, err := offline.Wrap([]string{node, "-e", "0"})
+	if err != nil || !containsString(wrapped, "--net") {
+		t.Fatalf("offline sandbox command = %#v, %v", wrapped, err)
+	}
+	online, err := NewSandbox(SandboxSpec{Workspace: workspace, RuntimeRoot: runtimeOnline, ReadOnlyRoots: []string{publicRoot}, Executables: []string{node, shell}, AllowNetwork: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	script, err = os.ReadFile(filepath.Join(runtimeOnline, "agentlab-coder-linux-sandbox.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/etc/hosts", "/etc/resolv.conf", "/etc/nsswitch.conf", "/etc/ssl/certs"} {
+		if (regular(path) || directory(path)) && !strings.Contains(string(script), path) {
+			t.Fatalf("network sandbox omitted %s: %s", path, script)
+		}
+	}
+	wrapped, err = online.Wrap([]string{node, "-e", "0"})
+	if err != nil || containsString(wrapped, "--net") {
+		t.Fatalf("network sandbox command = %#v, %v", wrapped, err)
+	}
+}
+
+func TestLinuxSandboxAcceptsStaticGoAndRejectsMissingDynamicDependency(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.MkdirTemp(home, ".agentlab-coder-linux-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(root) })
+	workspace, runtimeRoot := filepath.Join(root, "workspace"), filepath.Join(root, "runtime")
+	publicRoot := filepath.Join(root, "public")
+	for _, path := range []string{workspace, runtimeRoot, publicRoot} {
+		if err := os.Mkdir(path, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("Node is not installed")
+	}
+	probeDir := filepath.Join(root, "probe")
+	if err := os.Mkdir(probeDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(probeDir, "go.mod"), []byte("module probe\n\ngo 1.26\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(probeDir, "main.go"), []byte("package main\nfunc main() {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	static := filepath.Join(probeDir, "probe")
+	build := exec.Command("go", "build", "-o", static, ".")
+	build.Dir = probeDir
+	build.Env = append(os.Environ(), "CGO_ENABLED=0")
+	if err := build.Run(); err != nil {
+		t.Skipf("Go static build is unavailable: %v", err)
+	}
+	if _, err := NewSandbox(SandboxSpec{Workspace: workspace, RuntimeRoot: runtimeRoot, ReadOnlyRoots: []string{publicRoot}, Executables: []string{node, static}}); err != nil {
+		t.Fatalf("static Go executable was rejected: %v", err)
+	}
+	lsPath, err := exec.LookPath("ls")
+	if err != nil {
+		t.Skip("ls is not installed")
+	}
+	data, err := os.ReadFile(lsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patched := false
+	for _, candidate := range []string{"libselinux.so.1", "libpcre2-8.so.0", "libc.so.6"} {
+		index := bytes.Index(data, []byte(candidate))
+		if index < 0 {
+			continue
+		}
+		replacement := []byte("libnope.so.99\x00")
+		if len(replacement) > len(candidate) {
+			replacement = replacement[:len(candidate)]
+		}
+		copy(data[index:index+len(candidate)], replacement)
+		patched = true
+		break
+	}
+	if !patched {
+		t.Skip("no dynamic dependency candidate found in ls")
+	}
+	broken := filepath.Join(root, "broken")
+	if err := os.WriteFile(broken, data, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewSandbox(SandboxSpec{Workspace: workspace, RuntimeRoot: runtimeRoot, ReadOnlyRoots: []string{publicRoot}, Executables: []string{node, broken}}); err == nil {
+		t.Fatal("executable with a missing dynamic dependency was accepted")
+	}
+}
+
+func TestLinuxSandboxCoversDeployctlCoderToolAuthority(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.MkdirTemp(home, ".agentlab-coder-linux-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(root) })
+	workspace, runtimeRoot := filepath.Join(root, "workspace"), filepath.Join(root, "runtime")
+	publicRoot := filepath.Join(root, "public")
+	workerRuntime, supervisorRuntime := filepath.Join(root, "worker-runtime"), filepath.Join(root, "supervisor-runtime")
+	hostPlan := filepath.Join(root, "pi-runtime-plan.json")
+	for _, path := range []string{workspace, runtimeRoot, publicRoot, workerRuntime, supervisorRuntime} {
+		if err := os.Mkdir(path, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(hostPlan, []byte("host-plan"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("Node is not installed")
+	}
+	// Mirror internal/deployctlfixture runtimeProfiles, which calls
+	// executablePaths("go", "sh", "grep", "find", "ls") for the Coder.
+	var tools []string
+	for _, name := range []string{"go", "sh", "grep", "find", "ls"} {
+		path, err := exec.LookPath(name)
+		if err != nil {
+			t.Skipf("%s is not installed", name)
+		}
+		tools = append(tools, path)
+	}
+	sandbox, err := NewSandbox(SandboxSpec{Workspace: workspace, RuntimeRoot: runtimeRoot, ReadOnlyRoots: []string{publicRoot}, Executables: append([]string{node}, tools...)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range tools {
+		if _, err := sandbox.Wrap([]string{path, "--help"}); err != nil {
+			t.Fatalf("declared tool %s was rejected: %v", path, err)
+		}
+	}
+	if _, err := sandbox.Wrap([]string{node, "-e", "0"}); err != nil {
+		t.Fatalf("declared node was rejected: %v", err)
+	}
+	if _, err := sandbox.Wrap([]string{"/usr/bin/env", "-i"}); err == nil {
+		t.Fatal("undeclared command was accepted")
+	}
+	script, err := os.ReadFile(filepath.Join(runtimeRoot, "agentlab-coder-linux-sandbox.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{workerRuntime, supervisorRuntime, hostPlan} {
+		if strings.Contains(string(script), forbidden) {
+			t.Fatalf("sandbox profile exposed %s: %s", forbidden, script)
+		}
+	}
+}
+
+func requireLinuxNamespace(t *testing.T) {
+	t.Helper()
+	if err := exec.Command(linuxUnshare, "--user", "--map-root-user", "--mount", "--pid", "--fork", "--", linuxShell, "-c", "exit 0").Run(); err != nil {
+		t.Skipf("Linux user/mount namespace is unavailable: %v", err)
+	}
+}

@@ -206,6 +206,60 @@ func TestPiLaunchRequiresExplicitValidSecretHandles(t *testing.T) {
 	}
 }
 
+func TestPiLaunchDerivesClosedSandboxEnvironment(t *testing.T) {
+	launch := PiLaunch{
+		NodePath:           "/host/node/bin/node",
+		RuntimeRoot:        "/host/runtime",
+		AllowedExecutables: []string{"/host/go/bin/go", "/host/tools/grep"},
+	}
+	if launch.Validate() != nil {
+		t.Fatal("test launch is invalid")
+	}
+	environment, err := launch.environment(launch.RuntimeRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(environment, "\x00")
+	if !strings.Contains(got, "PATH=/bin:/host/go/bin:/host/node/bin:/host/tools") || !strings.Contains(got, "TMPDIR=/host/runtime") {
+		t.Fatalf("Pi launch sandbox environment = %q", environment)
+	}
+	launch.PublicEnvironment = map[string]string{"PATH": "/host/escape"}
+	if launch.Validate() == nil {
+		t.Fatal("Pi launch accepted a model-visible PATH override")
+	}
+}
+
+func TestCanonicalPiIdentityResolvesSDKSymlink(t *testing.T) {
+	realSDK := filepath.Join(t.TempDir(), "real-sdk")
+	if err := os.Mkdir(realSDK, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "sdk-link")
+	if err := os.Symlink(realSDK, link); err != nil {
+		t.Fatal(err)
+	}
+	identity := testIdentity(t)
+	identity.SDKRoot = link
+	canonical, err := canonicalPiIdentity(identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := filepath.EvalSymlinks(realSDK)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if canonical.SDKRoot != want {
+		t.Fatalf("canonical SDK root = %q, want %q", canonical.SDKRoot, want)
+	}
+	if canonical.Provider != identity.Provider || canonical.Model != identity.Model || canonical.ThinkingPolicy != identity.ThinkingPolicy || canonical.ContextFilterPath != identity.ContextFilterPath || canonical.AdapterDigest != identity.AdapterDigest {
+		t.Fatalf("canonical identity changed unrelated fields: %#v", canonical)
+	}
+	identity.SDKRoot = filepath.Join(t.TempDir(), "missing")
+	if _, err := canonicalPiIdentity(identity); err == nil {
+		t.Fatal("canonical identity accepted a missing SDK root")
+	}
+}
+
 func testRef() artifact.Ref {
 	return artifact.Ref{Scope: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Algorithm: "sha256", Digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Size: 1}
 }
