@@ -36,6 +36,18 @@ the first FreshOrigin Worker run. Do not call `begin_preparation`,
 preparation/experiment setup action. Start by inspecting the experiment ledger,
 then issue the first baseline `start` (below).
 
+## Handoff and Coder start (exact calls)
+
+`render_handoff` returns an artifact ref you then pass to the Coder start:
+```json
+{"action":"render_handoff","decision":{"id":"handoff-baseline","worker_run":"baseline-worker","evidence_through":8,"claim":"the Coder receives the bounded handoff","action":"coder_handoff","evidence":[{"experiment_id":"deployctl-supervision","run_id":"baseline-worker","sequence":8,"item":0}],"falsifier":"the handoff omits the experiment-owned evidence"},"finding_ids":["target-drift"]}
+```
+Then start the Coder with the returned handoff ref and the coder profile ref `coder-repair`:
+```json
+{"action":"start","effect_id":"start-coder","run_id":"coder-repair","runtime_ref":"coder-repair","handoff":{"scope":"<handoff scope>","algorithm":"sha256","digest":"<handoff digest>","size":<handoff size>},"decision":{"id":"start-coder","worker_run":"baseline-worker","evidence_through":8,"claim":"the Coder repairs within the bounded handoff","action":"coder_start","evidence":[{"experiment_id":"deployctl-supervision","run_id":"baseline-worker","sequence":8,"item":0}],"falsifier":"the Coder start omits the handoff"}}
+```
+Poll the Coder until it exits, then `record_diagnosis` and `bind_candidate` using the Coder run id `coder-repair`, the diagnosis and candidate ids you choose, and the Coder completion ref the ledger reports.
+
 ## Supervision loop (mandatory order)
 
 After the baseline `start`, you MUST remain active until the Worker has exited
