@@ -65,6 +65,21 @@ jobs:
           echo "===== STEP 3b: supervisor-start ====="
           run_root /tmp/agentlab acceptance supervisor-start --host-root /root/agentlab-host \
             | tee /tmp/step-supervisor-start.json
+          echo "===== STEP 3b2: direct worker start diagnostic (throwaway root) ====="
+          run_root rm -rf /root/diag-eval /root/diag-audit /root/diag-host
+          run_root /tmp/agentlab acceptance preflight \
+            --evaluated-root /root/diag-eval --audit-root /root/diag-audit --host-root /root/diag-host \
+            --skill-root "$PWD/dist/skill" --sdk-root "$SDK_ROOT" --node "$NODE" \
+            --provider "$AGENTLAB_PROVIDER" --model "$AGENTLAB_MODEL" \
+            --thinking "$AGENTLAB_THINKING" --compaction "$AGENTLAB_COMPACTION" \
+            --provider-credential-env XAI_API_KEY \
+            --worker-credential-handle AGENTLAB_WORKER_TOKEN \
+            --coder-credential-handle AGENTLAB_CODER_TOKEN \
+            --supervisor-credential-handle AGENTLAB_SUPERVISOR_TOKEN >/dev/null 2>&1 || echo "diag preflight failed"
+          echo '{"action":"start","decision":{"action":"worker_start","claim":"fresh Worker starts","falsifier":"Worker did not start","id":"diag-start","worker_run":"baseline-worker","evidence_through":0},"effect_id":"diag-start","run_id":"baseline-worker","runtime_ref":"baseline-worker"}' \
+            | run_root /tmp/agentlab tool invoke -root /root/diag-eval -preparation deployctl-preparation \
+              -experiment deployctl-supervision -pi-runtime-plan /root/diag-host/pi-runtime-plan.json \
+              -name agentlab_run 2>&1 | head -c 500; echo
       - name: Poll the Supervisor and dump state
         run: |
           set -euo pipefail
