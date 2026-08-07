@@ -59,8 +59,9 @@ jobs:
             --coder-credential-handle AGENTLAB_CODER_TOKEN \
             --supervisor-credential-handle AGENTLAB_SUPERVISOR_TOKEN | tee /tmp/step-preflight.json
           echo "===== STEP 3a: prepare-baseline ====="
+          echo '{"run_id":"baseline-worker"}' > /tmp/req-baseline.json
           run_root /tmp/agentlab acceptance prepare-baseline --host-root /tmp/agentlab-host \
-            --request <(echo '{"run_id":"baseline-worker"}') | tee /tmp/step-baseline.json
+            --request /tmp/req-baseline.json | tee /tmp/step-baseline.json
           echo "===== STEP 3b: supervisor-start ====="
           run_root /tmp/agentlab acceptance supervisor-start --host-root /tmp/agentlab-host \
             | tee /tmp/step-supervisor-start.json
