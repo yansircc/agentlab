@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLinuxSandboxRunsAllowedNodeAndExcludesSiblingRoot(t *testing.T) {
@@ -436,7 +437,7 @@ func TestLinuxSandboxReachesDeclaredNetworkEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	probe := `fetch("https://api.x.ai/v1/models").then(r=>{if(!r.ok)process.exit(1);console.log("https-ok")}).catch(()=>process.exit(2))`
+	probe := `fetch("https://api.x.ai/v1/models").then(r=>console.log("https-status-"+r.status)).catch(()=>process.exit(2))`
 	wrapped, err := sandbox.Wrap([]string{node, "--input-type=module", "-e", probe})
 	if err != nil {
 		t.Fatal(err)
@@ -445,7 +446,84 @@ func TestLinuxSandboxReachesDeclaredNetworkEndpoint(t *testing.T) {
 	command.Dir = workspace
 	command.Env = []string{"HOME=" + runtimeRoot, "TMPDIR=" + runtimeRoot, "PATH=/usr/bin:/bin"}
 	output, err := command.CombinedOutput()
-	if err != nil || strings.TrimSpace(string(output)) != "https-ok" {
+	if err != nil || !strings.HasPrefix(strings.TrimSpace(string(output)), "https-status-") {
 		t.Fatalf("sandboxed HTTPS fetch = %q, %v", output, err)
 	}
+}
+
+// TestLinuxSandboxStartsPinnedPiWorkerSession proves the full Worker pi
+// startup path inside the sandbox: node boots the pinned CLI with the context
+// filter and worker extensions and writes its session file. A fake provider
+// key is deliberate: the session must appear before any model call, so a
+// failure here is a sandbox startup defect, not an authentication one.
+func TestLinuxSandboxStartsPinnedPiWorkerSession(t *testing.T) {
+	pi, err := exec.LookPath("pi")
+	if err != nil {
+		t.Skip("Pi is not installed")
+	}
+	entry, err := filepath.EvalSymlinks(pi)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("Node is not installed")
+	}
+	shell, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("sh is not installed")
+	}
+	requireLinuxNamespace(t)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.MkdirTemp(home, ".agentlab-coder-linux-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(root) })
+	sdkRoot := filepath.Dir(filepath.Dir(entry))
+	skillRoot := filepath.Join(root, "skill")
+	fixtureRoot, runtimeRoot := filepath.Join(root, "fixture"), filepath.Join(root, "runtime")
+	for _, path := range []string{skillRoot, fixtureRoot, runtimeRoot} {
+		if err := os.Mkdir(path, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(skillRoot, "extension.ts"), []byte("export default async () => {};\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	workerExtension := filepath.Join(runtimeRoot, "agentlab-worker-tools.ts")
+	if err := os.WriteFile(workerExtension, []byte("import { Type } from \"typebox\";\nimport type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\nexport default async function (pi: ExtensionAPI) { pi.registerTool({ name: \"deployctl_help\", description: \"help\", parameters: Type.Object({}), execute: async () => ({ content: [{ type: \"text\", text: \"ok\" }], details: {} }) }); pi.on(\"session_start\", () => pi.setActiveTools([\"deployctl_help\"])); }\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sandbox, err := NewSandbox(SandboxSpec{Workspace: fixtureRoot, RuntimeRoot: runtimeRoot, ReadOnlyRoots: []string{sdkRoot, skillRoot}, Executables: []string{node, shell}, AllowNetwork: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := filepath.Join(runtimeRoot, "session.jsonl")
+	command := []string{node, entry, "--session", session, "--session-dir", runtimeRoot, "--provider", "xai", "--model", "grok-4.3", "--thinking", "high", "--no-extensions", "--extension", filepath.Join(skillRoot, "extension.ts"), "--extension", workerExtension, "--no-builtin-tools", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files", "--no-approve", "--tools", "deployctl_help", "--print", "task"}
+	wrapped, err := sandbox.Wrap(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	process := exec.Command(wrapped[0], wrapped[1:]...)
+	process.Dir = fixtureRoot
+	process.Env = []string{"HOME=" + runtimeRoot, "TMPDIR=" + runtimeRoot, "PATH=/usr/bin:/bin", "XAI_API_KEY=fake-key", "AGENTLAB_CONTEXT_FILTER_ONLY=1", "AGENTLAB_WORKER_FIXTURE=" + fixtureRoot, "AGENTLAB_WORKER_DEPLOYCTL=/bin/sh"}
+	if err := process.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = process.Process.Kill()
+		_, _ = process.Process.Wait()
+	}()
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		if data, err := os.ReadFile(session); err == nil && len(data) > 0 {
+			return
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	t.Fatalf("Worker pi did not write its session inside the sandbox")
 }
