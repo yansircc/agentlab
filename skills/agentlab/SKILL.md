@@ -87,6 +87,15 @@ carry the `evidence` array with the cited ref. Exact stop example:
 {"action":"stop","reason":"objective failure, non-recoverable","run_id":"baseline-worker","runtime_ref":"baseline-worker","decision":{"id":"stop-baseline","worker_run":"baseline-worker","evidence_through":8,"claim":"baseline-worker failed the objective oracle","action":"stop","evidence":[{"experiment_id":"deployctl-supervision","run_id":"baseline-worker","sequence":8,"item":0}],"falsifier":"baseline-worker passed the objective oracle"}}
 ```
 
+`record_finding` carries the decision and a finding object with exactly:
+`id`, `class`, `severity` (low|medium|high|critical), `symptom`, `impact`,
+`evidence` (the same cited ref), `confidence` (low|medium|high), and
+`falsifier`. Exact finding example:
+
+```json
+{"action":"record_finding","value":{"decision":{"id":"finding-baseline-drift","worker_run":"baseline-worker","evidence_through":8,"claim":"baseline-worker failed the objective oracle","action":"finding","evidence":[{"experiment_id":"deployctl-supervision","run_id":"baseline-worker","sequence":8,"item":0}],"falsifier":"baseline-worker passed the objective oracle"},"finding":{"id":"target-drift","class":"target_mismatch","severity":"high","symptom":"deployment writes the default target instead of the requested target","impact":"requested target stays stale while the default target changes","evidence":[{"experiment_id":"deployctl-supervision","run_id":"baseline-worker","sequence":8,"item":0}],"confidence":"high","falsifier":"requested and default targets both carry the requested release"}}}
+```
+
 Polling needs the runtime profile ref too: `{"action":"poll","run_id":"baseline-worker","runtime_ref":"baseline-worker"}`. Every `poll` and `start` carries the matching runtime profile ref; `status` takes only the run id.
 
 ## Observe, stop, diagnose, repair, splice
