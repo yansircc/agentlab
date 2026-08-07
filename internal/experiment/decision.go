@@ -64,19 +64,31 @@ type DecisionBoundContinue struct {
 }
 
 func (value SupervisorDecision) Validate() error {
-	if !decisionIDPattern.MatchString(value.ID) || !idPattern.MatchString(value.WorkerRun) || value.Claim == "" || len(value.Claim) > 4096 || value.Falsifier == "" || len(value.Falsifier) > 4096 || len(value.Evidence) > 100 || !value.Action.valid() {
-		return errors.New("supervisor decision is invalid")
+	if !decisionIDPattern.MatchString(value.ID) {
+		return errors.New("supervisor decision id is required")
+	}
+	if !idPattern.MatchString(value.WorkerRun) {
+		return errors.New("supervisor decision worker_run is required")
+	}
+	if value.Claim == "" || len(value.Claim) > 4096 || value.Falsifier == "" || len(value.Falsifier) > 4096 {
+		return errors.New("supervisor decision claim and falsifier are required")
+	}
+	if len(value.Evidence) > 100 || !value.Action.valid() {
+		return errors.New("supervisor decision action is invalid")
 	}
 	if value.isBootstrapWorkerStart() {
 		return nil
 	}
-	if value.EvidenceThrough == 0 || len(value.Evidence) == 0 {
-		return errors.New("supervisor decision is invalid")
+	if value.EvidenceThrough == 0 {
+		return errors.New("supervisor decision evidence_through must cite an observed sequence")
+	}
+	if len(value.Evidence) == 0 {
+		return errors.New("supervisor decision evidence array is required for non-bootstrap actions")
 	}
 	seen := map[run.EvidenceRef]bool{}
 	for _, ref := range value.Evidence {
 		if ref.ExperimentID == "" || ref.RunID == "" || ref.Sequence == 0 || ref.Item < 0 || seen[ref] {
-			return errors.New("supervisor decision evidence is invalid")
+			return errors.New("supervisor decision evidence ref is invalid")
 		}
 		seen[ref] = true
 	}

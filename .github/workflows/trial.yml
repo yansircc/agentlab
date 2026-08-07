@@ -133,7 +133,7 @@ jobs:
           done
           echo "===== supervisor tool calls (jq) ====="
           run_root sh -c 'jq -r "select(.type==\"message\") | .message.content[]? | select(.type==\"toolCall\") | \"CALL \" + .name + \" \" + (.arguments|tojson)" /root/agentlab-host/supervisor-runtime/session.jsonl 2>/dev/null | tail -50' || true
-          run_root sh -c 'jq -r "select(.type==\"message\") | .message.content[]? | select(.type==\"toolResult\") | \"RESULT \" + ((.content[0].text // .content[0].toString()) // \"\")" /root/agentlab-host/supervisor-runtime/session.jsonl 2>/dev/null | tail -50' || true
+          run_root sh -c 'jq -r "select(.type==\"message\") | .message.content[]? | select(.type==\"toolResult\") | \"RESULT \" + ([.content[].text // empty] | join(\" \"))" /root/agentlab-host/supervisor-runtime/session.jsonl 2>/dev/null | tail -50' || true
           echo "===== experiment run ledgers (tail) ====="
           run_root sh -c 'for f in /root/agentlab-eval/experiments/deployctl-supervision/runs/*/events.jsonl; do echo "--- $f"; tail -6 "$f"; done' || true
           echo "===== host root files ====="
