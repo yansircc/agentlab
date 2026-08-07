@@ -3,6 +3,8 @@ package experiment
 import (
 	"bytes"
 	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/diagnosis"
@@ -27,7 +29,11 @@ func (o *Operation) validateDiagnosis(value diagnosis.Diagnosis) error {
 	}
 	for _, ref := range value.SourceEvidence {
 		if !snapshot.Contains(ref.Path, ref.Artifact) {
-			return errors.New("source evidence is not a member of exact source snapshot")
+			paths := make([]string, 0, len(snapshot.Files))
+			for _, file := range snapshot.Files {
+				paths = append(paths, file.Path)
+			}
+			return fmt.Errorf("source evidence path %q is not in the exact source snapshot; valid paths: %s", ref.Path, strings.Join(paths, ", "))
 		}
 		data, err := o.artifacts.Read(ref.Artifact)
 		if err != nil {
