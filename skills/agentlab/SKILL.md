@@ -78,6 +78,15 @@ that one `EvidenceRef` with `experiment_id`, `run_id`, `sequence`, and `item`.
 `coder_start` starts additionally require the `handoff` ref returned by the
 `render_handoff` apply operation.
 
+The experiment id is `deployctl-supervision` (the ledger's experiment id, not
+the preparation id). Every non-bootstrap decision — `stop`, `finding`,
+`coder_handoff`, `diagnosis`, `candidate`, `run_binding`, `comparison` — MUST
+carry the `evidence` array with the cited ref. Exact stop example:
+
+```json
+{"action":"stop","reason":"objective failure, non-recoverable","run_id":"baseline-worker","runtime_ref":"baseline-worker","decision":{"id":"stop-baseline","worker_run":"baseline-worker","evidence_through":8,"claim":"baseline-worker failed the objective oracle","action":"stop","evidence":[{"experiment_id":"deployctl-supervision","run_id":"baseline-worker","sequence":8,"item":0}],"falsifier":"baseline-worker passed the objective oracle"}}
+```
+
 Polling needs the runtime profile ref too: `{"action":"poll","run_id":"baseline-worker","runtime_ref":"baseline-worker"}`. Every `poll` and `start` carries the matching runtime profile ref; `status` takes only the run id.
 
 ## Observe, stop, diagnose, repair, splice
