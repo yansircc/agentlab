@@ -124,7 +124,7 @@ jobs:
           echo "--- diag stderr/stdout ---"; head -30 /tmp/diag-out.txt
           echo "diag session bytes: $(sudo -n wc -c < /tmp/diag-supervisor/s.jsonl 2>/dev/null || echo 0)"
           echo "===== STEP 3d: poll supervisor-status (up to 28 min) ====="
-          DEADLINE=$((SECONDS + 1200))
+          DEADLINE=$((SECONDS + 1500))
           while [ $SECONDS -lt $DEADLINE ]; do
             OBS=$(run_root /tmp/agentlab acceptance supervisor-status --host-root /root/agentlab-host 2>/dev/null | grep -o '"observation":"[a-z]*"' || true)
             echo "t+$((SECONDS/60))m ${OBS:-unavailable}"

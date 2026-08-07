@@ -48,6 +48,17 @@ Then start the Coder with the returned handoff ref and the coder profile ref `co
 ```
 Poll the Coder until it exits, then `record_diagnosis` and `bind_candidate` using the Coder run id `coder-repair`, the diagnosis and candidate ids you choose, and the Coder completion ref the ledger reports.
 
+## Diagnosis and candidate (exact shapes)
+
+After the Coder exits, `record_diagnosis` carries a diagnosis with:
+`id`, `state` ("established"), `finding_ids`, `source_snapshot` (the artifact
+ref from the experiment ledger), `source_evidence` (one ref with `path`,
+`artifact`, `start_line`, `end_line`, `establishes_owner`), `owner`,
+`root_cause`, `invariant`, `repair_boundary`, `prohibited_patches`,
+`acceptance_claims` (one claim with `id`, `statement`, `falsifier`). Then
+`bind_candidate` carries `id`, `diagnosis_id`, `coder_run` ("coder-repair"),
+and `completion_ref` (the Coder completion artifact ref the ledger reports).
+
 ## Supervision loop (mandatory order)
 
 After the baseline `start`, you MUST remain active until the Worker has exited
