@@ -8,6 +8,7 @@ import (
 	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/coder"
 	"github.com/yansircc/agentlab/internal/effect"
+	"github.com/yansircc/agentlab/internal/processidentity"
 	"github.com/yansircc/agentlab/internal/run"
 )
 
@@ -43,7 +44,8 @@ type PiRuntimeHost struct {
 // its terminal ledger fact exists. It never exposes session bytes or paths.
 type PiPollResult struct {
 	piadapter.PollResult
-	CoderCompletion *artifact.Ref `json:"coder_completion,omitempty"`
+	CoderCompletion *artifact.Ref                  `json:"coder_completion,omitempty"`
+	RunStatus       *run.OperationStatusProjection `json:"run_status,omitempty"`
 }
 
 func NewPiRuntimeHost(profiles []PiRuntimeProfile) (*PiRuntimeHost, error) {
@@ -202,7 +204,14 @@ func (h *PiRuntimeHost) Poll(binding Binding, runID, ref string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return PiPollResult{PollResult: polled}, nil
+	// Project the run's process liveness so the Supervisor sees an exited
+	// Worker and stops polling instead of waiting for an event that never
+	// comes.
+	status, err := op.ProjectStatus(processidentity.SystemProber{})
+	if err != nil {
+		return nil, err
+	}
+	return PiPollResult{PollResult: polled, RunStatus: &status}, nil
 }
 
 func (h *PiRuntimeHost) Checkpoint(binding Binding, intent effect.Intent, ref string) (any, error) {
