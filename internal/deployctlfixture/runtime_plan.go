@@ -221,7 +221,7 @@ func runtimeProfiles(value Preflight, spec RuntimeSpec, credentials runtimeCrede
 	// extensions, and write its session before the first event; a two-second
 	// budget is too tight on a loaded runner, so the first event window is
 	// generous while idle and hard limits stay bounded.
-	policy := run.StopPolicy{FirstEventTimeout: 20 * time.Second, SoftIdleTimeout: 2 * time.Minute, HardIdleTimeout: 5 * time.Minute, OwnsWorkerProcess: true}
+	policy := run.StopPolicy{FirstEventTimeout: 60 * time.Second, SoftIdleTimeout: 2 * time.Minute, HardIdleTimeout: 5 * time.Minute, OwnsWorkerProcess: true}
 	workerRuntime := filepath.Join(spec.HostRoot, "worker-runtime")
 	coderRuntime := filepath.Join(spec.HostRoot, "coder-runtime")
 	worker := tool.PiRuntimeProfile{
