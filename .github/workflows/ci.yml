@@ -85,7 +85,7 @@ jobs:
           SDK_ROOT=$(dirname "$(dirname "$(readlink -f "$(which pi)")")")
           NODE=$(readlink -f "$(which node)")
           rm -rf /tmp/agentlab-eval /tmp/agentlab-audit /tmp/agentlab-host
-          export DEEPSEEK_API_KEY="$AGENTLAB_WORKER_TOKEN" \
+          export XAI_API_KEY="$AGENTLAB_WORKER_TOKEN" \
             AGENTLAB_WORKER_TOKEN AGENTLAB_CODER_TOKEN AGENTLAB_SUPERVISOR_TOKEN
           /tmp/agentlab acceptance preflight \
             --evaluated-root /tmp/agentlab-eval --audit-root /tmp/agentlab-audit \
@@ -93,7 +93,7 @@ jobs:
             --skill-root "$PWD/dist/skill" --sdk-root "$SDK_ROOT" --node "$NODE" \
             --provider "$AGENTLAB_PROVIDER" --model "$AGENTLAB_MODEL" \
             --thinking "$AGENTLAB_THINKING" --compaction "$AGENTLAB_COMPACTION" \
-            --provider-credential-env DEEPSEEK_API_KEY \
+            --provider-credential-env XAI_API_KEY \
             --worker-credential-handle AGENTLAB_WORKER_TOKEN \
             --coder-credential-handle AGENTLAB_CODER_TOKEN \
             --supervisor-credential-handle AGENTLAB_SUPERVISOR_TOKEN

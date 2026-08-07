@@ -24,7 +24,7 @@ tests are never described as live acceptance.
    `AGENTLAB_SUPERVISOR_TOKEN` set in the Host environment where each Pi
    role runs; all three must be distinct and non-empty, and the provider
    credential env key must match the provider's convention (DeepSeek uses
-   `DEEPSEEK_API_KEY`). Provider spend authorization must be obtained first.
+   `XAI_API_KEY`). Provider spend authorization must be obtained first.
 4. **Exact provider/model/policy values** (provider, model, thinking,
    compaction) chosen and frozen before `preflight`.
 
@@ -67,14 +67,14 @@ agentlab acceptance preflight \
   --node "$(readlink -f "$(which node)")" \
   --provider "$PROVIDER" --model "$MODEL" \
   --thinking "$THINKING" --compaction "$COMPACTION" \
-  --provider-credential-env DEEPSEEK_API_KEY \
+  --provider-credential-env XAI_API_KEY \
   --worker-credential-handle AGENTLAB_WORKER_TOKEN \
   --coder-credential-handle AGENTLAB_CODER_TOKEN \
   --supervisor-credential-handle AGENTLAB_SUPERVISOR_TOKEN
 ```
 
 The Host environment must export the credential at the provider's env key
-(`DEEPSEEK_API_KEY` for DeepSeek) and at the three handles; the canary step
+(`XAI_API_KEY` for xai/grok) and at the three handles; the canary step
 invokes the exact selected model before any Worker or Coder trial.
 
 Record the projection: `preparation_id`, `experiment_id`, `baseline_run_id`,
