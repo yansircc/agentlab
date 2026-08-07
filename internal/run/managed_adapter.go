@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -74,7 +75,20 @@ func (o *Operation) startManagedAttached(intent effect.Intent, payload StartPayl
 		return AttachedStartResult{}, err
 	}
 	command := exec.Command(spec.Command[0], spec.Command[1:]...)
-	command.Dir, command.Env, command.Stdin, command.Stdout, command.Stderr = spec.WorkingDirectory, append([]string(nil), spec.Environment...), nil, io.Discard, io.Discard
+	command.Dir, command.Env = spec.WorkingDirectory, append([]string(nil), spec.Environment...)
+	command.Stdin = nil
+	// Managed role output is normally discarded; the session file is the
+	// record. For Host-side diagnosis only, AGENTLAB_MANAGED_STDERR names a
+	// file that receives the managed process stderr so a startup failure is
+	// observable instead of silent.
+	command.Stdout = io.Discard
+	command.Stderr = io.Discard
+	if capture := os.Getenv("AGENTLAB_MANAGED_STDERR"); capture != "" {
+		if file, err := os.OpenFile(capture, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600); err == nil {
+			command.Stderr = file
+			defer file.Close()
+		}
+	}
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := command.Start(); err != nil {
 		_ = attempt.terminate("spawn_failed", "no_process_created")
