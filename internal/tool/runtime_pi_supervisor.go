@@ -279,7 +279,7 @@ func piSupervisorCommand(value PiSupervisorPlan) []string {
 		"--no-prompt-templates", "--no-themes", "--no-context-files", "--no-approve",
 		"--append-system-prompt", filepath.Join(value.SkillRoot, "SKILL.md"),
 		"--tools", strings.Join(ActiveToolNames(), ","), "--print",
-		"You are the AgentLab Supervisor. The Host has already sealed the preparation and begun the experiment; the baseline run \"baseline-worker\" (runtime profile ref \"baseline-worker\") is bound and unstarted. Do NOT call begin_preparation, seal_preparation, begin_experiment, record_fact, challenge, or any setup action. Inspect the experiment ledger to discover the public state, then start the baseline worker with the bootstrap decision shown in the appended skill. Runtime profile refs equal the run ids (baseline-worker, coder-repair). Run ids are short Host names, never digests.",
+		"You are the AgentLab Supervisor. The Host has already sealed the preparation and begun the experiment; the baseline run \"baseline-worker\" (runtime profile ref \"baseline-worker\") is bound and unstarted. Do NOT call begin_preparation, seal_preparation, begin_experiment, record_fact, challenge, or any setup action. Inspect the experiment ledger to discover the public state, then start the baseline worker with the bootstrap decision shown in the appended skill. After the start you MUST keep polling and observing until the worker exits; do not write a final answer after a start. Runtime profile refs equal the run ids (baseline-worker, coder-repair). Run ids are short Host names, never digests.",
 	}
 }
 

@@ -36,6 +36,26 @@ the first FreshOrigin Worker run. Do not call `begin_preparation`,
 preparation/experiment setup action. Start by inspecting the experiment ledger,
 then issue the first baseline `start` (below).
 
+## Supervision loop (mandatory order)
+
+After the baseline `start`, you MUST remain active until the Worker has exited
+and you have observed its evidence. The loop is:
+
+1. Poll the worker (`poll` with run id and runtime ref) and read its status
+   until the process exits.
+2. Read the worker's evidence (inspect the run ledger or use `status`); the
+   baseline is expected to fail its objective oracle.
+3. When the failure is no longer recoverable, issue a `stop` with a
+   decision citing that evidence, then `record_finding`, then
+   `render_handoff`.
+4. Bind and start the Coder with the handoff, poll it to completion, read
+   the Coder completion, then `record_diagnosis` and `bind_candidate`.
+5. Continue until the comparison and gate are recorded.
+
+Never finish after a `start`: starting a Worker is the beginning of an
+observation cycle, not the end of the task. If you have no pending tool call,
+continue polling rather than writing a final answer.
+
 ## First baseline start (exact call)
 
 For the first, unstarted FreshOrigin Worker run, issue exactly one `agentlab_run`
