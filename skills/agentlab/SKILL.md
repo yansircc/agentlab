@@ -45,8 +45,12 @@ empty, and `action` is `worker_start`. A plain `start` never carries fork fields
 fields below, named exactly like this:
 
 ```json
-{"action":"start","effect_id":"start-baseline","run_id":"baseline-worker","runtime_ref":"baseline-runtime","decision":{"id":"start-baseline","worker_run":"baseline-worker","evidence_through":0,"claim":"the fresh baseline Worker starts from its sealed input","action":"worker_start","falsifier":"the baseline Worker did not start from its sealed input"}}
+{"action":"start","effect_id":"start-baseline","run_id":"baseline-worker","runtime_ref":"baseline-worker","decision":{"id":"start-baseline","worker_run":"baseline-worker","evidence_through":0,"claim":"the fresh baseline Worker starts from its sealed input","action":"worker_start","falsifier":"the baseline Worker did not start from its sealed input"}}
 ```
+
+The Host runtime profiles are named exactly like their runs: the Worker profile
+ref is `baseline-worker` and the Coder profile ref is `coder-repair` (the same
+short name as the run id).
 
 Later Worker or Coder starts must cite admissible public evidence: set
 `evidence_through` to the observed evidence sequence and `evidence` to exactly

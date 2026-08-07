@@ -265,6 +265,11 @@ func (value PiSupervisorPlan) environment() ([]string, error) {
 }
 
 func piSupervisorCommand(value PiSupervisorPlan) []string {
+	// The skill is loaded by name for discovery, but pi's progressive
+	// disclosure leaves only the name and description in context and expects
+	// the agent to read the full file on demand. The Supervisor has no read
+	// tool (exactly four AgentLab tools), so the full SKILL.md must be
+	// appended into the system prompt directly.
 	return []string{
 		value.Launch.NodePath, filepath.Join(value.Identity.SDKRoot, "dist", "cli.js"),
 		"--session", value.SessionPath, "--session-dir", value.Launch.RuntimeRoot,
@@ -272,8 +277,9 @@ func piSupervisorCommand(value PiSupervisorPlan) []string {
 		"--no-extensions", "--extension", value.Identity.ContextFilterPath,
 		"--no-builtin-tools", "--no-skills", "--skill", filepath.Join(value.SkillRoot, "SKILL.md"),
 		"--no-prompt-templates", "--no-themes", "--no-context-files", "--no-approve",
+		"--append-system-prompt", filepath.Join(value.SkillRoot, "SKILL.md"),
 		"--tools", strings.Join(ActiveToolNames(), ","), "--print",
-		"You are the AgentLab Supervisor. The Host has already sealed the preparation and begun the experiment; the baseline run \"baseline-worker\" (runtime profile \"baseline-runtime\") is bound and unstarted. Do NOT call begin_preparation, seal_preparation, begin_experiment, record_fact, challenge, or any setup action. Inspect the experiment ledger to discover the public state, then start the baseline worker with the bootstrap decision shown in the skill. Run ids are short Host names, never digests.",
+		"You are the AgentLab Supervisor. The Host has already sealed the preparation and begun the experiment; the baseline run \"baseline-worker\" (runtime profile ref \"baseline-worker\") is bound and unstarted. Do NOT call begin_preparation, seal_preparation, begin_experiment, record_fact, challenge, or any setup action. Inspect the experiment ledger to discover the public state, then start the baseline worker with the bootstrap decision shown in the appended skill. Runtime profile refs equal the run ids (baseline-worker, coder-repair). Run ids are short Host names, never digests.",
 	}
 }
 

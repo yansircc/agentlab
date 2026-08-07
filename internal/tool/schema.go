@@ -1,6 +1,10 @@
 package tool
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/yansircc/agentlab/internal/experiment"
+)
 
 type Definition struct {
 	Name        string         `json:"name"`
@@ -54,13 +58,33 @@ func opaque(description string) map[string]any {
 	return map[string]any{"type": "object", "description": description}
 }
 
+// supervisorDecisionSchema exposes the exact public decision shape so any
+// model can construct a valid decision-bound effect without guessing. The
+// Go-side Validate remains the authority; the schema only teaches the shape.
+func supervisorDecisionSchema() map[string]any {
+	return object(map[string]any{
+		"id":               text("Write-once decision identity."),
+		"worker_run":       text("Worker run id this decision cites."),
+		"evidence_through": map[string]any{"type": "integer", "minimum": 0, "description": "Cited evidence sequence; 0 for the fresh bootstrap start."},
+		"claim":            text("Public claim the decision records."),
+		"action":           enum(string(experiment.DecisionWorkerStart), string(experiment.DecisionCoderStart), string(experiment.DecisionStop), string(experiment.DecisionCheckpoint), string(experiment.DecisionFork), string(experiment.DecisionFinding), string(experiment.DecisionHandoff), string(experiment.DecisionDiagnosis), string(experiment.DecisionCandidate), string(experiment.DecisionIntervention), string(experiment.DecisionRunBinding), string(experiment.DecisionComparison)),
+		"evidence": map[string]any{"type": "array", "items": object(map[string]any{
+			"experiment_id": text("Experiment id of the cited evidence."),
+			"run_id":        text("Worker run id of the cited evidence."),
+			"sequence":      map[string]any{"type": "integer", "minimum": 1},
+			"item":          map[string]any{"type": "integer", "minimum": 0},
+		}, "experiment_id", "run_id", "sequence", "item")},
+		"falsifier": text("Public condition that would falsify the claim."),
+	}, "id", "worker_run", "claim", "action", "falsifier")
+}
+
 func applySchema() map[string]any {
 	return object(map[string]any{
 		"action":           enum(applyActionNames()...),
 		"user_intent":      opaque("Host-issued immutable user-intent artifact ref."),
 		"source_snapshot":  opaque("Host-issued immutable source-snapshot artifact ref."),
 		"public_artifacts": map[string]any{"type": "array", "items": opaque("Host-issued public artifact ref.")},
-		"fact":             opaque("Repository fact."), "decision": opaque("Supervisor decision."), "resolution": opaque("Preparation resolution."), "assay": opaque("Leakage assay."), "challenge": opaque("Challenge."),
+		"fact":             opaque("Repository fact."), "decision": supervisorDecisionSchema(), "resolution": opaque("Preparation resolution."), "assay": opaque("Leakage assay."), "challenge": opaque("Challenge."),
 		"binding": opaque("Decision-bound run binding."), "origin": opaque("Closed run origin."), "prepared": opaque("Host-issued complete run-input artifact."), "value": opaque("Closed decision-bound domain value."),
 		"finding_ids": map[string]any{"type": "array", "items": text("Finding id.")},
 	}, "action")
@@ -69,7 +93,7 @@ func applySchema() map[string]any {
 func runSchema() map[string]any {
 	return object(map[string]any{
 		"action":   enum(runActionNames()...),
-		"decision": opaque("Supervisor decision bound atomically to the requested effect."), "effect_id": text("Write-once effect identity."),
+		"decision": supervisorDecisionSchema(), "effect_id": text("Write-once effect identity."),
 		"runtime_ref": text("Host-issued opaque runtime profile ref."), "run_id": text("Experiment-scoped opaque run ref."), "handoff": opaque("Experiment-owned Coder handoff ref."),
 		"reason": text("Durable stop reason."), "entry_locator": text("Public runtime-tree entry locator."), "checkpoint": opaque("Runtime checkpoint ref."), "child_run": text("Host-prepared child run id."),
 	}, "action")
