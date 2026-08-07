@@ -41,7 +41,7 @@ jobs:
               AGENTLAB_WORKER_TOKEN="$AGENTLAB_WORKER_TOKEN" \
               AGENTLAB_CODER_TOKEN="$AGENTLAB_CODER_TOKEN" \
               AGENTLAB_SUPERVISOR_TOKEN="$AGENTLAB_SUPERVISOR_TOKEN" \
-              AGENTLAB_MANAGED_STDERR="$AGENTLAB_MANAGED_STDERR" "$@"
+              AGENTLAB_MANAGED_STDERR="${AGENTLAB_MANAGED_STDERR:-}" "$@"
           }
           SDK_ROOT=$(dirname "$(dirname "$(readlink -f "$(which pi)")")")
           NODE=$(readlink -f "$(which node)")
@@ -99,7 +99,7 @@ jobs:
               AGENTLAB_WORKER_TOKEN="$AGENTLAB_WORKER_TOKEN" \
               AGENTLAB_CODER_TOKEN="$AGENTLAB_CODER_TOKEN" \
               AGENTLAB_SUPERVISOR_TOKEN="$AGENTLAB_SUPERVISOR_TOKEN" \
-              AGENTLAB_MANAGED_STDERR="$AGENTLAB_MANAGED_STDERR" "$@"
+              AGENTLAB_MANAGED_STDERR="${AGENTLAB_MANAGED_STDERR:-}" "$@"
           }
           echo "===== STEP 3c: supervisor direct diagnostic (stderr captured) ====="
           DIAG_SDK=$(dirname "$(dirname "$(readlink -f "$(which pi)")")")
