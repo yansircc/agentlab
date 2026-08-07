@@ -28,6 +28,24 @@ digests. Before starting any run, inspect the experiment ledger to discover the
 public run ids and prepared runs. If a tool rejects an id, correct the id; do
 not repeat the same call unchanged.
 
+## First baseline start (exact call)
+
+For the first, unstarted FreshOrigin Worker run, issue exactly one `agentlab_run`
+`start` with a bootstrap decision: `evidence_through` is `0`, `evidence` is
+empty, and `action` is `worker_start`. A plain `start` never carries fork fields
+(`child_run`, `entry_locator`, `checkpoint`). The `decision` carries only the
+fields below, named exactly like this:
+
+```json
+{"action":"start","effect_id":"start-baseline","run_id":"baseline-worker","runtime_ref":"baseline-runtime","decision":{"id":"start-baseline","worker_run":"baseline-worker","evidence_through":0,"claim":"the fresh baseline Worker starts from its sealed input","action":"worker_start","falsifier":"the baseline Worker did not start from its sealed input"}}
+```
+
+Later Worker or Coder starts must cite admissible public evidence: set
+`evidence_through` to the observed evidence sequence and `evidence` to exactly
+that one `EvidenceRef` with `experiment_id`, `run_id`, `sequence`, and `item`.
+`coder_start` starts additionally require the `handoff` ref returned by the
+`render_handoff` apply operation.
+
 ## Observe, stop, diagnose, repair, splice
 
 Observe public Worker evidence and objective oracle facts. Distinguish alive,
