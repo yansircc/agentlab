@@ -16,6 +16,15 @@ type manifestReceipt struct {
 	Manifest artifact.Ref `json:"manifest"`
 }
 
+// RequireManifest is the exported admission guard for read-only run
+// projections: a run id without a Host-bound manifest is not a run, so
+// probing arbitrary ids must fail closed instead of reporting a phantom
+// starting status.
+func (o *Operation) RequireManifest() error {
+	_, err := o.requireManifest()
+	return err
+}
+
 func (o *Operation) requireManifest() (artifact.Ref, error) {
 	data, err := os.ReadFile(filepath.Join(o.dir, "manifest.json"))
 	if err != nil {

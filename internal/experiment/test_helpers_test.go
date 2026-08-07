@@ -155,8 +155,10 @@ func completeComparisonWorker(t *testing.T, operation *Operation, runID string, 
 		t.Fatal(err)
 	}
 	policy := run.StopPolicy{FirstEventTimeout: time.Second, SoftIdleTimeout: 2 * time.Second, HardIdleTimeout: 3 * time.Second, OwnsWorkerProcess: true}
+	// The evidence commit must precede the terminal fact, so the process stays
+	// alive well past the writer phase instead of racing the process exit.
 	if _, err := worker.BeginManagedAttachedEffect(intent, run.ManagedAttachedSpec{
-		Adapter: "comparison-test", Policy: policy, Capabilities: run.RequiredAdapterCapabilities(), Command: []string{"/bin/sh", "-c", "sleep 0.2"}, Environment: []string{"PATH=/usr/bin:/bin"}, WorkingDirectory: operation.root,
+		Adapter: "comparison-test", Policy: policy, Capabilities: run.RequiredAdapterCapabilities(), Command: []string{"/bin/sh", "-c", "sleep 3"}, Environment: []string{"PATH=/usr/bin:/bin"}, WorkingDirectory: operation.root,
 		Ready: func() (string, []byte, error) { return "worker-session-" + runID, []byte("cursor-0"), nil }, Finalize: func(code int) error {
 			if code != 0 {
 				return errors.New("comparison Worker exited unsuccessfully")

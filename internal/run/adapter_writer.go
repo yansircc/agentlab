@@ -19,17 +19,22 @@ func (o *Operation) AcquireAdapterWriter(adapter string) (*AdapterWriter, Adapte
 		_ = lease.Release()
 		return nil, AdapterState{}, err
 	}
-	state, err := o.loadAdapterState(adapter)
+	state, terminal, err := o.loadAdapterState(adapter)
 	if err != nil {
 		_ = lease.Release()
 		return nil, AdapterState{}, err
+	}
+	if terminal {
+		_ = lease.Release()
+		return nil, AdapterState{}, errors.New("adapter writer is unavailable after the terminal fact")
 	}
 	writer := &AdapterWriter{operation: o, lease: lease, adapter: adapter, streamID: state.StreamID, cursor: append([]byte(nil), state.Cursor...)}
 	return writer, state, nil
 }
 
 func (o *Operation) AdapterState(adapter string) (AdapterState, error) {
-	return o.loadAdapterState(adapter)
+	value, _, err := o.loadAdapterState(adapter)
+	return value, err
 }
 
 func (w *AdapterWriter) Commit(nextCursor []byte, input AdapterBatch) error {
@@ -45,6 +50,9 @@ func (w *AdapterWriter) Commit(nextCursor []byte, input AdapterBatch) error {
 	state, err := w.operation.currentState()
 	if err != nil {
 		return err
+	}
+	if state.terminalSeen {
+		return errors.New("adapter evidence cannot follow the terminal fact")
 	}
 	sources := make(map[string]bool, len(state.adapterSources)+len(input.Events))
 	for source := range state.adapterSources {
@@ -95,21 +103,21 @@ func (w *AdapterWriter) Close() error {
 	return w.lease.Release()
 }
 
-func (o *Operation) loadAdapterState(adapter string) (AdapterState, error) {
+func (o *Operation) loadAdapterState(adapter string) (AdapterState, bool, error) {
 	records, err := o.ledger.Replay()
 	if err != nil {
-		return AdapterState{}, err
+		return AdapterState{}, false, err
 	}
 	state, err := replayRun(records)
 	if err != nil {
-		return AdapterState{}, err
+		return AdapterState{}, false, err
 	}
 	if state.started == nil || state.started.Adapter == nil || state.started.Adapter.Adapter != adapter {
-		return AdapterState{}, fmt.Errorf("run is not attached through adapter %q", adapter)
+		return AdapterState{}, false, fmt.Errorf("run is not attached through adapter %q", adapter)
 	}
 	cursor, err := o.artifacts.Read(state.adapterCursor)
 	if err != nil {
-		return AdapterState{}, err
+		return AdapterState{}, false, err
 	}
-	return AdapterState{Adapter: adapter, StreamID: state.started.Adapter.StreamID, Cursor: cursor, Stopped: state.stopRequested}, nil
+	return AdapterState{Adapter: adapter, StreamID: state.started.Adapter.StreamID, Cursor: cursor, Stopped: state.stopRequested}, state.terminalSeen, nil
 }

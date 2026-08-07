@@ -23,6 +23,11 @@ Use only the active AgentLab tools and their bounded public projections. The
 Host owns runtime location, task binding, and role capabilities; never infer or
 request a filesystem, shell, session, or executable locator.
 
+Run ids are short Host names (for example `baseline-worker`), never artifact
+digests. Before starting any run, inspect the experiment ledger to discover the
+public run ids and prepared runs. If a tool rejects an id, correct the id; do
+not repeat the same call unchanged.
+
 ## Observe, stop, diagnose, repair, splice
 
 Observe public Worker evidence and objective oracle facts. Distinguish alive,

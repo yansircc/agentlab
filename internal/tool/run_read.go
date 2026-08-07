@@ -37,5 +37,8 @@ func (value statusRun) execute(binding Binding) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := op.RequireManifest(); err != nil {
+		return nil, err
+	}
 	return op.ProjectStatus(processidentity.SystemProber{})
 }
