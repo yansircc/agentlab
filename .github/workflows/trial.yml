@@ -123,9 +123,19 @@ jobs:
             --print "Diagnostic: reply with exactly DIAG_OK" > /tmp/diag-out.txt 2>&1 || true
           echo "--- diag stderr/stdout ---"; head -30 /tmp/diag-out.txt
           echo "diag session bytes: $(sudo -n wc -c < /tmp/diag-supervisor/s.jsonl 2>/dev/null || echo 0)"
-          echo "===== STEP 3d: poll supervisor-status (up to 28 min) ====="
+          echo "===== STEP 3d: poll supervisor-status (up to 25 min) ====="
           DEADLINE=$((SECONDS + 1500))
+          PREPARED=0
           while [ $SECONDS -lt $DEADLINE ]; do
+            if [ $PREPARED -eq 0 ]; then
+              COMPLETION=$(run_root sh -c 'jq -c "select(.kind==\"coder_completed\") | .data.receipt" /root/agentlab-eval/experiments/deployctl-supervision/runs/coder-repair/events.jsonl 2>/dev/null | tail -1' 2>/dev/null || true)
+              if [ -n "$COMPLETION" ]; then
+                echo "{\"run_id\":\"fresh-worker\",\"completion\":$COMPLETION}" > /tmp/req-fresh.json
+                run_root /tmp/agentlab acceptance prepare-run --host-root /root/agentlab-host --request /tmp/req-fresh.json 2>&1 | head -c 200 || true
+                echo " fresh-worker prepared"
+                PREPARED=1
+              fi
+            fi
             OBS=$(run_root /tmp/agentlab acceptance supervisor-status --host-root /root/agentlab-host 2>/dev/null | grep -o '"observation":"[a-z]*"' || true)
             echo "t+$((SECONDS/60))m ${OBS:-unavailable}"
             if echo "$OBS" | grep -q '"observation":"dead"'; then echo "supervisor exited"; break; fi

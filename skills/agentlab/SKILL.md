@@ -59,6 +59,28 @@ ref from the experiment ledger), `source_evidence` (one ref with `path`,
 `bind_candidate` carries `id`, `diagnosis_id`, `coder_run` ("coder-repair"),
 and `completion_ref` (the Coder completion artifact ref the ledger reports).
 
+## Fresh acceptance Worker, comparison, and gate
+
+After the Coder exits, the Host binds the fresh acceptance Worker as
+`fresh-worker` (runtime profile ref `candidate-worker-fresh-worker`). Inspect
+the experiment ledger; once `fresh-worker` is bound, start it with a
+`worker_start` decision citing the baseline evidence:
+
+```json
+{"action":"start","effect_id":"start-fresh","run_id":"fresh-worker","runtime_ref":"candidate-worker-fresh-worker","decision":{"id":"start-fresh","worker_run":"baseline-worker","evidence_through":8,"claim":"the fresh Worker verifies the repaired candidate","action":"worker_start","evidence":[{"experiment_id":"deployctl-supervision","run_id":"baseline-worker","sequence":8,"item":0}],"falsifier":"the fresh Worker did not run the repaired candidate"}}
+```
+
+Poll it to completion, then record the comparison and the gate:
+
+```json
+{"action":"record","value":{"decision":{"id":"record-comparison","worker_run":"fresh-worker","evidence_through":12,"claim":"the fresh Worker satisfies the objective claims","action":"comparison","evidence":[{"experiment_id":"deployctl-supervision","run_id":"fresh-worker","sequence":12,"item":0}],"falsifier":"the fresh Worker failed the objective claims"},"observation":{"id":"guided-comparison","candidate_id":"repaired-candidate","baseline_runs":["baseline-worker"],"candidate_runs":["fresh-worker"],"policy":{"minimum_repetitions":2,"required_claims":["target-owner"]}}}}
+```
+
+The gate receipt carries `id`, `candidate_id`, `comparison_id`, `items` (one
+item per claim with `id`, `status` "passed", `statement`, `impact`,
+`evidence` citing the fresh worker, `severity`, `confidence`, `falsifier`),
+and the candidate artifact ref.
+
 ## Supervision loop (mandatory order)
 
 After the baseline `start`, you MUST remain active until the Worker has exited

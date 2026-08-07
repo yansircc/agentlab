@@ -107,6 +107,12 @@ func (value Preflight) prepareFreshRun(runID string, candidate artifact.Ref) (ar
 	if err := tool.AppendPiPreparedWorkerRuntime(value.runtimePlanPath, profile); err != nil {
 		return artifact.Ref{}, err
 	}
+	// The prepared ref is an opaque Host artifact the Supervisor tools never
+	// project, so a fresh acceptance Worker is bound here at creation and the
+	// Supervisor only needs to discover the bound run and start it.
+	if _, err := op.BindPreparedRun(runID, experiment.NewFreshOrigin(), prepared); err != nil {
+		return artifact.Ref{}, err
+	}
 	return prepared, nil
 }
 
