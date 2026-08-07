@@ -46,13 +46,17 @@ jobs:
           SDK_ROOT=$(dirname "$(dirname "$(readlink -f "$(which pi)")")")
           NODE=$(readlink -f "$(which node)")
           run_root make skill >/dev/null
+          # The Linux sandbox cannot bind-mount paths on the runner workspace
+          # filesystem (/home/runner/work), so the skill bundle must live under
+          # /root before any role sandbox mounts it.
+          run_root rm -rf /root/agentlab-skill && run_root cp -r dist/skill /root/agentlab-skill
           run_root go build -o /tmp/agentlab ./cmd/agentlab
           run_root rm -rf /root/agentlab-eval /root/agentlab-audit /root/agentlab-host
           echo "===== STEP 2: preflight (live canary) ====="
           run_root /tmp/agentlab acceptance preflight \
             --evaluated-root /root/agentlab-eval --audit-root /root/agentlab-audit \
             --host-root /root/agentlab-host \
-            --skill-root "$PWD/dist/skill" --sdk-root "$SDK_ROOT" --node "$NODE" \
+            --skill-root /root/agentlab-skill --sdk-root "$SDK_ROOT" --node "$NODE" \
             --provider "$AGENTLAB_PROVIDER" --model "$AGENTLAB_MODEL" \
             --thinking "$AGENTLAB_THINKING" --compaction "$AGENTLAB_COMPACTION" \
             --provider-credential-env XAI_API_KEY \
@@ -71,7 +75,7 @@ jobs:
           run_root rm -rf /root/diag-eval /root/diag-audit /root/diag-host /root/diag-worker-stderr.log
           run_root /tmp/agentlab acceptance preflight \
             --evaluated-root /root/diag-eval --audit-root /root/diag-audit --host-root /root/diag-host \
-            --skill-root "$PWD/dist/skill" --sdk-root "$SDK_ROOT" --node "$NODE" \
+            --skill-root /root/agentlab-skill --sdk-root "$SDK_ROOT" --node "$NODE" \
             --provider "$AGENTLAB_PROVIDER" --model "$AGENTLAB_MODEL" \
             --thinking "$AGENTLAB_THINKING" --compaction "$AGENTLAB_COMPACTION" \
             --provider-credential-env XAI_API_KEY \
