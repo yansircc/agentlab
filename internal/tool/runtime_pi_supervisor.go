@@ -36,12 +36,13 @@ type PiSupervisorBinding struct {
 // PiSupervisorPlan is a Host-private launch plan, deliberately separate from
 // PiRuntimeProfile: Supervisor creation is not a fifth provider effect.
 type PiSupervisorPlan struct {
-	Contract    string                   `json:"contract"`
-	Launch      PiLaunch                 `json:"launch"`
-	SessionPath string                   `json:"session_path"`
-	SkillRoot   string                   `json:"skill_root"`
-	Identity    piadapter.IdentityConfig `json:"identity"`
-	Binding     PiSupervisorBinding      `json:"binding"`
+	Contract              string                   `json:"contract"`
+	Launch                PiLaunch                 `json:"launch"`
+	SessionPath           string                   `json:"session_path"`
+	SkillRoot             string                   `json:"skill_root"`
+	Identity              piadapter.IdentityConfig `json:"identity"`
+	Binding               PiSupervisorBinding      `json:"binding"`
+	RoleCredentialHandles []string                 `json:"role_credential_handles,omitempty"`
 }
 
 // PiSupervisorReceipt records only Host-private process identity and the
@@ -70,6 +71,29 @@ func (value PiSupervisorPlan) Validate() error {
 	}
 	if !filepath.IsAbs(value.Binding.Root) || value.Binding.PreparationID == "" || value.Binding.ExperimentID == "" || !filepath.IsAbs(value.Binding.RuntimePlanPath) || !regularFile(value.Binding.RuntimePlanPath) || !inside(filepath.Dir(value.Binding.RuntimePlanPath), value.Launch.RuntimeRoot) || overlaps(value.Binding.Root, filepath.Dir(value.Binding.RuntimePlanPath)) {
 		return errors.New("Pi Supervisor Host binding is invalid")
+	}
+	if err := value.validateRoleCredentialHandles(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateRoleCredentialHandles keeps the Worker and Coder credential handle
+// names Host-declared, distinct, and disjoint from the Supervisor's own
+// launch handle, so each bounded role resolves only its own credential.
+func (value PiSupervisorPlan) validateRoleCredentialHandles() error {
+	if len(value.RoleCredentialHandles) == 0 {
+		return errors.New("Pi Supervisor role credential handles are invalid")
+	}
+	seen := map[string]bool{}
+	for _, launchHandle := range value.Launch.SecretEnvironmentHandles {
+		seen[launchHandle] = true
+	}
+	for _, handle := range value.RoleCredentialHandles {
+		if !environmentName(handle) || seen[handle] {
+			return errors.New("Pi Supervisor role credential handles are invalid")
+		}
+		seen[handle] = true
 	}
 	return nil
 }
@@ -218,6 +242,19 @@ func (value PiSupervisorPlan) environment() ([]string, error) {
 	result, err := value.Launch.environment(value.Launch.RuntimeRoot)
 	if err != nil {
 		return nil, err
+	}
+	// The Supervisor is the parent of every bounded role launch: the bundled
+	// extension spawns the Host tool invocation that starts the Worker and
+	// Coder, and those processes resolve their credential handles from the
+	// inherited environment. Pass the role handle values through the
+	// Supervisor process so each role authenticates with only its own
+	// credential, never visible to the model or another role.
+	for _, handle := range value.RoleCredentialHandles {
+		secret, exists := os.LookupEnv(handle)
+		if !exists || secret == "" {
+			return nil, errors.New("Supervisor role credential handle is unavailable")
+		}
+		result = append(result, handle+"="+secret)
 	}
 	return append(result,
 		"AGENTLAB_ROOT="+value.Binding.Root,

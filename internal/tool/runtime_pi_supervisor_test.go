@@ -36,6 +36,23 @@ func TestPiSupervisorPlanFixesBundledAuthority(t *testing.T) {
 			t.Fatalf("Supervisor environment omitted Host binding %q", required)
 		}
 	}
+	t.Setenv("AGENTLAB_WORKER_TOKEN", "worker-credential")
+	t.Setenv("AGENTLAB_CODER_TOKEN", "coder-credential")
+	environment, err = plan.environment()
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined = strings.Join(environment, "\x00")
+	for _, required := range []string{"AGENTLAB_WORKER_TOKEN=worker-credential", "AGENTLAB_CODER_TOKEN=coder-credential"} {
+		if !strings.Contains(joined, required) {
+			t.Fatalf("Supervisor environment omitted role credential handle %q", required)
+		}
+	}
+	unavailable := plan
+	unavailable.RoleCredentialHandles = append(append([]string(nil), plan.RoleCredentialHandles...), "AGENTLAB_MISSING_TOKEN")
+	if _, err := unavailable.environment(); err == nil {
+		t.Fatal("Supervisor environment accepted an unavailable role credential handle")
+	}
 	plan.Launch.AllowedExecutables = []string{"/bin/sh"}
 	if plan.Validate() == nil {
 		t.Fatal("Supervisor plan accepted a generic executable capability")
@@ -116,9 +133,13 @@ func testPiSupervisorPlan(t *testing.T) (PiSupervisorPlan, string) {
 	identity := piadapter.IdentityConfig{SDKRoot: sdk, ContextFilterPath: filepath.Join(skill, "extension.ts"), AdapterDigest: strings.Repeat("a", 64), Provider: "provider", Model: "model", ThinkingPolicy: "off", CompactionPolicy: "off"}
 	plan := PiSupervisorPlan{
 		Contract:    PiSupervisorPlanContract,
-		Launch:      PiLaunch{NodePath: "/bin/sh", RuntimeRoot: filepath.Join(host, "supervisor-runtime"), ReadOnlyRoots: []string{sdk, skill}, AllowNetwork: true},
+		Launch:      PiLaunch{NodePath: "/bin/sh", RuntimeRoot: filepath.Join(host, "supervisor-runtime"), ReadOnlyRoots: []string{sdk, skill}, AllowNetwork: true, SecretEnvironmentHandles: map[string]string{"DEEPSEEK_API_KEY": "AGENTLAB_SUPERVISOR_TOKEN"}},
 		SessionPath: filepath.Join(host, "supervisor-runtime", "session.jsonl"), SkillRoot: skill, Identity: identity,
-		Binding: PiSupervisorBinding{Root: evaluated, PreparationID: "prep", ExperimentID: "experiment", RuntimePlanPath: filepath.Join(host, "pi-runtime-plan.json")},
+		Binding:               PiSupervisorBinding{Root: evaluated, PreparationID: "prep", ExperimentID: "experiment", RuntimePlanPath: filepath.Join(host, "pi-runtime-plan.json")},
+		RoleCredentialHandles: []string{"AGENTLAB_WORKER_TOKEN", "AGENTLAB_CODER_TOKEN"},
+	}
+	for _, handle := range []string{"AGENTLAB_SUPERVISOR_TOKEN", "AGENTLAB_WORKER_TOKEN", "AGENTLAB_CODER_TOKEN"} {
+		t.Setenv(handle, "test-credential-"+handle)
 	}
 	if err := plan.Validate(); err != nil {
 		t.Fatal(err)

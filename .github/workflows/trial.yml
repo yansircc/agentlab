@@ -1,0 +1,93 @@
+name: Trial
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  trial:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      AGENTLAB_WORKER_TOKEN: ${{ secrets.AGENTLAB_WORKER_TOKEN }}
+      AGENTLAB_CODER_TOKEN: ${{ secrets.AGENTLAB_CODER_TOKEN }}
+      AGENTLAB_SUPERVISOR_TOKEN: ${{ secrets.AGENTLAB_SUPERVISOR_TOKEN }}
+      AGENTLAB_PROVIDER: ${{ secrets.AGENTLAB_PROVIDER }}
+      AGENTLAB_MODEL: ${{ secrets.AGENTLAB_MODEL }}
+      AGENTLAB_THINKING: ${{ secrets.AGENTLAB_THINKING }}
+      AGENTLAB_COMPACTION: ${{ secrets.AGENTLAB_COMPACTION }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Install the pinned Pi SDK
+        run: sudo -n env PATH="$PATH" npm install -g @earendil-works/pi-coding-agent@0.83.0
+      - name: Require authorized credentials
+        run: |
+          if [ -z "$AGENTLAB_WORKER_TOKEN" ] || [ -z "$AGENTLAB_CODER_TOKEN" ] || [ -z "$AGENTLAB_SUPERVISOR_TOKEN" ] \
+             || [ -z "$AGENTLAB_PROVIDER" ] || [ -z "$AGENTLAB_MODEL" ] || [ -z "$AGENTLAB_THINKING" ] || [ -z "$AGENTLAB_COMPACTION" ]; then
+            echo "::error::trial requires AGENTLAB_WORKER/CODER/SUPERVISOR_TOKEN and provider/model/thinking/compaction secrets"
+            exit 1
+          fi
+      - name: Preflight and baseline
+        run: |
+          set -euo pipefail
+          run_root() {
+            sudo -n env PATH="$PATH" HOME=/root GOPATH=/root/go GOCACHE=/tmp/go-cache \
+              DEEPSEEK_API_KEY="$AGENTLAB_WORKER_TOKEN" \
+              AGENTLAB_WORKER_TOKEN="$AGENTLAB_WORKER_TOKEN" \
+              AGENTLAB_CODER_TOKEN="$AGENTLAB_CODER_TOKEN" \
+              AGENTLAB_SUPERVISOR_TOKEN="$AGENTLAB_SUPERVISOR_TOKEN" "$@"
+          }
+          SDK_ROOT=$(dirname "$(dirname "$(readlink -f "$(which pi)")")")
+          NODE=$(readlink -f "$(which node)")
+          run_root make skill >/dev/null
+          run_root go build -o /tmp/agentlab ./cmd/agentlab
+          run_root rm -rf /tmp/agentlab-eval /tmp/agentlab-audit /tmp/agentlab-host
+          echo "===== STEP 2: preflight (live canary) ====="
+          run_root /tmp/agentlab acceptance preflight \
+            --evaluated-root /tmp/agentlab-eval --audit-root /tmp/agentlab-audit \
+            --host-root /tmp/agentlab-host \
+            --skill-root "$PWD/dist/skill" --sdk-root "$SDK_ROOT" --node "$NODE" \
+            --provider "$AGENTLAB_PROVIDER" --model "$AGENTLAB_MODEL" \
+            --thinking "$AGENTLAB_THINKING" --compaction "$AGENTLAB_COMPACTION" \
+            --provider-credential-env DEEPSEEK_API_KEY \
+            --worker-credential-handle AGENTLAB_WORKER_TOKEN \
+            --coder-credential-handle AGENTLAB_CODER_TOKEN \
+            --supervisor-credential-handle AGENTLAB_SUPERVISOR_TOKEN | tee /tmp/step-preflight.json
+          echo "===== STEP 3a: prepare-baseline ====="
+          run_root /tmp/agentlab acceptance prepare-baseline --host-root /tmp/agentlab-host \
+            --request <(echo '{"run_id":"baseline-worker"}') | tee /tmp/step-baseline.json
+          echo "===== STEP 3b: supervisor-start ====="
+          run_root /tmp/agentlab acceptance supervisor-start --host-root /tmp/agentlab-host \
+            | tee /tmp/step-supervisor-start.json
+      - name: Poll the Supervisor and dump state
+        run: |
+          set -euo pipefail
+          run_root() {
+            sudo -n env PATH="$PATH" HOME=/root GOPATH=/root/go GOCACHE=/tmp/go-cache \
+              DEEPSEEK_API_KEY="$AGENTLAB_WORKER_TOKEN" \
+              AGENTLAB_WORKER_TOKEN="$AGENTLAB_WORKER_TOKEN" \
+              AGENTLAB_CODER_TOKEN="$AGENTLAB_CODER_TOKEN" \
+              AGENTLAB_SUPERVISOR_TOKEN="$AGENTLAB_SUPERVISOR_TOKEN" "$@"
+          }
+          echo "===== STEP 3c: poll supervisor-status (up to 28 min) ====="
+          DEADLINE=$((SECONDS + 1680))
+          while [ $SECONDS -lt $DEADLINE ]; do
+            OBS=$(run_root /tmp/agentlab acceptance supervisor-status --host-root /tmp/agentlab-host 2>/dev/null | grep -o '"observation":"[a-z]*"' || true)
+            echo "t+$((SECONDS/60))m ${OBS:-unavailable}"
+            if echo "$OBS" | grep -q '"observation":"dead"'; then echo "supervisor exited"; break; fi
+            sleep 20
+          done
+          echo "===== supervisor session (tail) ====="
+          run_root sh -c 'tail -80 /tmp/agentlab-host/supervisor-runtime/session.jsonl' | cut -c1-400 || true
+          echo "===== experiment run ledgers (tail) ====="
+          run_root sh -c 'for f in /tmp/agentlab-eval/runs/*/events.jsonl; do echo "--- $f"; tail -6 "$f"; done' || true
+          echo "===== host root files ====="
+          run_root sh -c 'find /tmp/agentlab-host -maxdepth 3 -type f | sort'
+          echo "===== coder completion ====="
+          run_root sh -c 'jq -c "select(.kind==\"coder_completed\") | .data.receipt" /tmp/agentlab-eval/runs/coder-repair/events.jsonl 2>/dev/null | tail -1' || true
+          echo "trial-observation-complete"

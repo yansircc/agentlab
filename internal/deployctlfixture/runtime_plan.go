@@ -184,6 +184,9 @@ func (value Preflight) bindRuntime(spec RuntimeSpec, canary liveCanaryRunner) (P
 		},
 		SessionPath: filepath.Join(spec.HostRoot, "supervisor-runtime", "session.jsonl"), SkillRoot: spec.SkillRoot, Identity: identityConfig,
 		Binding: tool.PiSupervisorBinding{Root: value.EvaluatedRoot, PreparationID: value.PreparationID, ExperimentID: value.ExperimentID, RuntimePlanPath: planPath},
+		// The Supervisor spawns the bounded Worker and Coder launches; their
+		// credential handle values pass through its process environment only.
+		RoleCredentialHandles: []string{credentials.worker, credentials.coder},
 	}
 	supervisorData, err := tool.EncodePiSupervisorPlan(supervisorPlan)
 	if err != nil {
