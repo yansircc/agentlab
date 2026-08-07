@@ -9,7 +9,7 @@ permissions:
 jobs:
   trial:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 60
     env:
       AGENTLAB_WORKER_TOKEN: ${{ secrets.AGENTLAB_WORKER_TOKEN }}
       AGENTLAB_CODER_TOKEN: ${{ secrets.AGENTLAB_CODER_TOKEN }}
@@ -124,7 +124,7 @@ jobs:
           echo "--- diag stderr/stdout ---"; head -30 /tmp/diag-out.txt
           echo "diag session bytes: $(sudo -n wc -c < /tmp/diag-supervisor/s.jsonl 2>/dev/null || echo 0)"
           echo "===== STEP 3d: poll supervisor-status (up to 25 min) ====="
-          DEADLINE=$((SECONDS + 1500))
+          DEADLINE=$((SECONDS + 2400))
           PREPARED=0
           while [ $SECONDS -lt $DEADLINE ]; do
             if [ $PREPARED -eq 0 ]; then
