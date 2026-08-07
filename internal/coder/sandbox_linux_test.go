@@ -401,3 +401,51 @@ func requireLinuxNamespace(t *testing.T) {
 		t.Skipf("Linux user/mount namespace is unavailable: %v", err)
 	}
 }
+
+// TestLinuxSandboxReachesDeclaredNetworkEndpoint proves the AllowNetwork=true
+// sandbox can complete an HTTPS request with only the declared DNS/TLS files.
+// A managed Pi role inside the sandbox must reach its provider API; a hang
+// here means the closed network surface is missing a resolver or CA fact.
+func TestLinuxSandboxReachesDeclaredNetworkEndpoint(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("Node is not installed")
+	}
+	shell, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("sh is not installed")
+	}
+	requireLinuxNamespace(t)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.MkdirTemp(home, ".agentlab-coder-linux-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(root) })
+	workspace, runtimeRoot := filepath.Join(root, "workspace"), filepath.Join(root, "runtime")
+	publicRoot := filepath.Join(root, "public")
+	for _, path := range []string{workspace, runtimeRoot, publicRoot} {
+		if err := os.Mkdir(path, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sandbox, err := NewSandbox(SandboxSpec{Workspace: workspace, RuntimeRoot: runtimeRoot, ReadOnlyRoots: []string{publicRoot}, Executables: []string{node, shell}, AllowNetwork: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	probe := `fetch("https://api.x.ai/v1/models").then(r=>{if(!r.ok)process.exit(1);console.log("https-ok")}).catch(()=>process.exit(2))`
+	wrapped, err := sandbox.Wrap([]string{node, "--input-type=module", "-e", probe})
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command(wrapped[0], wrapped[1:]...)
+	command.Dir = workspace
+	command.Env = []string{"HOME=" + runtimeRoot, "TMPDIR=" + runtimeRoot, "PATH=/usr/bin:/bin"}
+	output, err := command.CombinedOutput()
+	if err != nil || strings.TrimSpace(string(output)) != "https-ok" {
+		t.Fatalf("sandboxed HTTPS fetch = %q, %v", output, err)
+	}
+}
