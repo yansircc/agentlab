@@ -82,8 +82,14 @@ jobs:
             | run_root /tmp/agentlab tool invoke -root /root/diag-eval -preparation deployctl-preparation \
               -experiment deployctl-supervision -pi-runtime-plan /root/diag-host/pi-runtime-plan.json \
               -name agentlab_run 2>&1 | head -c 500 || true; echo
-          echo "--- worker stderr capture ---"
+          echo "--- waiting 30s then probing worker state ---"
+          sleep 30
+          echo "--- worker pi stderr (if any) ---"
           run_root sh -c 'tail -40 /root/diag-worker-stderr.log 2>/dev/null || echo "(no stderr file)"' || true
+          echo "--- worker session file ---"
+          run_root sh -c 'ls -la /root/diag-host/worker-runtime/ 2>/dev/null; tail -3 /root/diag-host/worker-runtime/session.jsonl 2>/dev/null || echo "(no session file)"' || true
+          echo "--- worker processes ---"
+          sudo -n ps -eo pid,ppid,stat,cmd | grep -E "diag-host|worker-runtime|unshare" | grep -v grep | head -8 || true
       - name: Poll the Supervisor and dump state
         run: |
           set -euo pipefail
