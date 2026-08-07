@@ -86,9 +86,9 @@ jobs:
           echo "===== supervisor session (tail) ====="
           run_root sh -c 'tail -80 /tmp/agentlab-host/supervisor-runtime/session.jsonl' | cut -c1-400 || true
           echo "===== experiment run ledgers (tail) ====="
-          run_root sh -c 'for f in /tmp/agentlab-eval/runs/*/events.jsonl; do echo "--- $f"; tail -6 "$f"; done' || true
+          run_root sh -c 'for f in /tmp/agentlab-eval/experiments/deployctl-supervision/runs/*/events.jsonl; do echo "--- $f"; tail -6 "$f"; done' || true
           echo "===== host root files ====="
           run_root sh -c 'find /tmp/agentlab-host -maxdepth 3 -type f | sort'
           echo "===== coder completion ====="
-          run_root sh -c 'jq -c "select(.kind==\"coder_completed\") | .data.receipt" /tmp/agentlab-eval/runs/coder-repair/events.jsonl 2>/dev/null | tail -1' || true
+          run_root sh -c 'jq -c "select(.kind==\"coder_completed\") | .data.receipt" /tmp/agentlab-eval/experiments/deployctl-supervision/runs/coder-repair/events.jsonl 2>/dev/null | tail -1' || true
           echo "trial-observation-complete"
