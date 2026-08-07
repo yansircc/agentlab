@@ -15,6 +15,7 @@ func (value recordDiagnosis) execute(binding Binding) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	value.Value.Decision = resolveDecisionEvidence(binding, value.Value.Decision)
 	if err := op.RecordDiagnosisWithDecision(value.Value); err != nil {
 		return nil, err
 	}
@@ -34,6 +35,7 @@ func (value bindCandidate) execute(binding Binding) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	value.Value.Decision = resolveDecisionEvidence(binding, value.Value.Decision)
 	return op.BindCandidateWithDecision(value.Value)
 }
 

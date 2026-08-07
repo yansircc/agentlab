@@ -51,6 +51,7 @@ func (value recordComparison) execute(binding Binding) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	value.Value.Decision = resolveDecisionEvidence(binding, value.Value.Decision)
 	return op.CompareWithDecision(value.Value)
 }
 

@@ -20,6 +20,7 @@ func (value bindRun) execute(binding Binding) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	value.Binding.Decision = resolveDecisionEvidence(binding, value.Binding.Decision)
 	return op.BindPreparedRunWithDecision(value.Binding, value.Origin, value.Prepared)
 }
 
@@ -36,6 +37,7 @@ func (value recordFinding) execute(binding Binding) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	value.Value.Decision = resolveDecisionEvidence(binding, value.Value.Decision)
 	if err := op.RecordFindingWithDecision(value.Value); err != nil {
 		return nil, err
 	}
@@ -56,5 +58,5 @@ func (value renderHandoff) execute(binding Binding) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return op.RenderHandoffWithDecision(value.Decision, value.FindingIDs)
+	return op.RenderHandoffWithDecision(resolveDecisionEvidence(binding, value.Decision), value.FindingIDs)
 }

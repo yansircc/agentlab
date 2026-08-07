@@ -102,6 +102,10 @@ func (value SupervisorDecision) isBootstrapWorkerStart() bool {
 	return value.Action == DecisionWorkerStart && value.EvidenceThrough == 0 && len(value.Evidence) == 0
 }
 
+// BootstrapWorkerStart reports the exported form of the evidence-free launch
+// decision, used by the tool boundary to resolve cited evidence.
+func (value SupervisorDecision) BootstrapWorkerStart() bool { return value.isBootstrapWorkerStart() }
+
 func (value DecisionBoundFinding) Validate() error {
 	if value.Decision.Validate() != nil || value.Decision.Action != DecisionFinding || value.Finding.Validate() != nil {
 		return errors.New("decision-bound finding is invalid")

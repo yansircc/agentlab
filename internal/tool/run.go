@@ -183,6 +183,7 @@ func commitEffectForDecision(binding Binding, decision experiment.SupervisorDeci
 	if err != nil {
 		return err
 	}
+	decision = resolveDecisionEvidence(binding, decision)
 	value := experiment.DecisionBoundEffect{Decision: decision, Intent: intent}
 	existing, err := op.DecisionBoundEffect(intent.ID)
 	if err == nil {
@@ -192,4 +193,16 @@ func commitEffectForDecision(binding Binding, decision experiment.SupervisorDeci
 		return errors.New("effect intent identity changed")
 	}
 	return op.CommitDecisionBoundEffect(value)
+}
+
+// resolveDecisionEvidence is Host resolution of the model's stated public
+// prefix: a non-bootstrap decision that names evidence_through without an
+// explicit evidence array cites exactly that run event at item zero. The
+// cited event must still exist and be public evidence; nothing is fabricated.
+func resolveDecisionEvidence(binding Binding, decision experiment.SupervisorDecision) experiment.SupervisorDecision {
+	if decision.BootstrapWorkerStart() || decision.EvidenceThrough == 0 || len(decision.Evidence) != 0 {
+		return decision
+	}
+	decision.Evidence = []run.EvidenceRef{{ExperimentID: binding.ExperimentID, RunID: decision.WorkerRun, Sequence: decision.EvidenceThrough, Item: 0}}
+	return decision
 }

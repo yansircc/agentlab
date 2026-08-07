@@ -15,5 +15,6 @@ func (value recordIntervention) execute(binding Binding) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	value.Value.Decision = resolveDecisionEvidence(binding, value.Value.Decision)
 	return op.RecordInterventionWithDecision(value.Value)
 }
