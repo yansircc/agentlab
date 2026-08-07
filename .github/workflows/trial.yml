@@ -40,7 +40,8 @@ jobs:
               XAI_API_KEY="$AGENTLAB_WORKER_TOKEN" \
               AGENTLAB_WORKER_TOKEN="$AGENTLAB_WORKER_TOKEN" \
               AGENTLAB_CODER_TOKEN="$AGENTLAB_CODER_TOKEN" \
-              AGENTLAB_SUPERVISOR_TOKEN="$AGENTLAB_SUPERVISOR_TOKEN" "$@"
+              AGENTLAB_SUPERVISOR_TOKEN="$AGENTLAB_SUPERVISOR_TOKEN" \
+              AGENTLAB_MANAGED_STDERR="$AGENTLAB_MANAGED_STDERR" "$@"
           }
           SDK_ROOT=$(dirname "$(dirname "$(readlink -f "$(which pi)")")")
           NODE=$(readlink -f "$(which node)")
@@ -66,7 +67,8 @@ jobs:
           run_root /tmp/agentlab acceptance supervisor-start --host-root /root/agentlab-host \
             | tee /tmp/step-supervisor-start.json
           echo "===== STEP 3b2: direct worker start diagnostic (throwaway root) ====="
-          run_root rm -rf /root/diag-eval /root/diag-audit /root/diag-host
+          export AGENTLAB_MANAGED_STDERR=/root/diag-worker-stderr.log
+          run_root rm -rf /root/diag-eval /root/diag-audit /root/diag-host /root/diag-worker-stderr.log
           run_root /tmp/agentlab acceptance preflight \
             --evaluated-root /root/diag-eval --audit-root /root/diag-audit --host-root /root/diag-host \
             --skill-root "$PWD/dist/skill" --sdk-root "$SDK_ROOT" --node "$NODE" \
@@ -77,7 +79,7 @@ jobs:
             --coder-credential-handle AGENTLAB_CODER_TOKEN \
             --supervisor-credential-handle AGENTLAB_SUPERVISOR_TOKEN >/dev/null 2>&1 || echo "diag preflight failed"
           echo '{"action":"start","decision":{"action":"worker_start","claim":"fresh Worker starts","falsifier":"Worker did not start","id":"diag-start","worker_run":"baseline-worker","evidence_through":0},"effect_id":"diag-start","run_id":"baseline-worker","runtime_ref":"baseline-worker"}' \
-            | AGENTLAB_MANAGED_STDERR=/root/diag-worker-stderr.log run_root /tmp/agentlab tool invoke -root /root/diag-eval -preparation deployctl-preparation \
+            | run_root /tmp/agentlab tool invoke -root /root/diag-eval -preparation deployctl-preparation \
               -experiment deployctl-supervision -pi-runtime-plan /root/diag-host/pi-runtime-plan.json \
               -name agentlab_run 2>&1 | head -c 500 || true; echo
           echo "--- worker stderr capture ---"
@@ -90,7 +92,8 @@ jobs:
               XAI_API_KEY="$AGENTLAB_WORKER_TOKEN" \
               AGENTLAB_WORKER_TOKEN="$AGENTLAB_WORKER_TOKEN" \
               AGENTLAB_CODER_TOKEN="$AGENTLAB_CODER_TOKEN" \
-              AGENTLAB_SUPERVISOR_TOKEN="$AGENTLAB_SUPERVISOR_TOKEN" "$@"
+              AGENTLAB_SUPERVISOR_TOKEN="$AGENTLAB_SUPERVISOR_TOKEN" \
+              AGENTLAB_MANAGED_STDERR="$AGENTLAB_MANAGED_STDERR" "$@"
           }
           echo "===== STEP 3c: supervisor direct diagnostic (stderr captured) ====="
           DIAG_SDK=$(dirname "$(dirname "$(readlink -f "$(which pi)")")")
