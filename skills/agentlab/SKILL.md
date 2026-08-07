@@ -86,16 +86,20 @@ and the candidate artifact ref.
 After the baseline `start`, you MUST remain active until the Worker has exited
 and you have observed its evidence. The loop is:
 
-1. Poll the worker (`poll` with run id and runtime ref) and read its status
-   until the process exits.
+1. Poll the worker (`poll` with run id and runtime ref) a few times. A poll
+   result that reports `event_count` and a status that shows
+   `process_liveness: dead` (or a terminal event) means the worker is DONE:
+   STOP polling immediately.
 2. Read the worker's evidence (inspect the run ledger or use `status`); the
-   baseline is expected to fail its objective oracle.
-3. When the failure is no longer recoverable, issue a `stop` with a
-   decision citing that evidence, then `record_finding`, then
-   `render_handoff`.
-4. Bind and start the Coder with the handoff, poll it to completion, read
-   the Coder completion, then `record_diagnosis` and `bind_candidate`.
+   baseline is expected to fail its objective oracle (requested target stays
+   stale while the default target changes).
+3. The instant the worker is done, issue a `stop` with a decision citing the
+   terminal evidence, then `record_finding`, then `render_handoff`. Do not
+   poll the worker again after it has exited.
+4. Start the Coder with the handoff, poll it to completion, read the Coder
+   completion, then `record_diagnosis` and `bind_candidate`.
 5. Continue until the comparison and gate are recorded.
+Do not spend more than a few polls observing a run that has already exited.
 
 Never finish after a `start`: starting a Worker is the beginning of an
 observation cycle, not the end of the task. If you have no pending tool call,
