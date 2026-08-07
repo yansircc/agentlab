@@ -172,6 +172,12 @@ func (value Preflight) bindRuntime(spec RuntimeSpec, canary liveCanaryRunner) (P
 	if _, err := op.BindPreparedRun(value.BaselineRunID, experiment.NewFreshOrigin(), prepared); err != nil {
 		return Preflight{}, err
 	}
+	// The Coder run is bound here too: its prepared-run ref is an opaque
+	// Host artifact that the Supervisor tools never project, so the Coder
+	// must be startable directly with just its handoff decision.
+	if _, err := op.BindPreparedRun(coderRunID, experiment.NewFreshOrigin(), coderPrepared); err != nil {
+		return Preflight{}, err
+	}
 	planPath := filepath.Join(spec.HostRoot, "pi-runtime-plan.json")
 	if err := transaction.Replace(planPath, plan, 0o600); err != nil {
 		return Preflight{}, err
