@@ -76,7 +76,7 @@ jobs:
               AGENTLAB_SUPERVISOR_TOKEN="$AGENTLAB_SUPERVISOR_TOKEN" "$@"
           }
           echo "===== STEP 3c: poll supervisor-status (up to 28 min) ====="
-          DEADLINE=$((SECONDS + 1680))
+          DEADLINE=$((SECONDS + 900))
           while [ $SECONDS -lt $DEADLINE ]; do
             OBS=$(run_root /tmp/agentlab acceptance supervisor-status --host-root /tmp/agentlab-host 2>/dev/null | grep -o '"observation":"[a-z]*"' || true)
             echo "t+$((SECONDS/60))m ${OBS:-unavailable}"

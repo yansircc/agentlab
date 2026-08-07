@@ -273,7 +273,7 @@ func piSupervisorCommand(value PiSupervisorPlan) []string {
 		"--no-builtin-tools", "--no-skills", "--skill", filepath.Join(value.SkillRoot, "SKILL.md"),
 		"--no-prompt-templates", "--no-themes", "--no-context-files", "--no-approve",
 		"--tools", strings.Join(ActiveToolNames(), ","), "--print",
-		"You are the AgentLab Supervisor. Use the bundled skill and the Host-bound AgentLab tools to supervise the sealed task. The sealed baseline run id is \"baseline-worker\" and its runtime profile is \"baseline-runtime\"; inspect the experiment ledger to discover every public run id and prepared run before starting any run. Run ids are short Host names, never digests.",
+		"You are the AgentLab Supervisor. The Host has already sealed the preparation and begun the experiment; the baseline run \"baseline-worker\" (runtime profile \"baseline-runtime\") is bound and unstarted. Do NOT call begin_preparation, seal_preparation, begin_experiment, record_fact, challenge, or any setup action. Inspect the experiment ledger to discover the public state, then start the baseline worker with the bootstrap decision shown in the skill. Run ids are short Host names, never digests.",
 	}
 }
 

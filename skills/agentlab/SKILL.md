@@ -28,6 +28,14 @@ digests. Before starting any run, inspect the experiment ledger to discover the
 public run ids and prepared runs. If a tool rejects an id, correct the id; do
 not repeat the same call unchanged.
 
+## Starting state
+
+The Host has already sealed the WorkerInput, begun the experiment, and bound
+the first FreshOrigin Worker run. Do not call `begin_preparation`,
+`seal_preparation`, `begin_experiment`, `record_fact`, `challenge`, or any
+preparation/experiment setup action. Start by inspecting the experiment ledger,
+then issue the first baseline `start` (below).
+
 ## First baseline start (exact call)
 
 For the first, unstarted FreshOrigin Worker run, issue exactly one `agentlab_run`
