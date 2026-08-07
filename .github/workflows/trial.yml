@@ -75,7 +75,22 @@ jobs:
               AGENTLAB_CODER_TOKEN="$AGENTLAB_CODER_TOKEN" \
               AGENTLAB_SUPERVISOR_TOKEN="$AGENTLAB_SUPERVISOR_TOKEN" "$@"
           }
-          echo "===== STEP 3c: poll supervisor-status (up to 28 min) ====="
+          echo "===== STEP 3c: supervisor direct diagnostic (stderr captured) ====="
+          sudo -n rm -rf /tmp/diag-supervisor && sudo -n mkdir -p /tmp/diag-supervisor
+          timeout 90 sudo -n env PATH="$PATH" HOME=/tmp/diag-supervisor PI_CODING_AGENT_DIR=/tmp/diag-supervisor PI_CODING_AGENT_SESSION_DIR=/tmp/diag-supervisor \
+            XAI_API_KEY="$AGENTLAB_WORKER_TOKEN" AGENTLAB_SUPERVISOR_TOKEN="$AGENTLAB_SUPERVISOR_TOKEN" \
+            AGENTLAB_WORKER_TOKEN="$AGENTLAB_WORKER_TOKEN" AGENTLAB_CODER_TOKEN="$AGENTLAB_CODER_TOKEN" \
+            AGENTLAB_ROOT=/tmp/agentlab-eval AGENTLAB_PREPARATION=deployctl-preparation AGENTLAB_EXPERIMENT=deployctl-supervision \
+            AGENTLAB_PI_RUNTIME_PLAN=/tmp/agentlab-host/pi-runtime-plan.json \
+            "$NODE" "$SDK_ROOT/dist/cli.js" --session /tmp/diag-supervisor/s.jsonl --session-dir /tmp/diag-supervisor \
+            --provider "$AGENTLAB_PROVIDER" --model "$AGENTLAB_MODEL" --thinking "$AGENTLAB_THINKING" \
+            --no-extensions --extension "$PWD/dist/skill/extension.ts" --no-builtin-tools --no-skills \
+            --skill "$PWD/dist/skill/SKILL.md" --no-prompt-templates --no-themes --no-context-files --no-approve \
+            --append-system-prompt "$PWD/dist/skill/SKILL.md" \
+            --tools agentlab_apply,agentlab_run,agentlab_inspect,agentlab_compare \
+            --print "Diagnostic: reply with exactly DIAG_OK" 2>&1 | head -25 || true
+          echo "diag session bytes: $(sudo -n wc -c < /tmp/diag-supervisor/s.jsonl 2>/dev/null || echo 0)"
+          echo "===== STEP 3d: poll supervisor-status (up to 28 min) ====="
           DEADLINE=$((SECONDS + 900))
           while [ $SECONDS -lt $DEADLINE ]; do
             OBS=$(run_root /tmp/agentlab acceptance supervisor-status --host-root /tmp/agentlab-host 2>/dev/null | grep -o '"observation":"[a-z]*"' || true)
