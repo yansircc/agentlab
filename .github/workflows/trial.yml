@@ -46,11 +46,11 @@ jobs:
           NODE=$(readlink -f "$(which node)")
           run_root make skill >/dev/null
           run_root go build -o /tmp/agentlab ./cmd/agentlab
-          run_root rm -rf /tmp/agentlab-eval /tmp/agentlab-audit /tmp/agentlab-host
+          run_root rm -rf /root/agentlab-eval /root/agentlab-audit /root/agentlab-host
           echo "===== STEP 2: preflight (live canary) ====="
           run_root /tmp/agentlab acceptance preflight \
-            --evaluated-root /tmp/agentlab-eval --audit-root /tmp/agentlab-audit \
-            --host-root /tmp/agentlab-host \
+            --evaluated-root /root/agentlab-eval --audit-root /root/agentlab-audit \
+            --host-root /root/agentlab-host \
             --skill-root "$PWD/dist/skill" --sdk-root "$SDK_ROOT" --node "$NODE" \
             --provider "$AGENTLAB_PROVIDER" --model "$AGENTLAB_MODEL" \
             --thinking "$AGENTLAB_THINKING" --compaction "$AGENTLAB_COMPACTION" \
@@ -60,10 +60,10 @@ jobs:
             --supervisor-credential-handle AGENTLAB_SUPERVISOR_TOKEN | tee /tmp/step-preflight.json
           echo "===== STEP 3a: additional baseline prepared run (smoke) ====="
           echo '{"run_id":"baseline-2"}' > /tmp/req-baseline.json
-          run_root /tmp/agentlab acceptance prepare-baseline --host-root /tmp/agentlab-host \
+          run_root /tmp/agentlab acceptance prepare-baseline --host-root /root/agentlab-host \
             --request /tmp/req-baseline.json | tee /tmp/step-baseline.json || true
           echo "===== STEP 3b: supervisor-start ====="
-          run_root /tmp/agentlab acceptance supervisor-start --host-root /tmp/agentlab-host \
+          run_root /tmp/agentlab acceptance supervisor-start --host-root /root/agentlab-host \
             | tee /tmp/step-supervisor-start.json
       - name: Poll the Supervisor and dump state
         run: |
@@ -80,8 +80,8 @@ jobs:
           timeout 90 sudo -n env PATH="$PATH" HOME=/tmp/diag-supervisor PI_CODING_AGENT_DIR=/tmp/diag-supervisor PI_CODING_AGENT_SESSION_DIR=/tmp/diag-supervisor \
             XAI_API_KEY="$AGENTLAB_WORKER_TOKEN" AGENTLAB_SUPERVISOR_TOKEN="$AGENTLAB_SUPERVISOR_TOKEN" \
             AGENTLAB_WORKER_TOKEN="$AGENTLAB_WORKER_TOKEN" AGENTLAB_CODER_TOKEN="$AGENTLAB_CODER_TOKEN" \
-            AGENTLAB_ROOT=/tmp/agentlab-eval AGENTLAB_PREPARATION=deployctl-preparation AGENTLAB_EXPERIMENT=deployctl-supervision \
-            AGENTLAB_PI_RUNTIME_PLAN=/tmp/agentlab-host/pi-runtime-plan.json \
+            AGENTLAB_ROOT=/root/agentlab-eval AGENTLAB_PREPARATION=deployctl-preparation AGENTLAB_EXPERIMENT=deployctl-supervision \
+            AGENTLAB_PI_RUNTIME_PLAN=/root/agentlab-host/pi-runtime-plan.json \
             "$NODE" "$SDK_ROOT/dist/cli.js" --session /tmp/diag-supervisor/s.jsonl --session-dir /tmp/diag-supervisor \
             --provider "$AGENTLAB_PROVIDER" --model "$AGENTLAB_MODEL" --thinking "$AGENTLAB_THINKING" \
             --no-extensions --extension "$PWD/dist/skill/extension.ts" --no-builtin-tools --no-skills \
@@ -93,17 +93,17 @@ jobs:
           echo "===== STEP 3d: poll supervisor-status (up to 28 min) ====="
           DEADLINE=$((SECONDS + 900))
           while [ $SECONDS -lt $DEADLINE ]; do
-            OBS=$(run_root /tmp/agentlab acceptance supervisor-status --host-root /tmp/agentlab-host 2>/dev/null | grep -o '"observation":"[a-z]*"' || true)
+            OBS=$(run_root /tmp/agentlab acceptance supervisor-status --host-root /root/agentlab-host 2>/dev/null | grep -o '"observation":"[a-z]*"' || true)
             echo "t+$((SECONDS/60))m ${OBS:-unavailable}"
             if echo "$OBS" | grep -q '"observation":"dead"'; then echo "supervisor exited"; break; fi
             sleep 20
           done
           echo "===== supervisor session (tail) ====="
-          run_root sh -c 'tail -80 /tmp/agentlab-host/supervisor-runtime/session.jsonl' | cut -c1-400 || true
+          run_root sh -c 'tail -80 /root/agentlab-host/supervisor-runtime/session.jsonl' | cut -c1-400 || true
           echo "===== experiment run ledgers (tail) ====="
-          run_root sh -c 'for f in /tmp/agentlab-eval/experiments/deployctl-supervision/runs/*/events.jsonl; do echo "--- $f"; tail -6 "$f"; done' || true
+          run_root sh -c 'for f in /root/agentlab-eval/experiments/deployctl-supervision/runs/*/events.jsonl; do echo "--- $f"; tail -6 "$f"; done' || true
           echo "===== host root files ====="
-          run_root sh -c 'find /tmp/agentlab-host -maxdepth 3 -type f | sort'
+          run_root sh -c 'find /root/agentlab-host -maxdepth 3 -type f | sort'
           echo "===== coder completion ====="
-          run_root sh -c 'jq -c "select(.kind==\"coder_completed\") | .data.receipt" /tmp/agentlab-eval/experiments/deployctl-supervision/runs/coder-repair/events.jsonl 2>/dev/null | tail -1' || true
+          run_root sh -c 'jq -c "select(.kind==\"coder_completed\") | .data.receipt" /root/agentlab-eval/experiments/deployctl-supervision/runs/coder-repair/events.jsonl 2>/dev/null | tail -1' || true
           echo "trial-observation-complete"
