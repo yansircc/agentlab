@@ -58,6 +58,8 @@ that one `EvidenceRef` with `experiment_id`, `run_id`, `sequence`, and `item`.
 `coder_start` starts additionally require the `handoff` ref returned by the
 `render_handoff` apply operation.
 
+Polling needs the runtime profile ref too: `{"action":"poll","run_id":"baseline-worker","runtime_ref":"baseline-worker"}`. Every `poll` and `start` carries the matching runtime profile ref; `status` takes only the run id.
+
 ## Observe, stop, diagnose, repair, splice
 
 Observe public Worker evidence and objective oracle facts. Distinguish alive,

@@ -59,13 +59,18 @@ function hostBinding(): Binding {
 	const root = process.env.AGENTLAB_ROOT;
 	if (!root) throw new Error("AgentLab Host binding is unavailable.");
 	const args = ["tool", "invoke", "-root", root];
+	// Only filesystem locators are hidden. Preparation and experiment ids are
+	// public identifiers that appear in ledgers and manifests; hiding them
+	// would make every inspect result unreadable.
 	const hidden = [root];
-	for (const [environment, flag] of [["AGENTLAB_PREPARATION", "-preparation"], ["AGENTLAB_EXPERIMENT", "-experiment"], ["AGENTLAB_PI_RUNTIME_PLAN", "-pi-runtime-plan"]]) {
+	for (const [environment, flag] of [["AGENTLAB_PREPARATION", "-preparation"], ["AGENTLAB_EXPERIMENT", "-experiment"]]) {
 		const value = process.env[environment];
-		if (value) {
-			args.push(flag, value);
-			hidden.push(value);
-		}
+		if (value) args.push(flag, value);
+	}
+	const planPath = process.env.AGENTLAB_PI_RUNTIME_PLAN;
+	if (planPath) {
+		args.push("-pi-runtime-plan", planPath);
+		hidden.push(planPath);
 	}
 	return { args, hidden };
 }
