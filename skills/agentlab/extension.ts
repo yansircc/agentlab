@@ -21,7 +21,13 @@ export default async function (pi: ExtensionAPI) {
 			execute: async (_id, params, signal) => {
 				const binding = hostBinding();
 				const result = await invoke(binary, [...binding.args, "-name", definition.name], JSON.stringify(params), signal);
-				if (!result.ok) throw new Error("AgentLab operation was rejected.");
+				if (!result.ok) {
+					// Surface the rejection reason (with Host locators redacted) so
+					// the model can correct the call instead of repeating it blind.
+					let detail = typeof result.error === "string" ? result.error : "";
+					for (const value of binding.hidden) if (value && detail.includes(value)) detail = detail.replaceAll(value, "<redacted>");
+					throw new Error("AgentLab operation was rejected" + (detail ? ": " + detail : ""));
+				}
 				const text = JSON.stringify(result.data ?? null);
 				if (binding.hidden.some((value) => value !== "" && text.includes(value))) {
 					throw new Error("AgentLab result contains an unavailable Host locator.");

@@ -86,7 +86,7 @@ async function assertExtension(expected) {
 		assert.deepEqual(active, expected.map((tool) => tool.name));
 		for (let index = 0; index < expected.length; index += 1) assert.deepEqual(registered[index].parameters, expected[index].input_schema);
 		const inspect = registered.find((tool) => tool.name.endsWith("inspect"));
-		await assert.rejects(() => inspect.execute("contract", { scope: "preparation", after: 0, limit: 1 }), (error) => error instanceof Error && error.message === "AgentLab operation was rejected.");
+		await assert.rejects(() => inspect.execute("contract", { scope: "preparation", after: 0, limit: 1 }), (error) => error instanceof Error && error.message.startsWith("AgentLab operation was rejected"));
 		const moved = `${binary}.contract-hold`;
 		renameSync(binary, moved);
 		try {

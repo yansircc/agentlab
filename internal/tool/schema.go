@@ -68,7 +68,7 @@ func supervisorDecisionSchema() map[string]any {
 		"evidence_through": map[string]any{"type": "integer", "minimum": 0, "description": "Cited evidence sequence; 0 for the fresh bootstrap start."},
 		"claim":            text("Public claim the decision records."),
 		"action":           enum(string(experiment.DecisionWorkerStart), string(experiment.DecisionCoderStart), string(experiment.DecisionStop), string(experiment.DecisionCheckpoint), string(experiment.DecisionFork), string(experiment.DecisionFinding), string(experiment.DecisionHandoff), string(experiment.DecisionDiagnosis), string(experiment.DecisionCandidate), string(experiment.DecisionIntervention), string(experiment.DecisionRunBinding), string(experiment.DecisionComparison)),
-		"evidence": map[string]any{"type": "array", "items": object(map[string]any{
+		"evidence": map[string]any{"type": "array", "description": "Required for every decision except the fresh bootstrap worker start; cite exactly the observed EvidenceRef.", "items": object(map[string]any{
 			"experiment_id": text("Experiment id of the cited evidence."),
 			"run_id":        text("Worker run id of the cited evidence."),
 			"sequence":      map[string]any{"type": "integer", "minimum": 1},
