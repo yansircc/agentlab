@@ -57,8 +57,23 @@ type startRun struct {
 func (startRun) toolName() string { return RunTool }
 func (startRun) runOperation()    {}
 func (value startRun) execute(binding Binding) (any, error) {
-	if binding.Runtime == nil || value.EffectID != value.Decision.ID {
-		return nil, errors.New("start operation is invalid")
+	if binding.Runtime == nil {
+		return nil, errors.New("start requires a bound runtime plan")
+	}
+	if value.EffectID == "" {
+		return nil, errors.New("start requires effect_id")
+	}
+	if value.Decision.ID == "" {
+		return nil, errors.New("start requires a decision with the same id as effect_id")
+	}
+	if value.EffectID != value.Decision.ID {
+		return nil, errors.New("start effect_id must equal decision.id")
+	}
+	if value.RunID == "" {
+		return nil, errors.New("start requires run_id")
+	}
+	if value.RuntimeRef == "" {
+		return nil, errors.New("start requires runtime_ref")
 	}
 	intent, err := binding.Runtime.StartIntent(binding, StartRequest{ID: value.EffectID, RunID: value.RunID, RuntimeRef: value.RuntimeRef, Handoff: value.Handoff})
 	if err != nil {
@@ -81,8 +96,17 @@ type stopRun struct {
 func (stopRun) toolName() string { return RunTool }
 func (stopRun) runOperation()    {}
 func (value stopRun) execute(binding Binding) (any, error) {
-	if value.EffectID != value.Decision.ID || value.RunID == "" {
-		return nil, errors.New("stop operation is invalid")
+	if value.EffectID == "" {
+		return nil, errors.New("stop requires effect_id")
+	}
+	if value.Decision.ID == "" || value.EffectID != value.Decision.ID {
+		return nil, errors.New("stop requires a decision with the same id as effect_id")
+	}
+	if value.RunID == "" {
+		return nil, errors.New("stop requires run_id")
+	}
+	if value.Reason == "" {
+		return nil, errors.New("stop requires reason")
 	}
 	payload, err := run.EncodeStopPayload(run.StopPayload{Reason: value.Reason})
 	if err != nil {

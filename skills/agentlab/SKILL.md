@@ -133,7 +133,7 @@ the preparation id). Every non-bootstrap decision — `stop`, `finding`,
 carry the `evidence` array with the cited ref. Exact stop example:
 
 ```json
-{"action":"stop","reason":"objective failure, non-recoverable","run_id":"baseline-worker","runtime_ref":"baseline-worker","decision":{"id":"stop-baseline","worker_run":"baseline-worker","evidence_through":8,"claim":"baseline-worker failed the objective oracle","action":"stop","evidence":[{"experiment_id":"deployctl-supervision","run_id":"baseline-worker","sequence":8,"item":0}],"falsifier":"baseline-worker passed the objective oracle"}}
+{"action":"stop","reason":"objective failure, non-recoverable","run_id":"baseline-worker","decision":{"id":"stop-baseline","worker_run":"baseline-worker","evidence_through":8,"claim":"baseline-worker failed the objective oracle","action":"stop","evidence":[{"experiment_id":"deployctl-supervision","run_id":"baseline-worker","sequence":8,"item":0}],"falsifier":"baseline-worker passed the objective oracle"}}
 ```
 
 `record_finding` carries the decision and a finding object with exactly:
