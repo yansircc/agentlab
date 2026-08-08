@@ -115,6 +115,7 @@ func TestCoderSandboxRunRecordsTerminalFacts(t *testing.T) {
 	}
 	policy := StopPolicy{FirstEventTimeout: 300 * time.Second, SoftIdleTimeout: 2 * time.Minute, HardIdleTimeout: 5 * time.Minute, OwnsWorkerProcess: true}
 	finalized := make(chan int, 1)
+	var drainErr error
 	started, err := op.BeginManagedAttachedEffect(effect.Intent{ID: "coder-start", RunID: "coder-run", Kind: effect.WorkerStart, Payload: startRef}, ManagedAttachedSpec{
 		Adapter: "pi-session-v3", Policy: policy, Capabilities: RequiredAdapterCapabilities(), Command: wrapped, Environment: []string{"HOME=" + runtimeRoot, "TMPDIR=" + runtimeRoot, "PATH=/usr/bin:/bin", "XAI_API_KEY=" + key, "PI_CODING_AGENT_DIR=" + runtimeRoot, "PI_CODING_AGENT_SESSION_DIR=" + runtimeRoot}, WorkingDirectory: workspace,
 		Ready: func() (string, []byte, error) {
