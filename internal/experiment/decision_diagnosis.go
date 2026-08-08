@@ -47,8 +47,8 @@ func (value DecisionBoundCandidate) Validate() error {
 }
 
 func (o *Operation) RecordDiagnosisWithDecision(value DecisionBoundDiagnosis) error {
-	if value.Validate() != nil {
-		return errors.New("decision-bound diagnosis is invalid")
+	if err := value.Validate(); err != nil {
+		return err
 	}
 	if err := o.validateDecisionEvidence(value.Decision); err != nil {
 		return err
@@ -60,8 +60,8 @@ func (o *Operation) RecordDiagnosisWithDecision(value DecisionBoundDiagnosis) er
 }
 
 func (o *Operation) BindCandidateWithDecision(value DecisionBoundCandidate) (diagnosis.RepairCandidate, error) {
-	if value.Validate() != nil {
-		return diagnosis.RepairCandidate{}, errors.New("decision-bound candidate is invalid")
+	if err := value.Validate(); err != nil {
+		return diagnosis.RepairCandidate{}, err
 	}
 	if err := o.validateDecisionEvidence(value.Decision); err != nil {
 		return diagnosis.RepairCandidate{}, err
