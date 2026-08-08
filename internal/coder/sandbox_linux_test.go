@@ -553,9 +553,11 @@ func TestLinuxSandboxCoderHangBisect(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			var stderr bytes.Buffer
 			process := exec.Command(wrapped[0], wrapped[1:]...)
 			process.Dir = workspace
 			process.Env = []string{"HOME=" + runtimeRoot, "TMPDIR=" + runtimeRoot, "PATH=/usr/bin:/bin", "XAI_API_KEY=fake-key"}
+			process.Stderr = &stderr
 			if err := process.Start(); err != nil {
 				t.Fatal(err)
 			}
@@ -570,7 +572,7 @@ func TestLinuxSandboxCoderHangBisect(t *testing.T) {
 				}
 				time.Sleep(200 * time.Millisecond)
 			}
-			t.Fatalf("Coder pi hung with tool %s", name)
+			t.Fatalf("Coder pi hung with tool %s; stderr:\n%s", name, stderr.String())
 		})
 	}
 }
