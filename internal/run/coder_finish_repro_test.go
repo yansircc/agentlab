@@ -171,13 +171,9 @@ func TestCoderSandboxRunRecordsTerminalFacts(t *testing.T) {
 	if err != nil || started.Receipt.IntentID != "coder-start" {
 		t.Fatalf("managed coder start = %#v, %v", started, err)
 	}
-	var drainErr error
 	select {
 	case code := <-finalized:
 		t.Logf("coder exited with code %d", code)
-		if code == -2 {
-			// The finalizer sent -2 when its drain failed; surface the reason.
-		}
 	case <-time.After(7 * time.Minute):
 		t.Fatal("coder finalizer did not run within 7 minutes")
 	}
