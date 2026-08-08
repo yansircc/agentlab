@@ -166,6 +166,9 @@ jobs:
           run_root sh -c 'jq -r "select(.type==\"message\" and .message.role==\"toolResult\") | \"RESULT \" + ([.message.content[].text // empty] | join(\" \"))" /root/agentlab-host/supervisor-runtime/session.jsonl 2>&1 | tail -60' || true
           echo "===== experiment run ledgers (tail) ====="
           run_root sh -c 'for f in /root/agentlab-eval/experiments/deployctl-supervision/runs/*/events.jsonl; do echo "--- $f"; tail -12 "$f"; done' || true
+          echo "===== coder process tree (wait state) ====="
+          sudo -n sh -c 'for pid in $(pgrep -f "coder-runtime" 2>/dev/null); do echo "pid=$pid wchan=$(cat /proc/$pid/wchan 2>/dev/null) state=$(cat /proc/$pid/stat 2>/dev/null | awk "{print \$3}") cmd=$(tr "\0" " " < /proc/$pid/cmdline 2>/dev/null | cut -c1-120)"; done' || true
+          sudo -n sh -c 'ps -eo pid,ppid,stat,wchan:20,cmd | grep -E "coder-runtime|unshare|cli.js" | grep -v grep | head -8' || true
           echo "===== coder session (head/size) ====="
           run_root sh -c 'ls -la /root/agentlab-host/coder-runtime/session.jsonl 2>/dev/null; head -3 /root/agentlab-host/coder-runtime/session.jsonl 2>/dev/null | cut -c1-200' || true
           echo "===== host root files ====="
