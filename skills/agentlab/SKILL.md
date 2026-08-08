@@ -59,6 +59,13 @@ ref from the experiment ledger), `source_evidence` (one ref with `path`,
 `bind_candidate` carries `id`, `diagnosis_id`, `coder_run` ("coder-repair"),
 and `completion_ref` (the Coder completion artifact ref the ledger reports).
 
+`source_evidence.path` must name a CANDIDATE SOURCE FILE of the sealed
+snapshot (for example `deploy.go` or `main.go`), never a runtime directory or
+session path. The Host binds the exact artifact and clamps the line range, so
+you need only the file path and an honest line span from the Coder's repair;
+an opaque or runtime path is rejected. `establishes_owner` must be true on at
+least one ref (the diagnosis is established).
+
 ## Fresh acceptance Worker, comparison, and gate
 
 After the Coder exits, the Host binds the fresh acceptance Worker as
