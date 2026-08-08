@@ -127,7 +127,14 @@ jobs:
           echo "===== STEP 3d: poll supervisor-status (up to 25 min) ====="
           DEADLINE=$((SECONDS + 2400))
           PREPARED=0
+          CODER_SEEN=0
           while [ $SECONDS -lt $DEADLINE ]; do
+            if [ $CODER_SEEN -eq 0 ]; then
+              if run_root sh -c 'test -s /root/agentlab-host/coder-runtime/session.jsonl' 2>/dev/null; then
+                echo "coder session first seen at t+$((SECONDS/60))m"
+                CODER_SEEN=1
+              fi
+            fi
             if [ $PREPARED -eq 0 ]; then
               COMPLETION=$(run_root sh -c 'jq -c "select(.kind==\"coder_completed\") | .data.receipt" /root/agentlab-eval/experiments/deployctl-supervision/runs/coder-repair/events.jsonl 2>/dev/null | tail -1' 2>/dev/null || true)
               if [ -n "$COMPLETION" ]; then
