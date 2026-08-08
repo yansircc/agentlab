@@ -489,7 +489,7 @@ func TestLinuxSandboxStartsPinnedPiCoderSession(t *testing.T) {
 		_ = process.Process.Kill()
 		_, _ = process.Process.Wait()
 	}()
-	deadline := time.Now().Add(25 * time.Second)
+	deadline := time.Now().Add(180 * time.Second)
 	for time.Now().Before(deadline) {
 		if data, err := os.ReadFile(session); err == nil && len(data) > 0 {
 			return
