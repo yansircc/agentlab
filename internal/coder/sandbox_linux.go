@@ -20,6 +20,7 @@ const (
 	linuxChmod   = "/usr/bin/chmod"
 	linuxTouch   = "/usr/bin/touch"
 	linuxCp      = "/usr/bin/cp"
+	linuxTimeout = "/usr/bin/timeout"
 	linuxLdd     = "/usr/bin/ldd"
 	linuxSetpriv = "/usr/bin/setpriv"
 	linuxChroot  = "/usr/sbin/chroot"
@@ -279,10 +280,10 @@ func linuxSandboxScript(root string, mounts []linuxSandboxMount) string {
 			lines = append(lines, linuxMkdir+" -p "+shellQuote(target))
 			// A bind can fail on hosted-runner overlay filesystems; a private
 			// copy keeps the capability reachable without any host mutation.
-			lines = append(lines, linuxMount+" --bind "+shellQuote(value.source)+" "+shellQuote(target)+" 2>/dev/null || "+linuxCp+" -a "+shellQuote(value.source)+" "+shellQuote(target))
+			lines = append(lines, linuxTimeout+" 5 "+linuxMount+" --bind "+shellQuote(value.source)+" "+shellQuote(target)+" 2>/dev/null || "+linuxCp+" -a "+shellQuote(value.source)+" "+shellQuote(target))
 		} else {
 			lines = append(lines, linuxTouch+" "+shellQuote(target))
-			lines = append(lines, linuxMount+" --bind "+shellQuote(value.source)+" "+shellQuote(target)+" 2>/dev/null || "+linuxCp+" -f "+shellQuote(value.source)+" "+shellQuote(target))
+			lines = append(lines, linuxTimeout+" 5 "+linuxMount+" --bind "+shellQuote(value.source)+" "+shellQuote(target)+" 2>/dev/null || "+linuxCp+" -f "+shellQuote(value.source)+" "+shellQuote(target))
 		}
 		mode := "rw,nosuid,nodev"
 		if value.readOnly {
