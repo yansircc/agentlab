@@ -436,8 +436,28 @@ func TestLinuxSandboxStartsPinnedPiCoderSession(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(skillRoot, "extension.ts"), []byte("export default async () => {};\n"), 0o600); err != nil {
+	// The real extension execs the bundled agentlab binary for tool schemas,
+	// exactly what the Coder pi does at startup inside its sandbox.
+	repo := os.Getenv("AGENTLAB_REPO")
+	if repo == "" {
+		repo = "../.."
+	}
+	extensionData, err := os.ReadFile(filepath.Join(repo, "skills", "agentlab", "extension.ts"))
+	if err != nil {
+		t.Fatalf("bundled extension source: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillRoot, "extension.ts"), extensionData, 0o600); err != nil {
 		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(skillRoot, "bin"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	binary := filepath.Join(skillRoot, "bin", "agentlab")
+	build := exec.Command("go", "build", "-o", binary, "./cmd/agentlab")
+	build.Dir = repo
+	build.Env = append(os.Environ(), "CGO_ENABLED=0")
+	if err := build.Run(); err != nil {
+		t.Skipf("bundled binary build is unavailable: %v", err)
 	}
 	sandbox, err := NewSandbox(SandboxSpec{Workspace: workspace, RuntimeRoot: runtimeRoot, ReadOnlyRoots: []string{sdkRoot, skillRoot}, Executables: []string{node, shell}, AllowNetwork: true})
 	if err != nil {
