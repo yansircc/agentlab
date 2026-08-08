@@ -133,7 +133,8 @@ jobs:
               if [ -n "$COMPLETION" ]; then
                 echo "{\"run_id\":\"fresh-worker\",\"completion\":$COMPLETION}" > /tmp/req-fresh.json
                 echo "== prepare-run (fresh-worker) =="
-                run_root /tmp/agentlab acceptance prepare-run --host-root /root/agentlab-host --request /tmp/req-fresh.json 2>&1 | head -c 300 || true
+                run_root /tmp/agentlab acceptance prepare-run --host-root /root/agentlab-host --request /tmp/req-fresh.json > /tmp/prepare-run-fresh.json 2>&1 || true
+                head -c 300 /tmp/prepare-run-fresh.json
                 echo ""
                 PREPARED=1
               fi
@@ -144,10 +145,10 @@ jobs:
             sleep 20
           done
           echo "===== STEP 5-7: Host acceptance tail (best effort) ====="
-          CODER_PREPARED=$(jq -r '.data.coder_prepared.digest' /tmp/step-preflight.json 2>/dev/null || true)
-          if [ -n "$CODER_PREPARED" ]; then
+          FRESH_PREPARED=$(jq -r '.data.prepared.digest // empty' /tmp/prepare-run-fresh.json 2>/dev/null || true)
+          if [ -n "$FRESH_PREPARED" ]; then
             echo "== verify-heldout =="
-            echo '{"prepared":{"scope":"'"$(jq -r '.data.coder_prepared.scope' /tmp/step-preflight.json)"'","algorithm":"sha256","digest":"'"$CODER_PREPARED"'","size":'"$(jq -r '.data.coder_prepared.size' /tmp/step-preflight.json)"'}}' > /tmp/req-heldout.json
+            echo '{"prepared":{"scope":"'"$(jq -r '.data.prepared.scope' /tmp/prepare-run-fresh.json)"'","algorithm":"sha256","digest":"'"$FRESH_PREPARED"'","size":'"$(jq -r '.data.prepared.size' /tmp/prepare-run-fresh.json)"'}}' > /tmp/req-heldout.json
             run_root /tmp/agentlab acceptance verify-heldout --host-root /root/agentlab-host --request /tmp/req-heldout.json 2>&1 | head -c 400 || true
             echo ""
             echo "== audit status =="
