@@ -272,7 +272,11 @@ func linuxDependencies(executable string) ([]string, error) {
 }
 
 func linuxSandboxScript(root string, mounts []linuxSandboxMount) string {
-	lines := []string{"#!" + linuxShell, "set -eu", linuxMount + " --make-rprivate /", linuxMount + " -t tmpfs -o mode=0755,nosuid,nodev tmpfs " + shellQuote(root), linuxMkdir + " -p " + shellQuote(root+"/dev") + " " + shellQuote(root+"/etc") + " " + shellQuote(root+"/proc") + " " + shellQuote(root+"/tmp"), linuxMount + " -t proc proc " + shellQuote(root+"/proc"), linuxChmod + " 1777 " + shellQuote(root+"/tmp")}
+	options := "set -eu"
+	if os.Getenv("AGENTLAB_SANDBOX_DEBUG") != "" {
+		options = "set -eux"
+	}
+	lines := []string{"#!" + linuxShell, options, linuxMount + " --make-rprivate /", linuxMount + " -t tmpfs -o mode=0755,nosuid,nodev tmpfs " + shellQuote(root), linuxMkdir + " -p " + shellQuote(root+"/dev") + " " + shellQuote(root+"/etc") + " " + shellQuote(root+"/proc") + " " + shellQuote(root+"/tmp"), linuxMount + " -t proc proc " + shellQuote(root+"/proc"), linuxChmod + " 1777 " + shellQuote(root+"/tmp")}
 	for _, value := range mounts {
 		target := root + value.target
 		lines = append(lines, linuxMkdir+" -p "+shellQuote(filepath.Dir(target)))
