@@ -124,6 +124,7 @@ jobs:
           echo "--- diag stderr/stdout ---"; head -30 /tmp/diag-out.txt
           echo "diag session bytes: $(sudo -n wc -c < /tmp/diag-supervisor/s.jsonl 2>/dev/null || echo 0)"
           echo "===== STEP 3d: poll supervisor-status (up to 25 min) ====="
+          export AGENTLAB_MANAGED_STDERR=/root/managed-role-stderr.log
           DEADLINE=$((SECONDS + 2400))
           PREPARED=0
           while [ $SECONDS -lt $DEADLINE ]; do
@@ -142,6 +143,8 @@ jobs:
             if echo "$OBS" | grep -q '"observation":"dead"'; then echo "supervisor exited"; break; fi
             sleep 20
           done
+          echo "===== managed role stderr (tail) ====="
+          run_root sh -c 'tail -30 /root/managed-role-stderr.log 2>/dev/null || echo "(no role stderr)"' || true
           echo "===== supervisor tool calls (jq) ====="
           run_root sh -c 'jq -r "select(.type==\"message\") | .message.content[]? | select(.type==\"toolCall\") | \"CALL \" + .name + \" \" + (.arguments|tojson)" /root/agentlab-host/supervisor-runtime/session.jsonl 2>/dev/null | tail -50' || true
           run_root sh -c 'jq -r "select(.type==\"message\" and .message.role==\"toolResult\") | \"RESULT \" + ([.message.content[].text // empty] | join(\" \"))" /root/agentlab-host/supervisor-runtime/session.jsonl 2>&1 | tail -60' || true
