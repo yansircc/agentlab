@@ -15,6 +15,7 @@ import (
 	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/coder"
 	"github.com/yansircc/agentlab/internal/effect"
+	"github.com/yansircc/agentlab/internal/source"
 )
 
 // TestCoderSandboxRunRecordsTerminalFacts drives the real sandbox Coder pi
@@ -192,7 +193,7 @@ func TestCoderSandboxRunRecordsTerminalFacts(t *testing.T) {
 				finalized <- code
 				return nil
 			}
-			candidate, err := op.artifacts.Put([]byte("candidate"))
+			candidate, err := source.Build(op.artifacts, []source.InputFile{{Path: "main.go", Content: []byte("package main")}})
 			if err != nil {
 				drainErr = err
 				finalized <- -2
