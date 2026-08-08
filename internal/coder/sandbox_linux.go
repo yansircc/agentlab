@@ -303,7 +303,10 @@ func linuxSandboxScript(root string, mounts []linuxSandboxMount) string {
 		// robust against hosted-runner overlay filesystems whose bind mounts
 		// block, and a copy can only be modified inside the chroot.
 		if directory(value.source) {
-			lines = append(lines, linuxCp+" -a "+shellQuote(value.source)+" "+shellQuote(target))
+			// cp -r (not -a) because the user namespace cannot chown copies to
+			// the unmapped source owner; the private copy stays namespace-root
+			// owned, which is exactly what the chroot needs.
+			lines = append(lines, linuxCp+" -r "+shellQuote(value.source)+" "+shellQuote(target))
 		} else {
 			lines = append(lines, linuxCp+" -f "+shellQuote(value.source)+" "+shellQuote(target))
 		}

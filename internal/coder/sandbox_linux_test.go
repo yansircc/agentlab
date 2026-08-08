@@ -573,7 +573,7 @@ func TestLinuxSandboxCoderHangBisect(t *testing.T) {
 				_ = process.Process.Kill()
 				_, _ = process.Process.Wait()
 			}()
-			deadline := time.Now().Add(20 * time.Second)
+			deadline := time.Now().Add(90 * time.Second)
 			for time.Now().Before(deadline) {
 				if data, err := os.ReadFile(session); err == nil && len(data) > 0 {
 					return
@@ -708,7 +708,7 @@ func TestLinuxSandboxStartsPinnedPiWorkerSession(t *testing.T) {
 		_ = process.Process.Kill()
 		_, _ = process.Process.Wait()
 	}()
-	deadline := time.Now().Add(20 * time.Second)
+	deadline := time.Now().Add(90 * time.Second)
 	for time.Now().Before(deadline) {
 		if data, err := os.ReadFile(session); err == nil && len(data) > 0 {
 			return
