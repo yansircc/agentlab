@@ -1,6 +1,9 @@
 package tool
 
 import (
+	"path/filepath"
+	"strings"
+
 	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/diagnosis"
 	"github.com/yansircc/agentlab/internal/experiment"
@@ -32,18 +35,38 @@ func (value recordDiagnosis) execute(binding Binding) (any, error) {
 // resolveSourceEvidence is Host resolution of the model's source citation: it
 // binds each evidence path to the exact file artifact of the sealed snapshot,
 // so the model needs only the path and line range, never an opaque file ref.
+// The model sees the workspace under its absolute host path, while the sealed
+// snapshot names files relative to the workspace root; both forms match, and
+// the line range is clamped to the artifact's actual line count.
 func resolveSourceEvidence(binding Binding, value diagnosis.Diagnosis) diagnosis.Diagnosis {
 	snapshot, err := source.Load(binding.store(), value.SourceSnapshot)
 	if err != nil {
 		return value
 	}
-	byPath := map[string]artifact.Ref{}
-	for _, file := range snapshot.Files {
-		byPath[file.Path] = file.Artifact
-	}
 	for index := range value.SourceEvidence {
-		if file, ok := byPath[value.SourceEvidence[index].Path]; ok {
-			value.SourceEvidence[index].Artifact = file
+		evidence := &value.SourceEvidence[index]
+		var target *source.File
+		for candidate := range snapshot.Files {
+			file := &snapshot.Files[candidate]
+			if evidence.Path == file.Path || strings.HasSuffix(evidence.Path, "/"+file.Path) || filepath.Base(evidence.Path) == file.Path {
+				target = file
+				break
+			}
+		}
+		if target == nil {
+			continue
+		}
+		evidence.Path = target.Path
+		evidence.Artifact = target.Artifact
+		if data, err := binding.store().Read(target.Artifact); err == nil {
+			if lines := strings.Count(string(data), "\n") + 1; lines > 0 {
+				if evidence.EndLine > lines {
+					evidence.EndLine = lines
+				}
+				if evidence.StartLine > lines {
+					evidence.StartLine = lines
+				}
+			}
 		}
 	}
 	return value
