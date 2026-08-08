@@ -396,6 +396,79 @@ func TestLinuxSandboxCoversDeployctlCoderToolAuthority(t *testing.T) {
 	}
 }
 
+// TestLinuxSandboxStartsPinnedPiCoderSession proves the full Coder pi startup
+// path inside the sandbox: the real skill extension (which execs the bundled
+// agentlab binary for tool schemas) plus the builtin tool set loads and the
+// session file appears. A fake key is deliberate: the session must appear
+// before any model call.
+func TestLinuxSandboxStartsPinnedPiCoderSession(t *testing.T) {
+	pi, err := exec.LookPath("pi")
+	if err != nil {
+		t.Skip("Pi is not installed")
+	}
+	entry, err := filepath.EvalSymlinks(pi)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("Node is not installed")
+	}
+	shell, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("sh is not installed")
+	}
+	requireLinuxNamespace(t)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.MkdirTemp(home, ".agentlab-coder-linux-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(root) })
+	sdkRoot := filepath.Dir(filepath.Dir(entry))
+	skillRoot := filepath.Join(root, "skill")
+	workspace, runtimeRoot := filepath.Join(root, "workspace"), filepath.Join(root, "runtime")
+	for _, path := range []string{skillRoot, workspace, runtimeRoot} {
+		if err := os.Mkdir(path, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(skillRoot, "extension.ts"), []byte("export default async () => {};\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sandbox, err := NewSandbox(SandboxSpec{Workspace: workspace, RuntimeRoot: runtimeRoot, ReadOnlyRoots: []string{sdkRoot, skillRoot}, Executables: []string{node, shell}, AllowNetwork: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := filepath.Join(runtimeRoot, "session.jsonl")
+	command := []string{node, entry, "--session", session, "--session-dir", runtimeRoot, "--provider", "xai", "--model", "grok-4.3", "--thinking", "high", "--no-extensions", "--extension", filepath.Join(skillRoot, "extension.ts"), "--no-builtin-tools", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files", "--no-approve", "--tools", "read,bash,edit,write,grep,find,ls", "--print", "task"}
+	wrapped, err := sandbox.Wrap(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	process := exec.Command(wrapped[0], wrapped[1:]...)
+	process.Dir = workspace
+	process.Env = []string{"HOME=" + runtimeRoot, "TMPDIR=" + runtimeRoot, "PATH=/usr/bin:/bin", "XAI_API_KEY=fake-key"}
+	if err := process.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = process.Process.Kill()
+		_, _ = process.Process.Wait()
+	}()
+	deadline := time.Now().Add(25 * time.Second)
+	for time.Now().Before(deadline) {
+		if data, err := os.ReadFile(session); err == nil && len(data) > 0 {
+			return
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	t.Fatalf("Coder pi did not write its session inside the sandbox")
+}
+
 func requireLinuxNamespace(t *testing.T) {
 	t.Helper()
 	if err := exec.Command(linuxUnshare, "--user", "--map-root-user", "--mount", "--pid", "--fork", "--", linuxShell, "-c", "exit 0").Run(); err != nil {
