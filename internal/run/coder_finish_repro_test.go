@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/coder"
 	"github.com/yansircc/agentlab/internal/effect"
 )
@@ -99,7 +100,15 @@ func TestCoderSandboxRunRecordsTerminalFacts(t *testing.T) {
 	}
 	bindTestManifest(t, op)
 	t.Cleanup(func() { _ = os.RemoveAll(runtimeRoot) })
-	payload, err := EncodeStartPayload(effect.WorkerStart, StartPayload{})
+	put := func(name string) artifact.Ref {
+		ref, err := op.artifacts.Put([]byte(name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ref
+	}
+	profile := CoderProfile{Handoff: put("handoff"), SourceSnapshot: put("source"), CandidateWorkspace: put("workspace"), CapabilityProfile: put("capability")}
+	payload, err := EncodeStartPayload(effect.CoderStart, StartPayload{Coder: &profile})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,8 +125,8 @@ func TestCoderSandboxRunRecordsTerminalFacts(t *testing.T) {
 	policy := StopPolicy{FirstEventTimeout: 300 * time.Second, SoftIdleTimeout: 2 * time.Minute, HardIdleTimeout: 5 * time.Minute, OwnsWorkerProcess: true}
 	finalized := make(chan int, 1)
 	var drainErr error
-	started, err := op.BeginManagedAttachedEffect(effect.Intent{ID: "coder-start", RunID: "coder-run", Kind: effect.WorkerStart, Payload: startRef}, ManagedAttachedSpec{
-		Adapter: "pi-session-v3", Policy: policy, Capabilities: RequiredAdapterCapabilities(), Command: wrapped, Environment: []string{"HOME=" + runtimeRoot, "TMPDIR=" + runtimeRoot, "PATH=/usr/bin:/bin", "XAI_API_KEY=" + key, "PI_CODING_AGENT_DIR=" + runtimeRoot, "PI_CODING_AGENT_SESSION_DIR=" + runtimeRoot}, WorkingDirectory: workspace,
+	started, err := op.BeginManagedAttachedEffect(effect.Intent{ID: "coder-start", RunID: "coder-run", Kind: effect.CoderStart, Payload: startRef}, ManagedAttachedSpec{
+		Adapter: "pi-session-v3", Policy: policy, Capabilities: RequiredAdapterCapabilities(), Coder: &profile, Command: wrapped, Environment: []string{"HOME=" + runtimeRoot, "TMPDIR=" + runtimeRoot, "PATH=/usr/bin:/bin", "XAI_API_KEY=" + key, "PI_CODING_AGENT_DIR=" + runtimeRoot, "PI_CODING_AGENT_SESSION_DIR=" + runtimeRoot}, WorkingDirectory: workspace,
 		Ready: func() (string, []byte, error) {
 			deadline := time.Now().Add(300 * time.Second)
 			for {
@@ -178,6 +187,21 @@ func TestCoderSandboxRunRecordsTerminalFacts(t *testing.T) {
 				drainErr = closeErr
 				finalized <- -2
 				return closeErr
+			}
+			if code != 0 {
+				finalized <- code
+				return nil
+			}
+			candidate, err := op.artifacts.Put([]byte("candidate"))
+			if err != nil {
+				drainErr = err
+				finalized <- -2
+				return err
+			}
+			if _, err := op.RecordCoderCompletion(candidate); err != nil {
+				drainErr = err
+				finalized <- -2
+				return err
 			}
 			finalized <- code
 			return nil
