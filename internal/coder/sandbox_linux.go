@@ -295,6 +295,7 @@ func linuxSandboxScript(root string, mounts []linuxSandboxMount) string {
 		if !value.readOnly {
 			// Writable roots (workspace and runtime) are live bind mounts the
 			// Host reads back; they live on host filesystems that support binds.
+			lines = append(lines, linuxMkdir+" -p "+shellQuote(target))
 			lines = append(lines, linuxMount+" --bind "+shellQuote(value.source)+" "+shellQuote(target))
 			lines = append(lines, linuxMount+" -o remount,bind,rw,nosuid,nodev "+shellQuote(target))
 			continue
