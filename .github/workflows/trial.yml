@@ -70,6 +70,7 @@ jobs:
           echo "===== STEP 3b: supervisor-start ====="
           run_root /tmp/agentlab acceptance supervisor-start --host-root /root/agentlab-host \
             | tee /tmp/step-supervisor-start.json
+          export AGENTLAB_MANAGED_STDERR=/root/managed-role-stderr.log
           echo "===== STEP 3b2: direct worker start diagnostic (throwaway root) ====="
           export AGENTLAB_MANAGED_STDERR=/root/diag-worker-stderr.log
           run_root rm -rf /root/diag-eval /root/diag-audit /root/diag-host /root/diag-worker-stderr.log
@@ -124,7 +125,6 @@ jobs:
           echo "--- diag stderr/stdout ---"; head -30 /tmp/diag-out.txt
           echo "diag session bytes: $(sudo -n wc -c < /tmp/diag-supervisor/s.jsonl 2>/dev/null || echo 0)"
           echo "===== STEP 3d: poll supervisor-status (up to 25 min) ====="
-          export AGENTLAB_MANAGED_STDERR=/root/managed-role-stderr.log
           DEADLINE=$((SECONDS + 2400))
           PREPARED=0
           while [ $SECONDS -lt $DEADLINE ]; do
