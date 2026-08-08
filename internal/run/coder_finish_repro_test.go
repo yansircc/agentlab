@@ -152,7 +152,24 @@ func TestCoderSandboxRunRecordsTerminalFacts(t *testing.T) {
 					continue
 				}
 				offset += int64(len(line)) + 1
-				if commitErr := writer.Commit([]byte(fmt.Sprintf(`{"session_id":"%s","offset":%d}`, state.StreamID, offset)), AdapterBatch{Events: []AdapterEvent{{Kind: EvidenceKind("evidence"), Raw: append([]byte(nil), line...)}}}); commitErr != nil {
+				kind := EvidenceKind("evidence")
+				switch {
+				case bytes.Contains(line, []byte(`"type":"session"`)):
+					kind = EvidenceProcess
+				case bytes.Contains(line, []byte(`"type":"terminal"`)):
+					kind = EvidenceTerminal
+				case bytes.Contains(line, []byte(`"role":"assistant"`)):
+					kind = EvidenceAssistantMessage
+				case bytes.Contains(line, []byte(`"role":"toolResult"`)):
+					kind = EvidenceToolResult
+				case bytes.Contains(line, []byte(`"role":"user"`)):
+					kind = EvidenceUserMessage
+				}
+				label := "session_line"
+				if kind == EvidenceTerminal {
+					label = "pi_turn_completed"
+				}
+				if commitErr := writer.Commit([]byte(fmt.Sprintf(`{"session_id":"%s","offset":%d}`, state.StreamID, offset)), AdapterBatch{Events: []AdapterEvent{{Kind: kind, Label: label, Raw: append([]byte(nil), line...)}}}); commitErr != nil {
 					drainErr = commitErr
 					_ = writer.Close()
 					finalized <- -2
