@@ -44,7 +44,7 @@ func (o *Operation) validateDiagnosis(value diagnosis.Diagnosis) error {
 			lines++
 		}
 		if ref.EndLine > lines {
-			return errors.New("source evidence line range exceeds exact artifact")
+			return fmt.Errorf("source evidence line range %d exceeds %q which has %d lines", ref.EndLine, ref.Path, lines)
 		}
 	}
 	return nil

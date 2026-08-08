@@ -4,6 +4,7 @@ import (
 	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/diagnosis"
 	"github.com/yansircc/agentlab/internal/experiment"
+	"github.com/yansircc/agentlab/internal/run"
 	"github.com/yansircc/agentlab/internal/source"
 )
 
@@ -62,7 +63,26 @@ func (value bindCandidate) execute(binding Binding) (any, error) {
 		return nil, err
 	}
 	value.Value.Decision = resolveDecisionEvidence(binding, value.Value.Decision)
+	value.Value.CompletionRef = resolveCandidateCompletion(binding, value.Value.CoderRun, value.Value.CompletionRef)
 	return op.BindCandidateWithDecision(value.Value)
+}
+
+// resolveCandidateCompletion is Host resolution of the model's Coder citation:
+// the completion receipt is read from the named Coder run's ledger, so the
+// model needs only the run id, never an opaque receipt ref.
+func resolveCandidateCompletion(binding Binding, coderRun string, provided artifact.Ref) artifact.Ref {
+	if coderRun == "" {
+		return provided
+	}
+	op, err := run.Open(binding.Root, binding.ExperimentID, coderRun)
+	if err != nil {
+		return provided
+	}
+	receipt, _, err := op.CoderCompletionReceipt()
+	if err != nil {
+		return provided
+	}
+	return receipt
 }
 
 type continueRun struct {
