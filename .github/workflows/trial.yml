@@ -143,6 +143,21 @@ jobs:
             if echo "$OBS" | grep -q '"observation":"dead"'; then echo "supervisor exited"; break; fi
             sleep 20
           done
+          echo "===== STEP 5-7: Host acceptance tail (best effort) ====="
+          CODER_PREPARED=$(jq -r '.data.coder_prepared.digest' /tmp/step-preflight.json 2>/dev/null || true)
+          if [ -n "$CODER_PREPARED" ]; then
+            echo "== verify-heldout =="
+            echo '{"prepared":{"scope":"'"$(jq -r '.data.coder_prepared.scope' /tmp/step-preflight.json)"'","algorithm":"sha256","digest":"'"$CODER_PREPARED"'","size":'"$(jq -r '.data.coder_prepared.size' /tmp/step-preflight.json)"'}}' > /tmp/req-heldout.json
+            run_root /tmp/agentlab acceptance verify-heldout --host-root /root/agentlab-host --request /tmp/req-heldout.json 2>&1 | head -c 400 || true
+            echo ""
+            echo "== audit status =="
+            run_root /tmp/agentlab acceptance audit-status --host-root /root/agentlab-host 2>&1 | head -c 400 || true
+            echo ""
+            echo "== recursive gate =="
+            echo '{"candidate_id":"repaired-candidate","gate_id":"guided-gate","heldout":{"scope":"'"$(jq -r '.data.coder_prepared.scope' /tmp/step-preflight.json)"'","algorithm":"sha256","digest":"'"$CODER_PREPARED"'","size":1}}' > /tmp/req-gate.json
+            run_root /tmp/agentlab acceptance recursive-gate --host-root /root/agentlab-host --request /tmp/req-gate.json 2>&1 | head -c 500 || true
+            echo ""
+          fi
           echo "===== managed role stderr (tail) ====="
           run_root sh -c 'tail -30 /root/managed-role-stderr.log 2>/dev/null || echo "(no role stderr)"' || true
           echo "===== supervisor tool calls (jq) ====="
