@@ -152,10 +152,8 @@ func TestCoderSandboxRunRecordsTerminalFacts(t *testing.T) {
 					continue
 				}
 				offset += int64(len(line)) + 1
-				kind := EvidenceKind("evidence")
+				kind := EvidenceProcess
 				switch {
-				case bytes.Contains(line, []byte(`"type":"session"`)):
-					kind = EvidenceProcess
 				case bytes.Contains(line, []byte(`"type":"terminal"`)):
 					kind = EvidenceTerminal
 				case bytes.Contains(line, []byte(`"role":"assistant"`)):
