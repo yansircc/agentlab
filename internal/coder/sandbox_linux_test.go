@@ -479,9 +479,11 @@ func TestLinuxSandboxStartsPinnedPiCoderSession(t *testing.T) {
 	if key == "" {
 		key = "fake-key"
 	}
+	var stderr bytes.Buffer
 	process := exec.Command(wrapped[0], wrapped[1:]...)
 	process.Dir = workspace
 	process.Env = []string{"HOME=" + runtimeRoot, "TMPDIR=" + runtimeRoot, "PATH=/usr/bin:/bin", "XAI_API_KEY=" + key, "PI_CODING_AGENT_DIR=" + runtimeRoot, "PI_CODING_AGENT_SESSION_DIR=" + runtimeRoot}
+	process.Stderr = &stderr
 	if err := process.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -489,14 +491,14 @@ func TestLinuxSandboxStartsPinnedPiCoderSession(t *testing.T) {
 		_ = process.Process.Kill()
 		_, _ = process.Process.Wait()
 	}()
-	deadline := time.Now().Add(180 * time.Second)
+	deadline := time.Now().Add(60 * time.Second)
 	for time.Now().Before(deadline) {
 		if data, err := os.ReadFile(session); err == nil && len(data) > 0 {
 			return
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	t.Fatalf("Coder pi did not write its session inside the sandbox")
+	t.Fatalf("Coder pi did not write its session inside the sandbox; stderr:\n%s", stderr.String())
 }
 
 func requireLinuxNamespace(t *testing.T) {
