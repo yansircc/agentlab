@@ -276,32 +276,34 @@ func linuxSandboxScript(root string, mounts []linuxSandboxMount) string {
 	for _, value := range mounts {
 		target := root + value.target
 		lines = append(lines, linuxMkdir+" -p "+shellQuote(filepath.Dir(target)))
-		if directory(value.source) {
-			lines = append(lines, linuxMkdir+" -p "+shellQuote(target))
-			// A bind can fail on hosted-runner overlay filesystems; a private
-			// copy keeps the capability reachable without any host mutation.
-			lines = append(lines, linuxTimeout+" 5 "+linuxMount+" --bind "+shellQuote(value.source)+" "+shellQuote(target)+" 2>/dev/null || "+linuxCp+" -a "+shellQuote(value.source)+" "+shellQuote(target))
-		} else {
-			lines = append(lines, linuxTouch+" "+shellQuote(target))
-			lines = append(lines, linuxTimeout+" 5 "+linuxMount+" --bind "+shellQuote(value.source)+" "+shellQuote(target)+" 2>/dev/null || "+linuxCp+" -f "+shellQuote(value.source)+" "+shellQuote(target))
-		}
-		mode := "rw,nosuid,nodev"
-		if value.readOnly {
-			mode = "ro,nosuid,nodev"
-		}
-		// These four explicit device nodes are the only device authority in
-		// the chroot. nodev would turn /dev/null into an ordinary inaccessible
-		// file, which breaks Pi's detached shell stdin redirection.
 		if strings.HasPrefix(value.target, "/dev/") {
-			mode = "rw,nosuid"
+			// The four explicit device nodes must be real bind mounts; a copy
+			// would be an ordinary file, not a device.
+			lines = append(lines, linuxTouch+" "+shellQuote(target))
+			lines = append(lines, linuxMount+" --bind "+shellQuote(value.source)+" "+shellQuote(target))
+			mode := "rw,nosuid"
 			if value.readOnly {
 				mode = "ro,nosuid"
 			}
+			lines = append(lines, linuxMount+" -o remount,bind,"+mode+" "+shellQuote(target))
+			continue
 		}
-		// A copied fallback is a plain file or tree in the tmpfs, not a mount,
-		// so a failed remount is tolerated; the copy still works for exec and
-		// read, and only the private copy is affected.
-		lines = append(lines, linuxMount+" -o remount,bind,"+mode+" "+shellQuote(target)+" 2>/dev/null || true")
+		if !value.readOnly {
+			// Writable roots (workspace and runtime) are live bind mounts the
+			// Host reads back; they live on host filesystems that support binds.
+			lines = append(lines, linuxMount+" --bind "+shellQuote(value.source)+" "+shellQuote(target))
+			lines = append(lines, linuxMount+" -o remount,bind,rw,nosuid,nodev "+shellQuote(target))
+			continue
+		}
+		// Read-only capabilities are private copies inside the tmpfs. This is
+		// robust against hosted-runner overlay filesystems whose bind mounts
+		// block, and a copy can only be modified inside the chroot.
+		if directory(value.source) {
+			lines = append(lines, linuxCp+" -a "+shellQuote(value.source)+" "+shellQuote(target))
+		} else {
+			lines = append(lines, linuxCp+" -f "+shellQuote(value.source)+" "+shellQuote(target))
+		}
+		lines = append(lines, linuxChmod+" 0555 "+shellQuote(target))
 	}
 	// unshare grants CAP_SYS_ADMIN so the setup script can build the mount
 	// namespace. Do not pass that capability to Pi: otherwise a Coder could
