@@ -41,6 +41,9 @@ jobs:
         run: |
           sudo -n env PATH="$PATH" HOME=/root GOPATH=/root/go GOCACHE=/tmp/go-cache XAI_API_KEY="$XAI_API_KEY" \
             go test -count=1 -v ./internal/coder -run 'TestLinuxSandbox' 2>&1 | tee /tmp/sandbox-test.log
+          sudo -n env PATH="$PATH" HOME=/root GOPATH=/root/go GOCACHE=/tmp/go-cache XAI_API_KEY="$XAI_API_KEY" \
+            go test -count=1 -v ./internal/run -run 'TestCoderSandboxRunRecordsTerminalFacts' 2>&1 | tee /tmp/coder-finish-test.log || true
+          grep -E '--- (PASS|FAIL|SKIP)|final status' /tmp/coder-finish-test.log
           grep -E '^(=== RUN|--- (PASS|FAIL|SKIP))' /tmp/sandbox-test.log
           if grep -q -- '--- SKIP: TestLinuxSandboxRunsAllowedNodeAndExcludesSiblingRoot' /tmp/sandbox-test.log \
              || grep -q -- '--- SKIP: TestLinuxSandboxRunsPinnedPiFromReadOnlySDK' /tmp/sandbox-test.log; then
