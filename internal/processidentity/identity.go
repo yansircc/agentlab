@@ -108,6 +108,13 @@ func psFacts(pid int) (string, string, error) {
 	return strings.Join(fields[:5], " "), strings.Join(fields[5:], " "), nil
 }
 
+// Alive reports whether the named process identity still exists with the same
+// start time and executable. It is the conservative staleness probe for
+// transaction leases: a lease whose holder is provably gone is stale.
+func Alive(identity Identity) (bool, error) {
+	return SystemProber{}.Observe(identity) == Matches, nil
+}
+
 // hash seals the captured command line for receipt identity. It is a stable
 // snapshot of the spawn, not a live comparison: node-based roles rewrite
 // their own argv after start, so Observe compares start time and executable.

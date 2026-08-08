@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/yansircc/agentlab/internal/processidentity"
 )
@@ -49,28 +50,70 @@ func Acquire(path string) (*Lease, error) {
 	if err != nil {
 		return nil, err
 	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-	if errors.Is(err, fs.ErrExist) {
-		return nil, ErrLeaseHeld
+	for {
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		if err == nil {
+			if _, err := f.Write(data); err != nil {
+				_ = f.Close()
+				return nil, err
+			}
+			if err := f.Sync(); err != nil {
+				_ = f.Close()
+				return nil, err
+			}
+			if err := f.Close(); err != nil {
+				return nil, err
+			}
+			if err := syncDir(filepath.Dir(path)); err != nil {
+				return nil, err
+			}
+			return &Lease{path: path, token: token}, nil
+		}
+		if !errors.Is(err, fs.ErrExist) {
+			return nil, err
+		}
+		// A crashed holder leaves the lock file behind; the receipt names its
+		// process identity, so a dead holder is provably stale and may be
+		// broken and retried instead of failing closed forever.
+		stale, err := staleLease(path)
+		if err != nil {
+			return nil, err
+		}
+		if !stale {
+			return nil, ErrLeaseHeld
+		}
+		if err := os.Remove(path); err != nil {
+			return nil, err
+		}
+		if err := syncDir(filepath.Dir(path)); err != nil {
+			return nil, err
+		}
 	}
+}
+
+func staleLease(path string) (bool, error) {
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return false, err
 	}
-	if _, err := f.Write(data); err != nil {
-		_ = f.Close()
-		return nil, err
+	var current receipt
+	if json.Unmarshal(data, &current) != nil {
+		// An unreadable receipt cannot prove a live holder; break it only if
+		// the file is older than any plausible transaction window.
+		info, statErr := os.Stat(path)
+		if statErr != nil || time.Since(info.ModTime()) < 5*time.Minute {
+			return false, nil
+		}
+		return true, nil
 	}
-	if err := f.Sync(); err != nil {
-		_ = f.Close()
-		return nil, err
+	// A lease whose named process is gone is stale: processidentity.Capture
+	// records the holder's pid and exe, and /proc recycles pids only after the
+	// process's start time changes, which the identity records too.
+	alive, err := processidentity.Alive(current.Identity)
+	if err != nil {
+		return false, err
 	}
-	if err := f.Close(); err != nil {
-		return nil, err
-	}
-	if err := syncDir(filepath.Dir(path)); err != nil {
-		return nil, err
-	}
-	return &Lease{path: path, token: token}, nil
+	return !alive, nil
 }
 
 func (l *Lease) Release() error {
