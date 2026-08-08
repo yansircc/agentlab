@@ -162,6 +162,18 @@ Mutation A and B deterministic oracle machinery is covered by fixture tests
 decision-bound/origin tests in `internal/experiment`). The runbook steps
 above demonstrate the same rejections on a live trial with real evidence.
 
+## Live trial status (verified as of this runbook)
+
+The autonomous live trial (`.github/workflows/trial.yml`, manual dispatch) has
+been verified to progress through: baseline Worker with full objective
+evidence inside the Linux sandbox -> Supervisor stop -> finding -> handoff ->
+Coder start and repair -> diagnosis and candidate attempts -> comparison and
+gate attempts. The Host tail (verify-heldout, audit-status, recursive-gate)
+runs after the Supervisor and currently returns `blocked` until the final
+gate is recorded. Remaining: completing the fresh Worker + comparison + gate
+in one Supervisor session, the audit seal/review steps, and the final
+19-condition PASS. Re-run `gh workflow run Trial` to continue.
+
 ## Not acceptance
 
 - Tests that skip when namespaces are unavailable are not live acceptance.
