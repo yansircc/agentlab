@@ -231,7 +231,7 @@ func TestLinuxSandboxScriptMountModesAndNetwork(t *testing.T) {
 	}
 	copied := false
 	for _, line := range lines {
-		if strings.Contains(line, "cp -a") && strings.Contains(line, publicRoot) {
+		if strings.Contains(line, "cp -r") && strings.Contains(line, publicRoot) {
 			copied = true
 		}
 	}
