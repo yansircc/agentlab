@@ -229,14 +229,8 @@ func TestLinuxSandboxScriptMountModesAndNetwork(t *testing.T) {
 	if line := remount("/dev/null"); !strings.Contains(line, "rw,nosuid") || strings.Contains(line, "nodev") {
 		t.Fatalf("/dev/null remount = %q", line)
 	}
-	copied := false
-	for _, line := range lines {
-		if strings.Contains(line, "cp -r") && strings.Contains(line, publicRoot) {
-			copied = true
-		}
-	}
-	if !copied {
-		t.Fatalf("read-only root was not copied into the chroot: %s", script)
+	if line := remount(publicRoot); !strings.Contains(line, "ro,nosuid,nodev") {
+		t.Fatalf("read-only root remount = %q", line)
 	}
 	if !strings.Contains(string(script), "--bounding-set=-all --inh-caps=-all --ambient-caps=-all --nnp") {
 		t.Fatalf("sandbox script dropped capabilities: %s", script)

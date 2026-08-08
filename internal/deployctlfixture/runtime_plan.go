@@ -213,7 +213,7 @@ func runtimeProfiles(value Preflight, spec RuntimeSpec, credentials runtimeCrede
 	if !filepath.IsAbs(spec.NodePath) || !workspaceReceipt.Valid() || !capability.Valid() {
 		return nil, errors.New("deployctl runtime profile is invalid")
 	}
-	tools, err := executablePaths("go", "sh", "grep", "find", "ls")
+	tools, err := executablePaths(spec.HostRoot, "go", "sh", "grep", "find", "ls")
 	if err != nil {
 		return nil, err
 	}
@@ -266,16 +266,86 @@ func bundledPaths(root string) (string, string, error) {
 	return binary, extension, nil
 }
 
-func executablePaths(names ...string) ([]string, error) {
+// executablePaths resolves the Coder tools, re-homing the Go toolchain under
+// the Host root: hosted-runner tool caches reject sandbox bind mounts, so the
+// Go binary and its GOROOT are copied once to a bindable location at preflight.
+func executablePaths(hostRoot string, names ...string) ([]string, error) {
 	result := make([]string, 0, len(names))
 	for _, name := range names {
 		path, err := exec.LookPath(name)
 		if err != nil || !filepath.IsAbs(path) {
 			return nil, errors.New("required Coder executable is unavailable")
 		}
-		result = append(result, path)
+		if name != "go" {
+			result = append(result, path)
+			continue
+		}
+		resolved, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			return nil, err
+		}
+		goBin := filepath.Join(hostRoot, "toolchain", "bin", "go")
+		if err := os.MkdirAll(filepath.Dir(goBin), 0o700); err != nil {
+			return nil, err
+		}
+		data, err := os.ReadFile(resolved)
+		if err != nil {
+			return nil, err
+		}
+		if err := os.WriteFile(goBin, data, 0o755); err != nil {
+			return nil, err
+		}
+		goroot := filepath.Dir(filepath.Dir(resolved))
+		target := filepath.Join(hostRoot, "toolchain")
+		if err := copyTree(goroot, target); err != nil {
+			return nil, err
+		}
+		result = append(result, goBin)
 	}
 	return result, nil
+}
+
+// copyTree copies a directory tree without ownership preservation; the Host
+// copies are namespace-root owned, which the sandbox binds read-only.
+func copyTree(source, target string) error {
+	entries, err := os.ReadDir(source)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(target, 0o700); err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		from, to := filepath.Join(source, entry.Name()), filepath.Join(target, entry.Name())
+		if entry.IsDir() {
+			if err := copyTree(from, to); err != nil {
+				return err
+			}
+			continue
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			link, err := os.Readlink(from)
+			if err != nil {
+				return err
+			}
+			if err := os.Symlink(link, to); err != nil {
+				return err
+			}
+			continue
+		}
+		data, err := os.ReadFile(from)
+		if err != nil {
+			return err
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(to, data, info.Mode().Perm()); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func newHostRoot(root string, disjoint ...string) bool {
