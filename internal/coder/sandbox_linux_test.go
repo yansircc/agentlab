@@ -564,7 +564,7 @@ func TestLinuxSandboxCoderHangBisect(t *testing.T) {
 			var stderr bytes.Buffer
 			process := exec.Command(wrapped[0], wrapped[1:]...)
 			process.Dir = workspace
-			process.Env = []string{"HOME=" + runtimeRoot, "TMPDIR=" + runtimeRoot, "PATH=/usr/bin:/bin", "XAI_API_KEY=fake-key"}
+			process.Env = []string{"HOME=" + runtimeRoot, "TMPDIR=" + runtimeRoot, "PATH=/usr/bin:/bin", "XAI_API_KEY=fake-key", "AGENTLAB_SANDBOX_DEBUG=1"}
 			process.Stderr = &stderr
 			if err := process.Start(); err != nil {
 				t.Fatal(err)
