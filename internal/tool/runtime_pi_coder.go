@@ -201,7 +201,7 @@ func canonicalPiIdentity(identity piadapter.IdentityConfig) (piadapter.IdentityC
 }
 
 func piCoderCommand(identity piadapter.IdentityConfig, node, session, runtimeRoot, handoff string) []string {
-	prompt := "You are the isolated Coder. Use only the bounded handoff below and repair the candidate through the public workspace.\n\n" + handoff
+	prompt := "You are the isolated Coder. Use only the bounded handoff below and repair the candidate through the public workspace. Your working directory is the candidate; list it first, then repair the defect precisely.\n\n" + handoff
 	return []string{node, filepath.Join(identity.SDKRoot, "dist", "cli.js"), "--session", session, "--session-dir", runtimeRoot, "--provider", identity.Provider, "--model", identity.Model, "--thinking", identity.ThinkingPolicy, "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files", "--no-approve", "--tools", "read,bash,edit,write,grep,find,ls", prompt}
 }
 

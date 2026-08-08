@@ -76,7 +76,7 @@ func newSandbox(spec SandboxSpec) (Sandbox, error) {
 	if err := os.Mkdir(root, 0o700); err != nil {
 		return Sandbox{}, err
 	}
-	if err := os.WriteFile(script, []byte(linuxSandboxScript(root, mounts)), 0o700); err != nil {
+	if err := os.WriteFile(script, []byte(linuxSandboxScript(root, workspace, mounts)), 0o700); err != nil {
 		_ = os.RemoveAll(root)
 		_ = os.Remove(script)
 		return Sandbox{}, err
@@ -297,7 +297,7 @@ func insidePath(root, value string) bool {
 	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
-func linuxSandboxScript(root string, mounts []linuxSandboxMount) string {
+func linuxSandboxScript(root, workspace string, mounts []linuxSandboxMount) string {
 	options := "set -eu"
 	if os.Getenv("AGENTLAB_SANDBOX_DEBUG") != "" {
 		options = "set -eux"
@@ -330,6 +330,9 @@ func linuxSandboxScript(root string, mounts []linuxSandboxMount) string {
 	// unshare grants CAP_SYS_ADMIN so the setup script can build the mount
 	// namespace. Do not pass that capability to Pi: otherwise a Coder could
 	// remount a read-only bind or add a new mount from within the chroot.
+	// Enter the workspace before chroot so the exec'd role starts inside the
+	// candidate; chroot preserves the working directory when it resolves.
+	lines = append(lines, "cd "+shellQuote(workspace))
 	lines = append(lines, "exec "+linuxChroot+" "+shellQuote(root)+" "+linuxSetpriv+" --bounding-set=-all --inh-caps=-all --ambient-caps=-all --nnp \"$@\"")
 	return strings.Join(lines, "\n") + "\n"
 }

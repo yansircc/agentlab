@@ -213,7 +213,7 @@ func runtimeProfiles(value Preflight, spec RuntimeSpec, credentials runtimeCrede
 	if !filepath.IsAbs(spec.NodePath) || !workspaceReceipt.Valid() || !capability.Valid() {
 		return nil, errors.New("deployctl runtime profile is invalid")
 	}
-	tools, err := executablePaths(spec.HostRoot, "go", "sh", "grep", "find", "ls")
+	tools, err := executablePaths(spec.HostRoot, "go", "sh", "grep", "find", "ls", "cat", "head", "tail", "sed", "awk", "mkdir", "cp", "mv", "rm", "wc", "diff", "touch", "chmod", "echo", "printf", "sort", "uniq", "cut", "tr", "basename", "dirname", "xargs")
 	if err != nil {
 		return nil, err
 	}
