@@ -28,6 +28,8 @@ jobs:
   sandbox-ns:
     runs-on: ubuntu-latest
     needs: test
+    env:
+      XAI_API_KEY: ${{ secrets.AGENTLAB_WORKER_TOKEN }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
@@ -37,7 +39,7 @@ jobs:
         run: npm install -g @earendil-works/pi-coding-agent@0.83.0
       - name: Run the Linux sandbox namespace tests as root
         run: |
-          sudo -n env PATH="$PATH" HOME=/root GOPATH=/root/go GOCACHE=/tmp/go-cache \
+          sudo -n env PATH="$PATH" HOME=/root GOPATH=/root/go GOCACHE=/tmp/go-cache XAI_API_KEY="$XAI_API_KEY" \
             go test -count=1 -v ./internal/coder -run 'TestLinuxSandbox' 2>&1 | tee /tmp/sandbox-test.log
           grep -E '^(=== RUN|--- (PASS|FAIL|SKIP))' /tmp/sandbox-test.log
           if grep -q -- '--- SKIP: TestLinuxSandboxRunsAllowedNodeAndExcludesSiblingRoot' /tmp/sandbox-test.log \

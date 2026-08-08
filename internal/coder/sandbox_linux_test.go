@@ -4,6 +4,7 @@ package coder
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -710,4 +711,122 @@ func TestLinuxSandboxStartsPinnedPiWorkerSession(t *testing.T) {
 		time.Sleep(200 * time.Millisecond)
 	}
 	t.Fatalf("Worker pi did not write its session inside the sandbox")
+}
+
+// TestLinuxSandboxCoderPiExitsCleanly starts the Coder pi with the real
+// provider credential and waits for the process to exit on its own, which is
+// exactly the boundary the trial's managed run never crossed: the pi must
+// exit 0 after the agent turn so the Host can seal and record the completion.
+func TestLinuxSandboxCoderPiExitsCleanly(t *testing.T) {
+	pi, err := exec.LookPath("pi")
+	if err != nil {
+		t.Skip("Pi is not installed")
+	}
+	entry, err := filepath.EvalSymlinks(pi)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("Node is not installed")
+	}
+	shell, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("sh is not installed")
+	}
+	requireLinuxNamespace(t)
+	key := os.Getenv("XAI_API_KEY")
+	if key == "" {
+		t.Skip("XAI_API_KEY is not set; the completion boundary needs the real provider")
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.MkdirTemp(home, ".agentlab-coder-exit-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(root) })
+	sdkRoot := filepath.Dir(filepath.Dir(entry))
+	skillRoot := filepath.Join(root, "skill")
+	workspace, runtimeRoot := filepath.Join(root, "workspace"), filepath.Join(root, "runtime")
+	for _, path := range []string{skillRoot, workspace, runtimeRoot} {
+		if err := os.Mkdir(path, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	repo := os.Getenv("AGENTLAB_REPO")
+	if repo == "" {
+		repo = "../.."
+	}
+	extensionData, err := os.ReadFile(filepath.Join(repo, "skills", "agentlab", "extension.ts"))
+	if err != nil {
+		t.Fatalf("bundled extension source: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillRoot, "extension.ts"), extensionData, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(skillRoot, "bin"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	binary := filepath.Join(skillRoot, "bin", "agentlab")
+	build := exec.Command("go", "build", "-o", binary, "./cmd/agentlab")
+	build.Dir = repo
+	if err := build.Run(); err != nil {
+		t.Skipf("bundled binary build is unavailable: %v", err)
+	}
+	tools := []string{node, shell}
+	for _, name := range []string{"go", "grep", "find", "ls", "cat", "head", "tail", "sed", "awk", "mkdir", "cp", "mv", "rm", "wc", "diff", "touch", "chmod", "echo", "printf", "sort", "uniq", "cut", "tr", "basename", "dirname", "xargs"} {
+		if path, err := exec.LookPath(name); err == nil {
+			tools = append(tools, path)
+		}
+	}
+	sandbox, err := NewSandbox(SandboxSpec{Workspace: workspace, RuntimeRoot: runtimeRoot, ReadOnlyRoots: []string{sdkRoot, skillRoot}, Executables: tools, AllowNetwork: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := filepath.Join(runtimeRoot, "session.jsonl")
+	command := []string{node, entry, "--session", session, "--session-dir", runtimeRoot, "--provider", "xai", "--model", "grok-4.3", "--thinking", "high", "--no-extensions", "--extension", filepath.Join(skillRoot, "extension.ts"), "--no-builtin-tools", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files", "--no-approve", "--tools", "read,bash,edit,write,grep,find,ls", "--print", "Reply with exactly EXIT_OK and nothing else."}
+	wrapped, err := sandbox.Wrap(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+	process := exec.Command(wrapped[0], wrapped[1:]...)
+	process.Dir = workspace
+	process.Env = []string{"HOME=" + runtimeRoot, "TMPDIR=" + runtimeRoot, "PATH=/usr/bin:/bin", "XAI_API_KEY=" + key, "PI_CODING_AGENT_DIR=" + runtimeRoot, "PI_CODING_AGENT_SESSION_DIR=" + runtimeRoot}
+	process.Stderr = &stderr
+	if err := process.Start(); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- process.Wait() }()
+	select {
+	case waitErr := <-done:
+		if waitErr == nil {
+			return
+		}
+		var exitErr *exec.ExitError
+		if errors.As(waitErr, &exitErr) && exitErr.ExitCode() == 0 {
+			return
+		}
+		t.Fatalf("coder pi exited with %v; stderr:\n%s", waitErr, stderr.String())
+	case <-time.After(5 * time.Minute):
+		_ = process.Process.Kill()
+		<-done
+		t.Fatalf("coder pi did not exit within 5 minutes; session:\n%s", tailSession(session))
+	}
+}
+
+func tailSession(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err.Error()
+	}
+	lines := strings.Split(string(data), "\n")
+	if len(lines) > 6 {
+		lines = lines[len(lines)-6:]
+	}
+	return strings.Join(lines, "\n")
 }
