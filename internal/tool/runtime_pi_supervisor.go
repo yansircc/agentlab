@@ -256,6 +256,9 @@ func (value PiSupervisorPlan) environment() ([]string, error) {
 		}
 		result = append(result, handle+"="+secret)
 	}
+	if capture := os.Getenv("AGENTLAB_MANAGED_STDERR"); capture != "" {
+		result = append(result, "AGENTLAB_MANAGED_STDERR="+capture)
+	}
 	return append(result,
 		"AGENTLAB_ROOT="+value.Binding.Root,
 		"AGENTLAB_PREPARATION="+value.Binding.PreparationID,
