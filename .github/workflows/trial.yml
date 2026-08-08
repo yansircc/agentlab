@@ -35,6 +35,7 @@ jobs:
       - name: Preflight and baseline
         run: |
           set -euo pipefail
+          export AGENTLAB_MANAGED_STDERR=/root/managed-role-stderr.log
           run_root() {
             sudo -n env PATH="$PATH" HOME=/root GOPATH=/root/go GOCACHE=/tmp/go-cache \
               XAI_API_KEY="$AGENTLAB_WORKER_TOKEN" \
@@ -70,7 +71,6 @@ jobs:
           echo "===== STEP 3b: supervisor-start ====="
           run_root /tmp/agentlab acceptance supervisor-start --host-root /root/agentlab-host \
             | tee /tmp/step-supervisor-start.json
-          export AGENTLAB_MANAGED_STDERR=/root/managed-role-stderr.log
           echo "===== STEP 3b2: direct worker start diagnostic (throwaway root) ====="
           export AGENTLAB_MANAGED_STDERR=/root/diag-worker-stderr.log
           run_root rm -rf /root/diag-eval /root/diag-audit /root/diag-host /root/diag-worker-stderr.log
