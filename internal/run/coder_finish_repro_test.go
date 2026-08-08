@@ -134,11 +134,13 @@ func TestCoderSandboxRunRecordsTerminalFacts(t *testing.T) {
 			// adapter writer so the terminal admission lands before the facts.
 			writer, state, err := op.AcquireAdapterWriter("pi-session-v3")
 			if err != nil {
+				drainErr = err
 				finalized <- -2
 				return err
 			}
 			data, readErr := os.ReadFile(session)
 			if readErr != nil {
+				drainErr = readErr
 				_ = writer.Close()
 				finalized <- -2
 				return readErr
@@ -150,12 +152,14 @@ func TestCoderSandboxRunRecordsTerminalFacts(t *testing.T) {
 				}
 				offset += int64(len(line)) + 1
 				if commitErr := writer.Commit([]byte(fmt.Sprintf(`{"session_id":"%s","offset":%d}`, state.StreamID, offset)), AdapterBatch{Events: []AdapterEvent{{Kind: EvidenceKind("evidence"), Raw: append([]byte(nil), line...)}}}); commitErr != nil {
+					drainErr = commitErr
 					_ = writer.Close()
 					finalized <- -2
 					return commitErr
 				}
 			}
 			if closeErr := writer.Close(); closeErr != nil {
+				drainErr = closeErr
 				finalized <- -2
 				return closeErr
 			}
@@ -166,11 +170,18 @@ func TestCoderSandboxRunRecordsTerminalFacts(t *testing.T) {
 	if err != nil || started.Receipt.IntentID != "coder-start" {
 		t.Fatalf("managed coder start = %#v, %v", started, err)
 	}
+	var drainErr error
 	select {
 	case code := <-finalized:
 		t.Logf("coder exited with code %d", code)
+		if code == -2 {
+			// The finalizer sent -2 when its drain failed; surface the reason.
+		}
 	case <-time.After(7 * time.Minute):
 		t.Fatal("coder finalizer did not run within 7 minutes")
+	}
+	if drainErr != nil {
+		t.Logf("drain error: %v", drainErr)
 	}
 	time.Sleep(2 * time.Second)
 	status, err := op.Status(nil)
