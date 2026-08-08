@@ -55,6 +55,11 @@ func managedExitCode(waitErr error) (int, error) {
 func (o *Operation) finishManaged(code int, completionErr error) error {
 	lease, err := acquireProducerLease(o.dir)
 	if err != nil {
+		// A stuck writer lease must not silently strand the run: record the
+		// terminal rejection so the supervisor can see why the run is dead.
+		if _, appendErr := o.appendEvent(time.Now().UTC(), eventTerminalRejected, terminalRejected{Reason: fmt.Sprintf("finish lease unavailable: %v", err)}); appendErr == nil {
+			return err
+		}
 		return err
 	}
 	defer lease.Release()
