@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	piadapter "github.com/yansircc/agentlab/internal/adapter/pi"
 	"github.com/yansircc/agentlab/internal/coder"
 	"github.com/yansircc/agentlab/internal/effect"
 )
@@ -127,7 +128,16 @@ func TestCoderSandboxRunRecordsTerminalFacts(t *testing.T) {
 				}
 				time.Sleep(10 * time.Millisecond)
 			}
-		}, Finalize: func(code int) error { finalized <- code; return nil },
+		}, Finalize: func(code int) error {
+			// The real Coder callback drains the session before finishing, so
+			// reproduce that exactly.
+			if _, pollErr := piadapter.Poll(op, session); pollErr != nil {
+				finalized <- -2
+				return pollErr
+			}
+			finalized <- code
+			return nil
+		},
 	})
 	if err != nil || started.Receipt.IntentID != "coder-start" {
 		t.Fatalf("managed coder start = %#v, %v", started, err)
