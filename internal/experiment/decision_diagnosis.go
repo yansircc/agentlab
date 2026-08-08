@@ -2,6 +2,7 @@ package experiment
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/yansircc/agentlab/internal/artifact"
 	"github.com/yansircc/agentlab/internal/diagnosis"
@@ -26,8 +27,14 @@ type decisionBoundCandidateRecorded struct {
 }
 
 func (value DecisionBoundDiagnosis) Validate() error {
-	if value.Decision.Validate() != nil || value.Decision.Action != DecisionDiagnosis || value.Diagnosis.Validate() != nil {
-		return errors.New("decision-bound diagnosis is invalid")
+	if err := value.Decision.Validate(); err != nil {
+		return err
+	}
+	if value.Decision.Action != DecisionDiagnosis {
+		return errors.New("decision-bound diagnosis requires the diagnosis action")
+	}
+	if err := value.Diagnosis.Validate(); err != nil {
+		return fmt.Errorf("decision-bound diagnosis: %w", err)
 	}
 	return nil
 }
