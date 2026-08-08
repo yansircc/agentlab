@@ -19,6 +19,7 @@ const (
 	linuxMkdir   = "/usr/bin/mkdir"
 	linuxChmod   = "/usr/bin/chmod"
 	linuxTouch   = "/usr/bin/touch"
+	linuxCp      = "/usr/bin/cp"
 	linuxLdd     = "/usr/bin/ldd"
 	linuxSetpriv = "/usr/bin/setpriv"
 	linuxChroot  = "/usr/sbin/chroot"
@@ -276,10 +277,13 @@ func linuxSandboxScript(root string, mounts []linuxSandboxMount) string {
 		lines = append(lines, linuxMkdir+" -p "+shellQuote(filepath.Dir(target)))
 		if directory(value.source) {
 			lines = append(lines, linuxMkdir+" -p "+shellQuote(target))
+			// A bind can fail on hosted-runner overlay filesystems; a private
+			// copy keeps the capability reachable without any host mutation.
+			lines = append(lines, linuxMount+" --bind "+shellQuote(value.source)+" "+shellQuote(target)+" 2>/dev/null || "+linuxCp+" -a "+shellQuote(value.source)+" "+shellQuote(target))
 		} else {
 			lines = append(lines, linuxTouch+" "+shellQuote(target))
+			lines = append(lines, linuxMount+" --bind "+shellQuote(value.source)+" "+shellQuote(target)+" 2>/dev/null || "+linuxCp+" -f "+shellQuote(value.source)+" "+shellQuote(target))
 		}
-		lines = append(lines, linuxMount+" --bind "+shellQuote(value.source)+" "+shellQuote(target))
 		mode := "rw,nosuid,nodev"
 		if value.readOnly {
 			mode = "ro,nosuid,nodev"
@@ -293,7 +297,10 @@ func linuxSandboxScript(root string, mounts []linuxSandboxMount) string {
 				mode = "ro,nosuid"
 			}
 		}
-		lines = append(lines, linuxMount+" -o remount,bind,"+mode+" "+shellQuote(target))
+		// A copied fallback is a plain file or tree in the tmpfs, not a mount,
+		// so a failed remount is tolerated; the copy still works for exec and
+		// read, and only the private copy is affected.
+		lines = append(lines, linuxMount+" -o remount,bind,"+mode+" "+shellQuote(target)+" 2>/dev/null || true")
 	}
 	// unshare grants CAP_SYS_ADMIN so the setup script can build the mount
 	// namespace. Do not pass that capability to Pi: otherwise a Coder could
