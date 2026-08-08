@@ -216,8 +216,9 @@ func TestLinuxSandboxScriptMountModesAndNetwork(t *testing.T) {
 		t.Fatal(err)
 	}
 	lines := strings.Split(string(script), "\n")
+	chrootRoot := filepath.Join(runtimeOffline, ".agentlab-coder-linux-root")
 	remount := func(path string) string {
-		quoted := "'" + root + path + "'"
+		quoted := "'" + chrootRoot + path + "'"
 		for _, line := range lines {
 			if strings.Contains(line, "remount,bind") && strings.Contains(line, quoted) {
 				return line
