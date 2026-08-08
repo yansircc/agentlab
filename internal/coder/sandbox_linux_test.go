@@ -572,7 +572,8 @@ func TestLinuxSandboxCoderHangBisect(t *testing.T) {
 				}
 				time.Sleep(200 * time.Millisecond)
 			}
-			t.Fatalf("Coder pi hung with tool %s; stderr:\n%s", name, stderr.String())
+			out, _ := exec.Command("sh", "-c", "ps -eo pid,ppid,stat,wchan:24,cmd | grep -E 'unshare|cli.js|go |version' | grep -v grep | head -10").Output()
+			t.Fatalf("Coder pi hung with tool %s; stderr:\n%s\nprocesses:\n%s", name, stderr.String(), out)
 		})
 	}
 }
