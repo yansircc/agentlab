@@ -5,13 +5,13 @@ package run
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
 
-	piadapter "github.com/yansircc/agentlab/internal/adapter/pi"
 	"github.com/yansircc/agentlab/internal/coder"
 	"github.com/yansircc/agentlab/internal/effect"
 )
@@ -130,10 +130,34 @@ func TestCoderSandboxRunRecordsTerminalFacts(t *testing.T) {
 			}
 		}, Finalize: func(code int) error {
 			// The real Coder callback drains the session before finishing, so
-			// reproduce that exactly.
-			if _, pollErr := piadapter.Poll(op, session); pollErr != nil {
+			// reproduce that exactly: read the whole session through the
+			// adapter writer so the terminal admission lands before the facts.
+			writer, state, err := op.AcquireAdapterWriter("pi-session-v3")
+			if err != nil {
 				finalized <- -2
-				return pollErr
+				return err
+			}
+			data, readErr := os.ReadFile(session)
+			if readErr != nil {
+				_ = writer.Close()
+				finalized <- -2
+				return readErr
+			}
+			var offset int64
+			for _, line := range bytes.Split(data, []byte("\n")) {
+				if len(line) == 0 {
+					continue
+				}
+				offset += int64(len(line)) + 1
+				if commitErr := writer.Commit([]byte(fmt.Sprintf(`{"session_id":"%s","offset":%d}`, state.StreamID, offset)), AdapterBatch{Events: []AdapterEvent{{Kind: EvidenceKind("evidence"), Raw: append([]byte(nil), line...)}}}); commitErr != nil {
+					_ = writer.Close()
+					finalized <- -2
+					return commitErr
+				}
+			}
+			if closeErr := writer.Close(); closeErr != nil {
+				finalized <- -2
+				return closeErr
 			}
 			finalized <- code
 			return nil
