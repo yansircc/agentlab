@@ -226,6 +226,27 @@ func linuxMounts(workspace, runtimeRoot string, readOnly, executables []string, 
 			}
 		}
 	}
+	// A file mount whose target lies inside a directory mount is redundant:
+	// the covering directory bind makes the whole tree reachable, and mounting
+	// the file after its parent would write the touch onto the read-only bind.
+	covered := map[string]bool{}
+	for target, value := range byTarget {
+		if directory(value.source) {
+			continue
+		}
+		for other, outer := range byTarget {
+			if other == target || !directory(outer.source) {
+				continue
+			}
+			if insidePath(other, target) {
+				covered[target] = true
+				break
+			}
+		}
+	}
+	for target := range covered {
+		delete(byTarget, target)
+	}
 	result := make([]linuxSandboxMount, 0, len(byTarget))
 	for _, value := range byTarget {
 		result = append(result, value)
@@ -269,6 +290,11 @@ func linuxDependencies(executable string) ([]string, error) {
 	}
 	sort.Strings(result)
 	return result, nil
+}
+
+func insidePath(root, value string) bool {
+	relative, err := filepath.Rel(root, value)
+	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
 func linuxSandboxScript(root string, mounts []linuxSandboxMount) string {
