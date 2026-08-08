@@ -217,8 +217,9 @@ func TestLinuxSandboxScriptMountModesAndNetwork(t *testing.T) {
 	}
 	lines := strings.Split(string(script), "\n")
 	remount := func(path string) string {
+		quoted := "'" + root + path + "'"
 		for _, line := range lines {
-			if strings.Contains(line, "remount,bind") && strings.Contains(line, path) {
+			if strings.Contains(line, "remount,bind") && strings.Contains(line, quoted) {
 				return line
 			}
 		}
