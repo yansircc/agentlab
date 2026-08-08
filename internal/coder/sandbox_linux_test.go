@@ -459,7 +459,13 @@ func TestLinuxSandboxStartsPinnedPiCoderSession(t *testing.T) {
 	if err := build.Run(); err != nil {
 		t.Skipf("bundled binary build is unavailable: %v", err)
 	}
-	sandbox, err := NewSandbox(SandboxSpec{Workspace: workspace, RuntimeRoot: runtimeRoot, ReadOnlyRoots: []string{sdkRoot, skillRoot}, Executables: []string{node, shell}, AllowNetwork: true})
+	tools := []string{node, shell}
+	for _, name := range []string{"go", "grep", "find", "ls"} {
+		if path, err := exec.LookPath(name); err == nil {
+			tools = append(tools, path)
+		}
+	}
+	sandbox, err := NewSandbox(SandboxSpec{Workspace: workspace, RuntimeRoot: runtimeRoot, ReadOnlyRoots: []string{sdkRoot, skillRoot}, Executables: tools, AllowNetwork: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -469,9 +475,13 @@ func TestLinuxSandboxStartsPinnedPiCoderSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	key := os.Getenv("XAI_API_KEY")
+	if key == "" {
+		key = "fake-key"
+	}
 	process := exec.Command(wrapped[0], wrapped[1:]...)
 	process.Dir = workspace
-	process.Env = []string{"HOME=" + runtimeRoot, "TMPDIR=" + runtimeRoot, "PATH=/usr/bin:/bin", "XAI_API_KEY=fake-key"}
+	process.Env = []string{"HOME=" + runtimeRoot, "TMPDIR=" + runtimeRoot, "PATH=/usr/bin:/bin", "XAI_API_KEY=" + key, "PI_CODING_AGENT_DIR=" + runtimeRoot, "PI_CODING_AGENT_SESSION_DIR=" + runtimeRoot}
 	if err := process.Start(); err != nil {
 		t.Fatal(err)
 	}
