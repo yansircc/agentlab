@@ -131,8 +131,9 @@ jobs:
               COMPLETION=$(run_root sh -c 'jq -c "select(.kind==\"coder_completed\") | .data.receipt" /root/agentlab-eval/experiments/deployctl-supervision/runs/coder-repair/events.jsonl 2>/dev/null | tail -1' 2>/dev/null || true)
               if [ -n "$COMPLETION" ]; then
                 echo "{\"run_id\":\"fresh-worker\",\"completion\":$COMPLETION}" > /tmp/req-fresh.json
-                run_root /tmp/agentlab acceptance prepare-run --host-root /root/agentlab-host --request /tmp/req-fresh.json 2>&1 | head -c 200 || true
-                echo " fresh-worker prepared"
+                echo "== prepare-run (fresh-worker) =="
+                run_root /tmp/agentlab acceptance prepare-run --host-root /root/agentlab-host --request /tmp/req-fresh.json 2>&1 | head -c 300 || true
+                echo ""
                 PREPARED=1
               fi
             fi
@@ -145,7 +146,7 @@ jobs:
           run_root sh -c 'jq -r "select(.type==\"message\") | .message.content[]? | select(.type==\"toolCall\") | \"CALL \" + .name + \" \" + (.arguments|tojson)" /root/agentlab-host/supervisor-runtime/session.jsonl 2>/dev/null | tail -50' || true
           run_root sh -c 'jq -r "select(.type==\"message\" and .message.role==\"toolResult\") | \"RESULT \" + ([.message.content[].text // empty] | join(\" \"))" /root/agentlab-host/supervisor-runtime/session.jsonl 2>&1 | tail -60' || true
           echo "===== experiment run ledgers (tail) ====="
-          run_root sh -c 'for f in /root/agentlab-eval/experiments/deployctl-supervision/runs/*/events.jsonl; do echo "--- $f"; tail -6 "$f"; done' || true
+          run_root sh -c 'for f in /root/agentlab-eval/experiments/deployctl-supervision/runs/*/events.jsonl; do echo "--- $f"; tail -12 "$f"; done' || true
           echo "===== host root files ====="
           run_root sh -c 'find /root/agentlab-host -maxdepth 3 -type f | sort'
           echo "===== coder completion ====="

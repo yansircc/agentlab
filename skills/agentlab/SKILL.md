@@ -62,8 +62,10 @@ and `completion_ref` (the Coder completion artifact ref the ledger reports).
 ## Fresh acceptance Worker, comparison, and gate
 
 After the Coder exits, the Host binds the fresh acceptance Worker as
-`fresh-worker` (runtime profile ref `candidate-worker-fresh-worker`). Inspect
-the experiment ledger; once `fresh-worker` is bound, start it with a
+`fresh-worker` (runtime profile ref `candidate-worker-fresh-worker`). Read the
+Coder completion ref from the coder-repair ledger (`inspect` scope `run`,
+`run_id` `coder-repair`: the `coder_completed` event's `receipt`). Inspect the
+experiment ledger; once `fresh-worker` is bound, start it with a
 `worker_start` decision citing the baseline evidence:
 
 ```json
