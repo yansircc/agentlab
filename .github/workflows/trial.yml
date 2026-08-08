@@ -146,6 +146,8 @@ jobs:
                 PREPARED=1
               fi
             fi
+            CODERP=$(sudo -n sh -c 'ps -eo pid,ppid,stat,wchan:16,cmd | grep -E "unshare|agentlab-coder-linux|cli.js" | grep -v grep | head -5' 2>/dev/null | tr "\n" "|" | cut -c1-200 || true)
+            echo "coder-proc[${CODERP}]"
             OBS=$(run_root /tmp/agentlab acceptance supervisor-status --host-root /root/agentlab-host 2>/dev/null | grep -o '"observation":"[a-z]*"' || true)
             echo "t+$((SECONDS/60))m ${OBS:-unavailable}"
             if echo "$OBS" | grep -q '"observation":"dead"'; then echo "supervisor exited"; break; fi
