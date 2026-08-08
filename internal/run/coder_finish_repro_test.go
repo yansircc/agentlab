@@ -42,7 +42,15 @@ func TestCoderSandboxRunRecordsTerminalFacts(t *testing.T) {
 	if key == "" {
 		t.Skip("XAI_API_KEY is not set")
 	}
-	root := t.TempDir()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.MkdirTemp(home, ".agentlab-coder-finish-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(root) })
 	sdkRoot := filepath.Dir(filepath.Dir(entry))
 	skillRoot := filepath.Join(root, "skill")
 	workspace, runtimeRoot := filepath.Join(root, "workspace"), filepath.Join(root, "runtime")
@@ -82,6 +90,9 @@ func TestCoderSandboxRunRecordsTerminalFacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	op, err := Open(t.TempDir(), "repro-experiment", "coder-run")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
